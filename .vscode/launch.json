@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug AURA-X DAW",
+      "type": "cppdbg",
+      "request": "launch",
+      // The path to the compiled executable will vary by OS and build type
+      "program": "${workspaceFolder}/daw/aura_daw_client/build/Debug/AuraX_DAW.exe", // Windows example
+      // "program": "${workspaceFolder}/daw/aura_daw_client/build/AuraX_DAW.app/Contents/MacOS/AuraX_DAW", // macOS example
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "lldb", // macOS/Linux
+      // "MIMode": "gdb", // Windows (if using MinGW)
+      // "miDebuggerPath": "C:\\msys64\\mingw64\\bin\\gdb.exe", // Windows example
+    }
+  ]
+}

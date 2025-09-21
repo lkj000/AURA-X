@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    container_name: aurax_postgres_dev
+    environment:
+      POSTGRES_USER: aurax_dev
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: aurax_main_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - aurax_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  aurax_postgres_data:

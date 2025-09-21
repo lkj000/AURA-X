@@ -1,0 +1,5 @@
+{
+  "cmake.sourceDirectory": "${workspaceFolder}/daw/aura_daw_client",
+  "cmake.configureOnOpen": true,
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+}
