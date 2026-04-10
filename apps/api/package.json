@@ -9,7 +9,9 @@
     "test": "jest --no-coverage"
   },
   "dependencies": {
+    "@aura-x/ac-ami": "workspace:*",
     "@aura-x/ctl": "workspace:*",
+    "@aura-x/replicate-client": "workspace:*",
     "@aura-x/suno-exporter": "workspace:*",
     "@supabase/supabase-js": "^2.45.0",
     "@types/form-data": "^2.5.2",
