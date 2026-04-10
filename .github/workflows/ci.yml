@@ -1,0 +1,122 @@
+name: AURA X CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 1 — CTL_v1 schema (no external deps, runs first)
+  # ────────────────────────────────────────────────────────────────────────────
+  test-ctl:
+    name: CTL_v1 Schema Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test @aura-x/ctl
+        run: cd packages/ctl && pnpm test
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 2 — Suno Exporter (needs ctl built first)
+  # ────────────────────────────────────────────────────────────────────────────
+  test-suno-exporter:
+    name: Suno Exporter Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build @aura-x/ctl (required by suno-exporter imports)
+        run: cd packages/ctl && pnpm build
+
+      - name: Test @aura-x/suno-exporter
+        run: cd packages/suno-exporter && pnpm test
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 3 — API (needs ctl + suno-exporter green; starts Python audio service)
+  # ────────────────────────────────────────────────────────────────────────────
+  test-api:
+    name: API Tests
+    runs-on: ubuntu-latest
+    needs: [test-ctl, test-suno-exporter]
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      REDIS_URL: redis://localhost:6379
+      AUDIO_SERVICE_URL: http://localhost:8000
+      NODE_ENV: test
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Python audio service dependencies
+        run: pip install -r apps/audio/requirements.txt
+
+      - name: Start Python audio service
+        run: |
+          cd apps/audio
+          python -m uvicorn main:app --port 8000 &
+          echo "Audio service PID: $!"
+
+      - name: Wait for audio service to be ready
+        run: |
+          for i in $(seq 1 10); do
+            curl -sf http://localhost:8000/health && echo "Audio service ready" && break
+            echo "Waiting... attempt $i"
+            sleep 2
+          done
+
+      - name: Test @aura-x/api
+        run: cd apps/api && pnpm test
