@@ -3,3 +3,7 @@ uvicorn[standard]
 python-dotenv
 supabase
 httpx
+python-multipart
+demucs
+torch
+torchaudio

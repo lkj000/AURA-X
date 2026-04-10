@@ -23,9 +23,22 @@ export const audioWorker = new Worker<AudioJobData>(
 
     if (type === "audio.stems") {
       const { audio_file_id, track_id } = job.data;
-      console.log(`[audio.stems] file=${audio_file_id} track=${track_id}`);
-      // Phase 04 Job 29: Demucs stem separation
-      return { status: "acknowledged", audio_file_id, track_id };
+      console.log(`[audio.stems] Requesting stem separation for ${audio_file_id}`);
+
+      const AUDIO_SERVICE_URL = process.env.AUDIO_SERVICE_URL ?? "http://localhost:8000";
+
+      const response = await axios.post(
+        `${AUDIO_SERVICE_URL}/stems/separate`,
+        {
+          audio_file_id,
+          track_id,
+          generation_id: (job.data as { generation_id?: string }).generation_id,
+        },
+        { timeout: 300000 } // 5 min — Demucs can take time
+      );
+
+      console.log(`[audio.stems] ✓ Stems separated for ${audio_file_id}:`, response.data.stems);
+      return response.data;
     }
 
     throw new Error(`Unknown audio job type: ${(job.data as { type: string }).type}`);
