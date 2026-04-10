@@ -1,10 +1,96 @@
 import { Router, Request, Response } from "express";
+import multer from "multer";
+import FormData from "form-data";
+import axios from "axios";
+import { enqueueAudioAnalysis } from "../queue";
 
 const router = Router();
-
-// POST /api/audio/upload — Audio ingestion (Phase 01 Job 06)
-router.post("/upload", (_req: Request, res: Response) => {
-  res.status(501).json({ status: "not_implemented", message: "Audio ingestion — Job 06" });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 },
 });
+
+const AUDIO_SERVICE_URL = process.env.AUDIO_SERVICE_URL ?? "http://localhost:8000";
+
+// POST /api/audio/upload — proxy multipart upload to Python audio service
+router.post(
+  "/upload",
+  upload.single("file"),
+  async (req: Request, res: Response): Promise<void> => {
+    if (!req.file) {
+      res.status(400).json({ error: "No file provided" });
+      return;
+    }
+    const { track_id, generation_id, file_type } = req.body as {
+      track_id?: string;
+      generation_id?: string;
+      file_type?: string;
+    };
+    if (!track_id) {
+      res.status(400).json({ error: "track_id is required" });
+      return;
+    }
+
+    const form = new FormData();
+    form.append("file", req.file.buffer, {
+      filename: req.file.originalname,
+      contentType: req.file.mimetype,
+    });
+    form.append("track_id", track_id);
+    if (generation_id) form.append("generation_id", generation_id);
+    if (file_type) form.append("file_type", file_type);
+
+    try {
+      const response = await axios.post(`${AUDIO_SERVICE_URL}/audio/upload`, form, {
+        headers: form.getHeaders(),
+      });
+      const audioData = response.data;
+
+      // Fire-and-forget: enqueue analysis job (non-blocking)
+      enqueueAudioAnalysis({
+        audio_file_id: audioData.audio_file_id,
+        track_id: audioData.track_id ?? track_id,
+        storage_path: audioData.storage_path ?? "",
+        format: audioData.format ?? "wav",
+      }).catch((err: unknown) => {
+        console.error("[queue] Failed to enqueue analysis:", (err as Error).message);
+      });
+
+      res.json(audioData);
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        res.status(err.response?.status ?? 500).json(
+          err.response?.data ?? { error: "Audio service error" }
+        );
+      } else {
+        res.status(500).json({ error: "Unexpected error" });
+      }
+    }
+  }
+);
+
+// GET /api/audio/signed-url/:audioFileId
+router.get(
+  "/signed-url/:audioFileId",
+  async (req: Request, res: Response): Promise<void> => {
+    const { audioFileId } = req.params;
+    const expiresIn = req.query.expires_in ?? 3600;
+    try {
+      const response = await axios.get(
+        `${AUDIO_SERVICE_URL}/audio/signed-url/${audioFileId}`,
+        { params: { expires_in: expiresIn } }
+      );
+      res.json(response.data);
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        res.status(err.response?.status ?? 500).json(
+          err.response?.data ?? { error: "Audio service error" }
+        );
+      } else {
+        res.status(500).json({ error: "Unexpected error" });
+      }
+    }
+  }
+);
 
 export default router;
