@@ -1,0 +1,12 @@
+node_modules
+.env
+.env.local
+__pycache__
+*.pyc
+*.pyo
+dist
+.turbo
+.next
+*.egg-info
+.venv
+venv
