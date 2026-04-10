@@ -49,20 +49,37 @@ Built by Okovanggo AI. Agentic build methodology — one job, one gate, one comm
 - Job 13 ✓ Mutation engine (9 repairs, repairCTL loop, 18 tests)
 - Job 14 ✓ Phase 02 integration test (all 8 presets, 16 tests)
 
-### Tests passing:
-  api:            26
-  ctl:            39
-  suno-exporter:  16
-  ac-ami:         112
-  ──────────────────
-  Total:          193
+### Phase 03 — Generation Pipeline ✓ COMPLETE
+- Job 15 ✓ Replicate client (MusicGen, polling, retry, 12 tests)
+- Job 16 ✓ Mode 2 CTL→MusicGen conditioning (14 tests)
+- Job 17 ✓ Generation agent (Mode 1/2/3 orchestration, 12 tests)
+- Job 18 ✓ Mode 2 completion worker (poll→download→store, 10 tests)
+- Job 19 ✓ Suno upload ingestor (Mode 1 return path closed, 8 tests)
 
-### Phase 03 — Generation Pipeline (next)
-- Job 15: Replicate client (MusicGen, retry logic)
-- Job 16: Mode 2 conditioning pipeline (CTL → MusicGen params)
-- Job 17: Mode 3 Suno API stub (ready, dormant)
-- Job 18: Generation agent (orchestrates Mode 1/2/3)
-- Job 19: Subgenre preset packs for generation
-- Job 20: Generation result storage
-- Job 21: Suno upload ingestor (Mode 1 return path wired to queue)
-- Job 22: Generation dashboard endpoint
+### Generation lifecycle — COMPLETE
+Mode 1: CTL → Suno prompts → producer generates → uploads back
+        → generation marked complete → analysis queued
+Mode 2: CTL → MusicGen conditioning → Replicate prediction
+        → worker polls → downloads audio → stores → analysis queued
+Mode 3: Reserved. Architecture ready. Activates by config.
+
+### Tests passing:
+  api:               56
+  ctl:               39
+  suno-exporter:     16
+  ac-ami:           126
+  replicate-client:  12
+  ──────────────────────
+  Total:            249
+
+### Phase 04 — Audio Production (next)
+- Job 20: Demucs stem separation (drums, bass, vocals, other)
+- Job 21: Stem storage + routing
+- Job 22: Log drum extractor
+- Job 23: Mixing engine (pedalboard channel strips)
+- Job 24: EQ + compression chain
+- Job 25: Reverb + space engine
+- Job 26: Master chain
+- Job 27: Production preset system
+- Job 28: Render pipeline
+- Job 29: Phase 04 gate test

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { CTLv1Schema } from "@aura-x/ctl";
 import { runGeneration } from "../generation/generationAgent";
-import { getGenerationStatus } from "../generation/generationStatus";
+import { getGenerationStatus, getGenerationsByTrack } from "../generation/generationStatus";
 
 const router = Router();
 
@@ -56,6 +56,17 @@ router.get(
       return;
     }
     res.json(status);
+  }
+);
+
+// GET /api/generate/track/:trackId
+// Returns all generations for a track (history)
+router.get(
+  "/track/:trackId",
+  async (req: Request, res: Response): Promise<void> => {
+    const { trackId } = req.params;
+    const generations = await getGenerationsByTrack(trackId);
+    res.json({ track_id: trackId, generations, count: generations.length });
   }
 );
 

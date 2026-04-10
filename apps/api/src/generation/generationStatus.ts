@@ -1,5 +1,31 @@
 import { supabase } from "../lib/supabase";
 
+export async function getGenerationsByTrack(
+  track_id: string
+): Promise<GenerationStatusResponse[]> {
+  const { data, error } = await supabase
+    .from("generations")
+    .select("*")
+    .eq("track_id", track_id)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) return [];
+
+  return data.map((gen: Record<string, unknown>) => ({
+    generation_id: gen.id as string,
+    track_id: gen.track_id as string,
+    mode: gen.mode as string,
+    status: gen.status as string,
+    prompt_style: gen.prompt_style as string | undefined,
+    prompt_lyrics: gen.prompt_lyrics as string | undefined,
+    replicate_id: gen.replicate_id as string | undefined,
+    error_message: gen.error_message as string | undefined,
+    created_at: gen.created_at as string,
+    completed_at: gen.completed_at as string | undefined,
+    audio_files: [],
+  }));
+}
+
 export type GenerationStatusResponse = {
   generation_id: string;
   track_id: string;
