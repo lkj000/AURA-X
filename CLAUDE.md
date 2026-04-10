@@ -40,14 +40,29 @@ Built by Okovanggo AI. Agentic build methodology — one job, one gate, one comm
 - Job 06 ✓ BullMQ queue (audio-processing + generation workers, 8 tests)
 - Job 07 ✓ CI/CD (GitHub Actions 3-job pipeline, Railway Dockerfile)
 
-### Tests passing: 26 (api) + 16 (suno-exporter) + 12 (ctl) = 54 total
+### Phase 02 — AC-AMI Core ✓ COMPLETE
+- Job 08 ✓ CTL preset library (8 subgenres, 27 preset tests)
+- Job 09 ✓ Harmony planner (lineage-aware, 18 tests)
+- Job 10 ✓ Groove planner (13 patterns, microtiming, 20 tests)
+- Job 11 ✓ Instrumentation planner (patch classes, 18 tests)
+- Job 12 ✓ Validator suite (lineage + style + inst + harmony, 22 tests)
+- Job 13 ✓ Mutation engine (9 repairs, repairCTL loop, 18 tests)
+- Job 14 ✓ Phase 02 integration test (all 8 presets, 16 tests)
 
-### Phase 02 — AC-AMI Core (next)
-- Job 08: CTL_v1 preset library (Private School, Bacardi, Sgija, Stixx, Mbiraiano)
-- Job 09: Harmony planner (lineage-aware chord selection)
-- Job 10: Groove planner (16-step patterns, microtiming, subgenre families)
-- Job 11: Instrumentation planner (patch class selection)
-- Job 12: Cultural lineage validator
-- Job 13: Style + instrumentation + harmony validators
-- Job 14: Mutation engine (9 targeted repairs)
-- Job 15: Planner integration tests (all planners + validators end-to-end)
+### Tests passing:
+  api:            26
+  ctl:            39
+  suno-exporter:  16
+  ac-ami:         112
+  ──────────────────
+  Total:          193
+
+### Phase 03 — Generation Pipeline (next)
+- Job 15: Replicate client (MusicGen, retry logic)
+- Job 16: Mode 2 conditioning pipeline (CTL → MusicGen params)
+- Job 17: Mode 3 Suno API stub (ready, dormant)
+- Job 18: Generation agent (orchestrates Mode 1/2/3)
+- Job 19: Subgenre preset packs for generation
+- Job 20: Generation result storage
+- Job 21: Suno upload ingestor (Mode 1 return path wired to queue)
+- Job 22: Generation dashboard endpoint

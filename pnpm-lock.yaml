@@ -100,6 +100,9 @@ importers:
         specifier: ^3.22.4
         version: 3.25.76
     devDependencies:
+      '@aura-x/suno-exporter':
+        specifier: workspace:*
+        version: link:../suno-exporter
       '@types/jest':
         specifier: ^29.0.0
         version: 29.5.14
