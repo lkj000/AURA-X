@@ -9,3 +9,12 @@ export * from "./groove/grooveLibrary";
 export { planInstrumentation, applyInstrumentationPlan } from "./instrumentation/instrumentationPlanner";
 export type { InstrumentationPlannerOptions } from "./instrumentation/instrumentationPlanner";
 export * from "./instrumentation/instrumentationKnowledge";
+
+export {
+  validateLineage,
+  validateStyle,
+  validateInstrumentation,
+  validateHarmony,
+  validateAll,
+} from "./validators";
+export type { ValidationResult, ValidationIssue } from "./validators";

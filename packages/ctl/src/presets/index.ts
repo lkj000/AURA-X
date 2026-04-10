@@ -78,7 +78,7 @@ export const privateSchoolPreset: CTLv1 = createCTL({
     log_drum_innovation: { weight: 0.78, influences: ["low_end_authorship", "motif_identity", "drop_definition"],         must_not: ["generic_bass_replacement"] },
   },
   style_constraints: {
-    max_piano_busyness:  0.38,
+    max_piano_busyness:  0.60,
     min_pad_warmth:      0.62,
     max_perc_aggression: 0.55,
     preferred_keys:      ["F#m", "C#m", "Em"],
@@ -346,7 +346,7 @@ export const stixxSgijaPreset: CTLv1 = createCTL({
     lounge:              { weight: 0.10, influences: [],                                                                  must_not: ["reduce_aggression"] },
     bacardi:             { weight: 0.65, influences: ["log_drum_density", "ghost_note_grid", "raw_bounce"],              must_not: [] },
     dibacardi:           { weight: 0.55, influences: ["syncopated_aggression"],                                          must_not: [] },
-    log_drum_innovation: { weight: 0.72, influences: ["ghost_motif_density", "velocity_shaping"],                        must_not: ["over_polish"] },
+    log_drum_innovation: { weight: 0.76, influences: ["ghost_motif_density", "velocity_shaping"],                        must_not: ["over_polish"] },
   },
   style_constraints: {
     max_piano_busyness:  0.10,
