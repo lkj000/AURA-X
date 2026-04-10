@@ -64,22 +64,36 @@ Mode 2: CTL → MusicGen conditioning → Replicate prediction
 Mode 3: Reserved. Architecture ready. Activates by config.
 
 ### Tests passing:
-  api:               56
-  ctl:               39
-  suno-exporter:     16
-  ac-ami:           126
-  replicate-client:  12
-  ──────────────────────
-  Total:            249
+  api:               102
+  ctl:                39
+  suno-exporter:      16
+  ac-ami:            126
+  replicate-client:   12
+  ───────────────────────
+  Total:             295 (+ 9 Python)
 
-### Phase 04 — Audio Production (next)
-- Job 20: Demucs stem separation (drums, bass, vocals, other)
-- Job 21: Stem storage + routing
-- Job 22: Log drum extractor
-- Job 23: Mixing engine (pedalboard channel strips)
-- Job 24: EQ + compression chain
-- Job 25: Reverb + space engine
-- Job 26: Master chain
-- Job 27: Production preset system
-- Job 28: Render pipeline
-- Job 29: Phase 04 gate test
+### Phase 04 — Audio Production ✓ COMPLETE
+- Job 20 ✓ Demucs stem separation (htdemucs, 4 stems)
+- Job 21 ✓ Log drum extractor (FFT bandpass 60-300 Hz, onset gate)
+- Job 22 ✓ Mixing engine (pedalboard, AC-AMI channel strips)
+- Job 23 ✓ Master chain (stereo width + EQ + LUFS limiter)
+- Job 24 ✓ Render pipeline (full chain: raw → stems → log drum → mix → master)
+
+### Production pipeline endpoints:
+  POST /api/audio/render/full   — full production chain
+  POST /api/audio/mix/render    — mix only
+  POST /api/audio/master/render — master only
+  POST /stems/separate          — stems only
+  POST /log-drum/extract        — log drum only
+
+### Phase 05 — DJ Engine (next)
+- Job 25: BPM detector (librosa)
+- Job 26: Key detector (chroma analysis)
+- Job 27: Energy curve analyzer
+- Job 28: Track library (Supabase catalog)
+- Job 29: Harmonic compatibility engine (Camelot wheel)
+- Job 30: Set planner (energy arc)
+- Job 31: Transition engine
+- Job 32: Amapiano transition conventions
+- Job 33: Set renderer (continuous mix file)
+- Job 34: Phase 05 gate test
