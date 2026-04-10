@@ -19,7 +19,8 @@
   },
   "jest": {
     "preset": "ts-jest",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "testPathIgnorePatterns": ["<rootDir>/dist/"]
   },
   "scripts": {
     "build": "tsc",
