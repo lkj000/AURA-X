@@ -12,5 +12,5 @@ export type {
   Prediction,
   PredictionStatus,
   GenerationResult,
-  MusicGenModelKey,
 } from "./replicateClient";
+export type { MusicGenModelKey } from "./models";

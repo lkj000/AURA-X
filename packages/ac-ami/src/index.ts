@@ -29,3 +29,10 @@ export type {
   MutationId,
   MutationResult,
 } from "./mutation/mutationEngine";
+
+export {
+  conditionForMode2,
+} from "./generation/mode2Conditioner";
+export type {
+  Mode2ConditioningResult,
+} from "./generation/mode2Conditioner";

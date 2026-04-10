@@ -96,6 +96,9 @@ importers:
       '@aura-x/ctl':
         specifier: workspace:*
         version: link:../ctl
+      '@aura-x/replicate-client':
+        specifier: workspace:*
+        version: link:../replicate-client
       zod:
         specifier: ^3.22.4
         version: 3.25.76
