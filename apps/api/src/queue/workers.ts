@@ -16,9 +16,18 @@ export const audioWorker = new Worker<AudioJobData>(
 
     if (type === "audio.analyze") {
       const { audio_file_id, track_id } = job.data;
-      console.log(`[audio.analyze] file=${audio_file_id} track=${track_id}`);
-      // Phase 04 Job 32: real waveform analysis via Python audio service
-      return { status: "acknowledged", audio_file_id, track_id };
+      console.log(`[audio.analyze] Analyzing ${audio_file_id}`);
+
+      const AUDIO_SERVICE_URL = process.env.AUDIO_SERVICE_URL ?? "http://localhost:8000";
+
+      const response = await axios.post(
+        `${AUDIO_SERVICE_URL}/analysis/analyze`,
+        { audio_file_id, track_id },
+        { timeout: 120000 }
+      );
+
+      console.log(`[audio.analyze] ✓ BPM: ${response.data.bpm}, Key: ${response.data.key}`);
+      return response.data;
     }
 
     if (type === "audio.stems") {
