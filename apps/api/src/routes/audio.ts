@@ -69,6 +69,38 @@ router.post(
   }
 );
 
+// POST /api/audio/log-drum/extract — proxy to Python audio service
+router.post(
+  "/log-drum/extract",
+  async (req: Request, res: Response): Promise<void> => {
+    const { audio_file_id, track_id, generation_id } = req.body as {
+      audio_file_id?: string;
+      track_id?: string;
+      generation_id?: string;
+    };
+    if (!audio_file_id || !track_id) {
+      res.status(400).json({ error: "audio_file_id and track_id are required" });
+      return;
+    }
+    try {
+      const response = await axios.post(
+        `${AUDIO_SERVICE_URL}/log-drum/extract`,
+        { audio_file_id, track_id, generation_id },
+        { timeout: 120000 }
+      );
+      res.json(response.data);
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        res.status(err.response?.status ?? 500).json(
+          err.response?.data ?? { error: "Audio service error" }
+        );
+      } else {
+        res.status(500).json({ error: "Unexpected error" });
+      }
+    }
+  }
+);
+
 // GET /api/audio/signed-url/:audioFileId
 router.get(
   "/signed-url/:audioFileId",
