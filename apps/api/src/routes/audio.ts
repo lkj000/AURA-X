@@ -101,6 +101,42 @@ router.post(
   }
 );
 
+// POST /api/audio/mix/render — proxy to Python audio service
+router.post(
+  "/mix/render",
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const response = await axios.post(
+        `${AUDIO_SERVICE_URL}/mix/render`,
+        req.body,
+        { headers: { "Content-Type": "application/json" }, timeout: 300000 }
+      );
+      res.json(response.data);
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        res.status(err.response?.status ?? 500).json(
+          err.response?.data ?? { error: "Audio service error" }
+        );
+      } else {
+        res.status(500).json({ error: "Unexpected error" });
+      }
+    }
+  }
+);
+
+// GET /api/audio/mix/presets
+router.get(
+  "/mix/presets",
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const response = await axios.get(`${AUDIO_SERVICE_URL}/mix/presets`);
+      res.json(response.data);
+    } catch (err: unknown) {
+      res.status(500).json({ error: "Audio service error" });
+    }
+  }
+);
+
 // GET /api/audio/signed-url/:audioFileId
 router.get(
   "/signed-url/:audioFileId",
