@@ -36,3 +36,14 @@ export {
 export type {
   Mode2ConditioningResult,
 } from "./generation/mode2Conditioner";
+
+export {
+  getCamelotCode,
+  getCompatibleKeys,
+  harmonicCompatibilityScore,
+  bpmCompatibilityScore,
+  mixCompatibilityScore,
+  KEY_TO_CAMELOT,
+  CAMELOT_TO_KEY,
+} from "./dj/camelotWheel";
+export type { CamelotCode } from "./dj/camelotWheel";
