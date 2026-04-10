@@ -137,6 +137,42 @@ router.get(
   }
 );
 
+// POST /api/audio/master/render
+router.post(
+  "/master/render",
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const response = await axios.post(
+        `${AUDIO_SERVICE_URL}/master/render`,
+        req.body,
+        { headers: { "Content-Type": "application/json" }, timeout: 300000 }
+      );
+      res.json(response.data);
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        res.status(err.response?.status ?? 500).json(
+          err.response?.data ?? { error: "Audio service error" }
+        );
+      } else {
+        res.status(500).json({ error: "Unexpected error" });
+      }
+    }
+  }
+);
+
+// GET /api/audio/master/targets
+router.get(
+  "/master/targets",
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const response = await axios.get(`${AUDIO_SERVICE_URL}/master/targets`);
+      res.json(response.data);
+    } catch (err: unknown) {
+      res.status(500).json({ error: "Audio service error" });
+    }
+  }
+);
+
 // GET /api/audio/signed-url/:audioFileId
 router.get(
   "/signed-url/:audioFileId",
