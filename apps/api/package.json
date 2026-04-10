@@ -9,6 +9,8 @@
     "test": "jest --no-coverage"
   },
   "dependencies": {
+    "@aura-x/ctl": "workspace:*",
+    "@aura-x/suno-exporter": "workspace:*",
     "@supabase/supabase-js": "^2.45.0",
     "bullmq": "^5.0.0",
     "express": "^4.18.2",
