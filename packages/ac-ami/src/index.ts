@@ -18,3 +18,14 @@ export {
   validateAll,
 } from "./validators";
 export type { ValidationResult, ValidationIssue } from "./validators";
+
+export {
+  applyMutation,
+  applyMutations,
+  recommendMutations,
+  repairCTL,
+} from "./mutation/mutationEngine";
+export type {
+  MutationId,
+  MutationResult,
+} from "./mutation/mutationEngine";
