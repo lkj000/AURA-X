@@ -59,12 +59,39 @@ jobs:
         run: cd packages/suno-exporter && pnpm test
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Job 3 — API (needs ctl + suno-exporter green; starts Python audio service)
+  # Job 3 — AC-AMI planners (needs ctl built)
+  # ────────────────────────────────────────────────────────────────────────────
+  test-ac-ami:
+    name: AC-AMI Planner Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build @aura-x/ctl (required by ac-ami imports)
+        run: cd packages/ctl && pnpm build
+
+      - name: Test @aura-x/ac-ami
+        run: cd packages/ac-ami && pnpm test
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 4 — API (needs ctl + suno-exporter + ac-ami green)
   # ────────────────────────────────────────────────────────────────────────────
   test-api:
     name: API Tests
     runs-on: ubuntu-latest
-    needs: [test-ctl, test-suno-exporter]
+    needs: [test-ctl, test-suno-exporter, test-ac-ami]
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
