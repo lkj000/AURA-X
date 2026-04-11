@@ -1,6 +1,8 @@
 import { Router, Request, Response } from "express";
 import { CTLv1Schema } from "@aura-x/ctl";
 import { runRevisionLoop } from "../agent/revisionLoop";
+import { tuneWeightsForSubgenre } from "../agent/weightTuner";
+import { buildDataset } from "../agent/datasetBuilder";
 
 const router = Router();
 
@@ -29,6 +31,29 @@ router.post("/revise", async (req: Request, res: Response): Promise<void> => {
   });
 
   res.json(result);
+});
+
+// POST /api/agent/tune
+// Body: { subgenre, min_score? }
+router.post("/tune", async (req: Request, res: Response): Promise<void> => {
+  const { subgenre, min_score } = req.body;
+  if (!subgenre) {
+    res.status(400).json({ error: "subgenre is required" });
+    return;
+  }
+  const recommendation = await tuneWeightsForSubgenre(subgenre, min_score ?? 0.75);
+  res.json(recommendation);
+});
+
+// GET /api/agent/dataset
+// Query: ?subgenre=private_school&min_score=0.8
+router.get("/dataset", async (req: Request, res: Response): Promise<void> => {
+  const { subgenre, min_score } = req.query;
+  const dataset = await buildDataset(
+    subgenre as string | undefined,
+    min_score ? parseFloat(min_score as string) : 0.80,
+  );
+  res.json(dataset);
 });
 
 // GET /api/agent/status

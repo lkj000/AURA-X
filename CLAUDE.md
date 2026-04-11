@@ -112,13 +112,16 @@ Mode 3: Reserved. Architecture ready. Activates by config.
   GET  /api/audio/amapianorize/grooves          — groove templates
   GET  /api/audio/amapianorize/status           — pipeline status
 
-### Phase 07 — Agent Loop (next — FINAL PHASE)
-- Job 32: Control fidelity evaluator
-- Job 33: Authenticity scorer
-- Job 34: Section-aware evaluator
-- Job 35: Revision loop (evaluate → mutate → regenerate)
-- Job 36: Experiment runner (ablations)
-- Job 37: Results store (Supabase logging)
-- Job 38: Weight tuner + feedback trainer
-- Job 39: Dataset builder
-- Job 40: Full agent gate test (goal → evaluated audio, autonomous)
+### Phase 07 — Agent Loop (in progress — FINAL PHASE)
+- Job 32 ✓ Evaluation API (CTL validation → Supabase write)
+- Job 33 ✓ Revision loop (evaluate → mutate → regenerate, max 3 iter)
+- Job 34-36 ✓ Results store + weight tuner + dataset builder
+- Job 37 — Full agent gate test (FINAL JOB)
+
+### Agent endpoints:
+  POST /api/agent/revise    — revision loop
+  POST /api/agent/tune      — weight tuner
+  GET  /api/agent/dataset   — dataset builder
+  GET  /api/agent/status    — level 5 status
+  POST /api/evaluate        — evaluate a generation
+  GET  /api/evaluate/:id    — evaluation history
