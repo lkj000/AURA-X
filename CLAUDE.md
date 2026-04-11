@@ -112,16 +112,53 @@ Mode 3: Reserved. Architecture ready. Activates by config.
   GET  /api/audio/amapianorize/grooves          — groove templates
   GET  /api/audio/amapianorize/status           — pipeline status
 
-### Phase 07 — Agent Loop (in progress — FINAL PHASE)
+### Phase 07 — Agent Loop ✓ COMPLETE — AURA X IS DONE
 - Job 32 ✓ Evaluation API (CTL validation → Supabase write)
 - Job 33 ✓ Revision loop (evaluate → mutate → regenerate, max 3 iter)
 - Job 34-36 ✓ Results store + weight tuner + dataset builder
-- Job 37 — Full agent gate test (FINAL JOB)
+- Job 37 ✓ Full autonomous agent (POST /api/agent/run) — FINAL JOB
+
+### POST /api/agent/run — THE AGENT
+Input:
+  { title, subgenre, bpm?, key?, emotional_profile?,
+    generation_mode?, created_by }
+Output:
+  { status, track_id, ctl, validation_passed,
+    composite_score, iterations_run, mutations_applied,
+    suno_bundle?, agent_log }
+
+The agent autonomously:
+  1. Creates a track record
+  2. Selects preset by subgenre
+  3. Applies harmony + groove + instrumentation planners
+  4. Runs revision loop (up to 3 iterations)
+  5. Generates (Mode 1/2/3)
+  6. Stores result
+  7. Returns evaluated output
 
 ### Agent endpoints:
+  POST /api/agent/run       — full autonomous agent
   POST /api/agent/revise    — revision loop
   POST /api/agent/tune      — weight tuner
   GET  /api/agent/dataset   — dataset builder
   GET  /api/agent/status    — level 5 status
   POST /api/evaluate        — evaluate a generation
   GET  /api/evaluate/:id    — evaluation history
+
+### AURA X — BUILD COMPLETE
+  Phase 01 ✓  Foundation (7 jobs)
+  Phase 02 ✓  AC-AMI Core (7 jobs)
+  Phase 03 ✓  Generation Pipeline (5 jobs)
+  Phase 04 ✓  Audio Production (5 jobs)
+  Phase 05 ✓  DJ Engine (4 jobs)
+  Phase 06 ✓  Amapianorize (3 jobs)
+  Phase 07 ✓  Agent Loop (6 jobs)
+
+### Final test count:
+  api:               190
+  ctl:                39
+  suno-exporter:      16
+  ac-ami:            156
+  replicate-client:   12
+  ───────────────────────
+  Total:             413 (+ 42 Python)

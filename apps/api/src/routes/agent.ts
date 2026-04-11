@@ -3,6 +3,7 @@ import { CTLv1Schema } from "@aura-x/ctl";
 import { runRevisionLoop } from "../agent/revisionLoop";
 import { tuneWeightsForSubgenre } from "../agent/weightTuner";
 import { buildDataset } from "../agent/datasetBuilder";
+import { runAgent } from "../agent/agentRunner";
 
 const router = Router();
 
@@ -54,6 +55,25 @@ router.get("/dataset", async (req: Request, res: Response): Promise<void> => {
     min_score ? parseFloat(min_score as string) : 0.80,
   );
   res.json(dataset);
+});
+
+// POST /api/agent/run — FULL AUTONOMOUS AGENT
+// Body: { title, subgenre, bpm?, key?, emotional_profile?, generation_mode?, created_by }
+router.post("/run", async (req: Request, res: Response): Promise<void> => {
+  const { title, subgenre, bpm, key, emotional_profile, generation_mode, created_by } = req.body;
+
+  if (!title || !subgenre || !created_by) {
+    res.status(400).json({ error: "title, subgenre, and created_by are required" });
+    return;
+  }
+
+  const result = await runAgent({
+    title, subgenre, bpm, key,
+    emotional_profile, generation_mode, created_by,
+  });
+
+  const statusCode = result.status === "failed" ? 500 : 200;
+  res.status(statusCode).json(result);
 });
 
 // GET /api/agent/status
