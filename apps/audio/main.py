@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routers import generate, stems, upload, log_drum, mix, master, render, analysis, dj
+from routers import generate, stems, upload, log_drum, mix, master, render, analysis, dj, amapianorize
 
 app = FastAPI(title="AURA X Audio Service", version="0.1.0")
 
@@ -12,6 +12,7 @@ app.include_router(master.router)
 app.include_router(render.router)
 app.include_router(analysis.router)
 app.include_router(dj.router)
+app.include_router(amapianorize.router)
 
 
 @app.get("/health")

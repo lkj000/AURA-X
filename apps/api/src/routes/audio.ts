@@ -281,6 +281,42 @@ router.get(
   }
 );
 
+// POST /api/audio/amapianorize/analyze
+router.post(
+  "/amapianorize/analyze",
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const response = await axios.post(
+        `${AUDIO_SERVICE_URL}/amapianorize/analyze`,
+        req.body,
+        { headers: { "Content-Type": "application/json" }, timeout: 120000 }
+      );
+      res.json(response.data);
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        res.status(err.response?.status ?? 500).json(
+          err.response?.data ?? { error: "Audio service error" }
+        );
+      } else {
+        res.status(500).json({ error: "Unexpected error" });
+      }
+    }
+  }
+);
+
+// GET /api/audio/amapianorize/status
+router.get(
+  "/amapianorize/status",
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const response = await axios.get(`${AUDIO_SERVICE_URL}/amapianorize/status`);
+      res.json(response.data);
+    } catch {
+      res.status(500).json({ error: "Audio service error" });
+    }
+  }
+);
+
 // GET /api/audio/signed-url/:audioFileId
 router.get(
   "/signed-url/:audioFileId",
