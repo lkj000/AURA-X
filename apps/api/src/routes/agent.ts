@@ -208,6 +208,48 @@ router.post("/ablation", async (req: Request, res: Response): Promise<void> => {
   res.json(result);
 });
 
+// POST /api/agent/synthesize
+// Body: { text, patch_class?, language? }
+// Returns IPA transcription (audio available after VITS2 training)
+router.post("/synthesize", async (req: Request, res: Response): Promise<void> => {
+  const {
+    text,
+    patch_class = "male_percussive_chant",
+    language    = "zulu",
+  } = req.body;
+
+  if (!text) {
+    res.status(400).json({ error: "text is required" });
+    return;
+  }
+
+  // Rule-based IPA transcription — no GPU needed
+  // Longest match first to avoid partial substitutions
+  const PHONEME_MAP: Record<string, string> = {
+    "ph": "pʰ", "th": "tʰ", "kh": "kʰ",
+    "mb": "mb", "nd": "nd", "ng": "ŋɡ", "nj": "nɟ",
+    "c":  "ǀ",  "q":  "ǃ",  "x":  "ǁ",
+    "a":  "a",  "e":  "ɛ",  "i":  "i",  "o":  "ɔ",  "u":  "u",
+  };
+
+  let ipa = text.toLowerCase();
+  for (const [graph, ipaChar] of
+       Object.entries(PHONEME_MAP).sort((a, b) => b[0].length - a[0].length)) {
+    ipa = ipa.replace(new RegExp(graph, "g"), ipaChar);
+  }
+
+  res.json({
+    status:            "ipa_transcription",
+    original_text:     text,
+    ipa_transcription: ipa,
+    patch_class,
+    language,
+    model_status:      "awaiting_training",
+    note: "Full audio synthesis available after VITS2 training. " +
+          "Run: modal run apps/audio/modal_vits2.py::train_vits2",
+  });
+});
+
 // GET /api/agent/status
 router.get("/status", (_req: Request, res: Response): void => {
   res.json({

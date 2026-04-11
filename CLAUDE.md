@@ -154,11 +154,32 @@ The agent autonomously:
   Phase 06 ✓  Amapianorize (3 jobs)
   Phase 07 ✓  Agent Loop (6 jobs)
 
+### Phase 08 — ML Layer ✓ SCAFFOLD COMPLETE
+- Job 38 ✓ Audio feature bridge (signal→score loop closed)
+- Job 39 ✓ Temporal scaffold (DatasetIngestionWorkflow)
+- Job 40 ✓ Dataset pipeline (train/val/test 80/10/10 split)
+- Job 41 ✓ MusicGen fine-tuning on Modal (AudioCraft A10G)
+- Job 42 ✓ Ablation study (prompt_only vs ctl_no_lineage vs full_stack)
+- Job 43 ✓ VITS2 isiZulu vocal synthesis scaffold + IPA phonetics
+
+### To activate ML training:
+1. Ingest 100+ Amapiano tracks via POST /api/agent/ingest
+2. Check GET /api/agent/dataset/stats → ready_for_training: true
+3. Run: modal run apps/audio/modal_finetune.py::finetune_musicgen \
+        --subgenre private_school --run-id finetune-001
+4. For vocals: upload vocal_samples, then
+   modal run apps/audio/modal_vits2.py::train_vits2
+
+### PhD evidence:
+  POST /api/agent/ablation    — 3-condition experiment
+  POST /api/agent/synthesize  — IPA transcription + VITS2 inference
+  ac_ami_lift field = % improvement full_stack over prompt_only
+
 ### Final test count:
-  api:               190
+  api:               240
   ctl:                39
   suno-exporter:      16
-  ac-ami:            156
+  ac-ami:            168
   replicate-client:   12
   ───────────────────────
-  Total:             413 (+ 42 Python)
+  Total:             475 (+ 42 Python)
