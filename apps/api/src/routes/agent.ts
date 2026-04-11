@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { CTLv1Schema } from "@aura-x/ctl";
 import { runRevisionLoop } from "../agent/revisionLoop";
 import { tuneWeightsForSubgenre } from "../agent/weightTuner";
-import { buildDataset } from "../agent/datasetBuilder";
+import { exportDataset, getDatasetStats } from "../agent/datasetPipeline";
 import { runAgent } from "../agent/agentRunner";
 import { getTemporalClient } from "../temporal/client";
 import { WorkflowNotFoundError } from "@temporalio/client";
@@ -49,14 +49,23 @@ router.post("/tune", async (req: Request, res: Response): Promise<void> => {
 });
 
 // GET /api/agent/dataset
-// Query: ?subgenre=private_school&min_score=0.8
+// Query: ?subgenre=&source=&split=&min_score=&limit=
 router.get("/dataset", async (req: Request, res: Response): Promise<void> => {
-  const { subgenre, min_score } = req.query;
-  const dataset = await buildDataset(
-    subgenre as string | undefined,
-    min_score ? parseFloat(min_score as string) : 0.80,
-  );
+  const { subgenre, source, split, min_score, limit } = req.query;
+  const dataset = await exportDataset({
+    subgenre:  subgenre  as string | undefined,
+    source:    source    as "human" | "generated" | undefined,
+    split:     split     as "train" | "val" | "test" | undefined,
+    min_score: min_score ? parseFloat(min_score as string) : undefined,
+    limit:     limit     ? parseInt(limit as string)       : undefined,
+  });
   res.json(dataset);
+});
+
+// GET /api/agent/dataset/stats
+router.get("/dataset/stats", async (_req: Request, res: Response): Promise<void> => {
+  const stats = await getDatasetStats();
+  res.json(stats);
 });
 
 // POST /api/agent/run — FULL AUTONOMOUS AGENT

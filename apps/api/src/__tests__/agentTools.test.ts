@@ -64,6 +64,43 @@ jest.mock("@aura-x/suno-exporter", () => ({
   }),
 }));
 
+// ─── Mock datasetPipeline ─────────────────────────────────────────────────────
+
+jest.mock("../agent/datasetPipeline", () => ({
+  exportDataset: jest.fn().mockResolvedValue({
+    version: "1.0",
+    exported_at: new Date().toISOString(),
+    record_count: 0,
+    subgenre_distribution: {},
+    source_distribution: {},
+    split_distribution: {},
+    mean_composite_score: 0,
+    records: [],
+  }),
+  getDatasetStats: jest.fn().mockResolvedValue({
+    total: 0,
+    by_subgenre: {}, by_source: {}, by_split: {},
+    mean_score: 0, ready_for_training: false,
+    training_threshold: 100,
+  }),
+  writeDatasetRecord: jest.fn().mockResolvedValue("ds-001"),
+}));
+
+// ─── Mock Temporal client ─────────────────────────────────────────────────────
+
+jest.mock("../temporal/client", () => ({
+  getTemporalClient: jest.fn().mockResolvedValue({
+    workflow: {
+      start:     jest.fn().mockResolvedValue({ workflowId: "wf-001", firstExecutionRunId: "run-001" }),
+      getHandle: jest.fn(),
+    },
+  }),
+}));
+
+jest.mock("@temporalio/client", () => ({
+  WorkflowNotFoundError: class extends Error {},
+}));
+
 // ─── Mock generationAgent ────────────────────────────────────────────────────
 
 jest.mock("../generation/generationAgent", () => ({
@@ -197,19 +234,19 @@ describe("Agent Tools — Results Store + Weight Tuner + Dataset Builder", () =>
 
   // ─── GET /api/agent/dataset ───────────────────────────────────────────────
 
-  it("11. GET /api/agent/dataset → returns { records, count, min_score }", async () => {
+  it("11. GET /api/agent/dataset → returns DatasetExport shape", async () => {
     const res = await request(app).get("/api/agent/dataset");
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("records");
-    expect(res.body).toHaveProperty("count");
-    expect(res.body).toHaveProperty("min_score");
+    expect(res.body).toHaveProperty("record_count");
+    expect(res.body).toHaveProperty("version");
     expect(Array.isArray(res.body.records)).toBe(true);
   });
 
-  it("12. GET /api/agent/dataset — min_score defaults to 0.80", async () => {
+  it("12. GET /api/agent/dataset — version is '1.0'", async () => {
     const res = await request(app).get("/api/agent/dataset");
     expect(res.status).toBe(200);
-    expect(res.body.min_score).toBe(0.80);
+    expect(res.body.version).toBe("1.0");
   });
 
 });

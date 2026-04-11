@@ -2,6 +2,7 @@ import axios from "axios";
 import { supabase } from "../../lib/supabase";
 import { evaluateSignal } from "@aura-x/ac-ami";
 import type { ObservedFeatures } from "@aura-x/ac-ami";
+import { writeDatasetRecord as writeRecord } from "../../agent/datasetPipeline";
 
 const AUDIO_SERVICE = process.env.AUDIO_SERVICE_URL ?? "http://localhost:8000";
 
@@ -89,26 +90,23 @@ export const datasetActivities = {
     };
   },
 
-  // 5. Write (CTL, audio, score) training triple to Supabase
+  // 5. Write (CTL, audio, score) training triple via datasetPipeline
   async writeDatasetRecord(record: AlignedRecord): Promise<string> {
-    const { data, error } = await supabase
-      .from("dataset_records")
-      .insert({
-        track_id:               record.track_id,
-        generation_id:          record.generation_id,
-        ctl_json:               record.ctl_json,
-        observed_features:      record.observed_features as unknown as Record<string, unknown>,
-        signal_composite_score: record.signal_composite_score,
-        passed_signal_gate:     record.passed_signal_gate,
-        source:                 record.source,
-      })
-      .select("id")
-      .single();
+    // Fetch musical metadata from CTL
+    const ctlGlobal = (record.ctl_json as Record<string, unknown>)?.global as
+      Record<string, unknown> | undefined;
 
-    if (error || !data) {
-      throw new Error(`Failed to write dataset record: ${error?.message}`);
-    }
-
-    return data.id as string;
+    return writeRecord({
+      track_id:              record.track_id,
+      bpm:                   (ctlGlobal?.bpm as number) ?? 110,
+      key:                   (ctlGlobal?.key as string) ?? "F#m",
+      subgenre:              (ctlGlobal?.subgenre as string) ?? "private_school",
+      mode:                  (ctlGlobal?.mode as string) ?? "minor",
+      authenticity_score:    record.signal_composite_score,
+      cultural_signal_score: record.signal_composite_score,
+      composite_score:       record.signal_composite_score,
+      source:                record.source,
+      ctl_json:              record.ctl_json,
+    });
   },
 };
