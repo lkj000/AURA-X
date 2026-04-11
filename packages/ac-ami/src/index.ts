@@ -38,6 +38,20 @@ export type {
 } from "./generation/mode2Conditioner";
 
 export {
+  planSet,
+  planTransition,
+  PHASE_ENERGY_TARGETS,
+  ORDERED_PHASES,
+} from "./dj/setPlanner";
+export type {
+  SetTrack,
+  SetPlan,
+  TransitionPlan,
+  EnergyPhase,
+  SetPlannerOptions,
+} from "./dj/setPlanner";
+
+export {
   getCamelotCode,
   getCompatibleKeys,
   harmonicCompatibilityScore,
