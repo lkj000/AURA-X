@@ -5,6 +5,7 @@ import { tuneWeightsForSubgenre } from "../agent/weightTuner";
 import { exportDataset, getDatasetStats } from "../agent/datasetPipeline";
 import { runAgent } from "../agent/agentRunner";
 import { triggerFinetune } from "../agent/finetuneRunner";
+import { runAblationStudy } from "../agent/ablationRunner";
 import { getTemporalClient } from "../temporal/client";
 import { WorkflowNotFoundError } from "@temporalio/client";
 
@@ -177,6 +178,34 @@ router.post("/finetune", async (req: Request, res: Response): Promise<void> => {
 
   const statusCode = result.status === "rejected" ? 422 : 202;
   res.status(statusCode).json(result);
+});
+
+// POST /api/agent/ablation
+// Body: { subgenre, samples_per_condition? }
+// Runs the AC-AMI ablation study — PhD evidence generator
+router.post("/ablation", async (req: Request, res: Response): Promise<void> => {
+  const { subgenre, samples_per_condition } = req.body;
+
+  if (!subgenre) {
+    res.status(400).json({ error: "subgenre is required" });
+    return;
+  }
+
+  const VALID_SUBGENRES = [
+    "private_school", "bacardi", "sgija",
+    "stixx_sgija", "mbiraiano", "gqom_fusion",
+    "hybrid_rnb_amapiano",
+  ];
+  if (!VALID_SUBGENRES.includes(subgenre)) {
+    res.status(400).json({
+      error: `Invalid subgenre. Valid: ${VALID_SUBGENRES.join(", ")}`,
+    });
+    return;
+  }
+
+  const n = Math.min(20, samples_per_condition ?? 5);
+  const result = await runAblationStudy(subgenre, n);
+  res.json(result);
 });
 
 // GET /api/agent/status
