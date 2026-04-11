@@ -1,8 +1,11 @@
+import axios from "axios";
 import { CTLv1 } from "@aura-x/ctl";
 import {
   applyHarmonyPlan,
   applyGroovePlan,
   applyInstrumentationPlan,
+  evaluateSignal,
+  ObservedFeatures,
 } from "@aura-x/ac-ami";
 import {
   privateSchoolPreset,
@@ -34,6 +37,8 @@ export type AgentRunResult = {
   ctl: CTLv1;
   validation_passed: boolean;
   composite_score: number;
+  signal_composite_score?: number;
+  passed_signal_gate?: boolean;
   iterations_run: number;
   mutations_applied: number;
   suno_bundle?: {
@@ -201,6 +206,33 @@ export async function runAgent(goal: AgentGoal): Promise<AgentRunResult> {
     updated_at: new Date().toISOString(),
   }).eq("id", track_id);
 
+  // ─── 8. Signal evaluation (audio → CTL gap) ───────
+  let signalCompositeScore: number | undefined;
+  let passedSignalGate: boolean | undefined;
+
+  try {
+    const AUDIO_SERVICE = process.env.AUDIO_SERVICE_URL ?? "http://localhost:8000";
+    const analysisRes = await axios.post<ObservedFeatures>(
+      `${AUDIO_SERVICE}/analysis/analyze`,
+      { track_id, generation_id: revision.final_generation_id },
+      { timeout: 10_000 },
+    );
+    const observed = analysisRes.data;
+    const signalResult = evaluateSignal(finalCtl, observed);
+    signalCompositeScore = signalResult.signal_composite_score;
+    passedSignalGate     = signalResult.passed_signal_gate;
+
+    agentLog.push(
+      `[agent] Signal eval: score=${signalResult.signal_composite_score}, ` +
+      `gate=${signalResult.passed_signal_gate}` +
+      (signalResult.signal_notes.length > 0
+        ? `, notes: ${signalResult.signal_notes.join(" | ")}`
+        : "")
+    );
+  } catch {
+    agentLog.push(`[agent] Signal eval skipped (audio service unavailable)`);
+  }
+
   agentLog.push(`[agent] ✓ Complete`);
 
   return {
@@ -208,11 +240,13 @@ export async function runAgent(goal: AgentGoal): Promise<AgentRunResult> {
     track_id,
     generation_id: revision.final_generation_id,
     ctl: finalCtl,
-    validation_passed: revision.final_passed,
-    composite_score:   compositeScore,
-    iterations_run:    revision.iterations_run,
-    mutations_applied: revision.total_mutations_applied,
-    suno_bundle:       sunoBundle,
-    agent_log:         agentLog,
+    validation_passed:     revision.final_passed,
+    composite_score:       compositeScore,
+    signal_composite_score: signalCompositeScore,
+    passed_signal_gate:    passedSignalGate,
+    iterations_run:        revision.iterations_run,
+    mutations_applied:     revision.total_mutations_applied,
+    suno_bundle:           sunoBundle,
+    agent_log:             agentLog,
   };
 }

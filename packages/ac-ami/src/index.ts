@@ -61,3 +61,18 @@ export {
   CAMELOT_TO_KEY,
 } from "./dj/camelotWheel";
 export type { CamelotCode } from "./dj/camelotWheel";
+
+export {
+  evaluateSignal,
+  scoreBpmAccuracy,
+  scoreKeyAccuracy,
+  scoreEnergyAccuracy,
+  scoreGrooveDensity,
+  scoreCulturalSignal,
+  SUBGENRE_ONSET_TARGETS,
+  SUBGENRE_LOW_MID_TARGETS,
+} from "./evaluation/audioFeatureBridge";
+export type {
+  ObservedFeatures,
+  SignalEvaluationResult,
+} from "./evaluation/audioFeatureBridge";

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { CTLv1Schema } from "@aura-x/ctl";
-import { validateAll, recommendMutations } from "@aura-x/ac-ami";
+import { validateAll, recommendMutations, evaluateSignal } from "@aura-x/ac-ami";
 import { supabase } from "../lib/supabase";
 
 const router = Router();
@@ -82,6 +82,71 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     issues: validation.issues,
     recommended_mutations: mutations,
     revision_needed: !validation.passed,
+  });
+});
+
+// POST /api/evaluate/signal
+// Body: { track_id, generation_id, ctl, observed_features }
+// Runs audio signal evaluation against CTL intent, writes signal scores to evaluations
+router.post("/signal", async (req: Request, res: Response): Promise<void> => {
+  const { track_id, generation_id, observed_features } = req.body;
+
+  if (!track_id || !generation_id || !observed_features) {
+    res.status(400).json({ error: "track_id, generation_id, and observed_features are required" });
+    return;
+  }
+
+  const parsedCtl = CTLv1Schema.safeParse(req.body.ctl);
+  if (!parsedCtl.success) {
+    res.status(400).json({ error: "Invalid CTL", issues: parsedCtl.error.issues });
+    return;
+  }
+
+  const ctl = parsedCtl.data;
+  const signalResult = evaluateSignal(ctl, observed_features);
+
+  // Write signal eval as a separate evaluation record
+  const evalRecord = {
+    track_id,
+    generation_id,
+    evaluator: "signal",
+    passed_gate: signalResult.passed_signal_gate,
+    revision_needed: !signalResult.passed_signal_gate,
+    revision_notes: signalResult.signal_notes.length > 0
+      ? signalResult.signal_notes.join("; ")
+      : null,
+    composite_score: signalResult.signal_composite_score,
+    authenticity_score: signalResult.energy_accuracy,
+    raw_features: {
+      bpm_accuracy:          signalResult.bpm_accuracy,
+      key_accuracy:          signalResult.key_accuracy,
+      energy_accuracy:       signalResult.energy_accuracy,
+      groove_density_score:  signalResult.groove_density_score,
+      cultural_signal_score: signalResult.cultural_signal_score,
+      bpm_gap:               signalResult.bpm_gap,
+      key_match:             signalResult.key_match,
+      energy_gap:            signalResult.energy_gap,
+      signal_notes:          signalResult.signal_notes,
+      observed_features,
+    },
+  };
+
+  const { data: evalData, error: evalError } = await supabase
+    .from("evaluations")
+    .insert(evalRecord)
+    .select("id")
+    .single();
+
+  if (evalError) {
+    res.status(500).json({ error: "Failed to write signal evaluation record" });
+    return;
+  }
+
+  res.json({
+    evaluation_id: evalData.id,
+    generation_id,
+    track_id,
+    ...signalResult,
   });
 });
 
