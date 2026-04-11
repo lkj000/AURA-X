@@ -317,6 +317,42 @@ router.get(
   }
 );
 
+// POST /api/audio/amapianorize/rhythm-transplant
+router.post(
+  "/amapianorize/rhythm-transplant",
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const response = await axios.post(
+        `${AUDIO_SERVICE_URL}/amapianorize/rhythm-transplant`,
+        req.body,
+        { headers: { "Content-Type": "application/json" }, timeout: 180000 }
+      );
+      res.json(response.data);
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        res.status(err.response?.status ?? 500).json(
+          err.response?.data ?? { error: "Audio service error" }
+        );
+      } else {
+        res.status(500).json({ error: "Unexpected error" });
+      }
+    }
+  }
+);
+
+// GET /api/audio/amapianorize/grooves
+router.get(
+  "/amapianorize/grooves",
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const response = await axios.get(`${AUDIO_SERVICE_URL}/amapianorize/grooves`);
+      res.json(response.data);
+    } catch {
+      res.status(500).json({ error: "Audio service error" });
+    }
+  }
+);
+
 // GET /api/audio/signed-url/:audioFileId
 router.get(
   "/signed-url/:audioFileId",
