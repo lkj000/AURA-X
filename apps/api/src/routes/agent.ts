@@ -4,6 +4,8 @@ import { runRevisionLoop } from "../agent/revisionLoop";
 import { tuneWeightsForSubgenre } from "../agent/weightTuner";
 import { buildDataset } from "../agent/datasetBuilder";
 import { runAgent } from "../agent/agentRunner";
+import { getTemporalClient } from "../temporal/client";
+import { WorkflowNotFoundError } from "@temporalio/client";
 
 const router = Router();
 
@@ -74,6 +76,75 @@ router.post("/run", async (req: Request, res: Response): Promise<void> => {
 
   const statusCode = result.status === "failed" ? 500 : 200;
   res.status(statusCode).json(result);
+});
+
+// POST /api/agent/ingest
+// Body: { track_id, generation_id, audio_url, source? }
+// Starts a DatasetIngestionWorkflow via Temporal
+router.post("/ingest", async (req: Request, res: Response): Promise<void> => {
+  const { track_id, generation_id, audio_url, source = "human" } = req.body;
+
+  if (!track_id || !generation_id || !audio_url) {
+    res.status(400).json({ error: "track_id, generation_id, and audio_url are required" });
+    return;
+  }
+
+  if (!["human", "generated"].includes(source)) {
+    res.status(400).json({ error: "source must be 'human' or 'generated'" });
+    return;
+  }
+
+  try {
+    const client = await getTemporalClient();
+    const taskQueue  = process.env.TEMPORAL_TASK_QUEUE ?? "aura-x-dataset";
+    const workflowId = `dataset-ingest-${track_id}-${generation_id}`;
+
+    const handle = await client.workflow.start("DatasetIngestionWorkflow", {
+      taskQueue,
+      workflowId,
+      args: [{ track_id, generation_id, audio_url, source }],
+    });
+
+    res.status(202).json({
+      workflow_id: handle.workflowId,
+      run_id:      handle.firstExecutionRunId,
+      status:      "started",
+      track_id,
+      generation_id,
+    });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to start workflow: ${(err as Error).message}` });
+  }
+});
+
+// GET /api/agent/workflow/:workflowId
+// Returns status of a Temporal workflow
+router.get("/workflow/:workflowId", async (req: Request, res: Response): Promise<void> => {
+  const { workflowId } = req.params;
+
+  try {
+    const client = await getTemporalClient();
+    const handle = client.workflow.getHandle(workflowId);
+    const desc   = await handle.describe();
+
+    const status = desc.status.name === "RUNNING"   ? "running"
+                 : desc.status.name === "COMPLETED"  ? "completed"
+                 : "failed";
+
+    if (status === "completed") {
+      const result = await handle.result();
+      res.json({ workflow_id: workflowId, run_id: desc.runId, status, result });
+      return;
+    }
+
+    res.json({ workflow_id: workflowId, run_id: desc.runId, status });
+  } catch (err) {
+    if (err instanceof WorkflowNotFoundError) {
+      res.status(404).json({ workflow_id: workflowId, status: "not_found" });
+      return;
+    }
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
 
 // GET /api/agent/status

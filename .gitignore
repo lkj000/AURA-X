@@ -11,3 +11,4 @@ dist
 *.egg-info
 .venv
 venv
+apps/api/temporal-certs/
