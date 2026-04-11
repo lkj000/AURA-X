@@ -3,6 +3,7 @@ import generateRouter from "./routes/generate";
 import audioRouter from "./routes/audio";
 import queueRouter from "./routes/queue";
 import evaluateRouter from "./routes/evaluate";
+import agentRouter from "./routes/agent";
 
 const app = express();
 app.use(express.json());
@@ -20,6 +21,7 @@ app.use("/api/generate", generateRouter);
 app.use("/api/audio", audioRouter);
 app.use("/api/queue", queueRouter);
 app.use("/api/evaluate", evaluateRouter);
+app.use("/api/agent", agentRouter);
 
 // Start BullMQ workers (side-effect import — only in server process)
 if (require.main === module) {
