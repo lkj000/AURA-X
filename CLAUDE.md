@@ -64,13 +64,13 @@ Mode 2: CTL → MusicGen conditioning → Replicate prediction
 Mode 3: Reserved. Architecture ready. Activates by config.
 
 ### Tests passing:
-  api:               122
+  api:               148
   ctl:                39
   suno-exporter:      16
   ac-ami:            156
   replicate-client:   12
   ───────────────────────
-  Total:             345 (+ 22 Python)
+  Total:             371 (+ 42 Python)
 
 ### Phase 04 — Audio Production ✓ COMPLETE
 - Job 20 ✓ Demucs stem separation (htdemucs, 4 stems)
@@ -86,14 +86,39 @@ Mode 3: Reserved. Architecture ready. Activates by config.
   POST /stems/separate          — stems only
   POST /log-drum/extract        — log drum only
 
-### Phase 05 — DJ Engine (next)
-- Job 25: BPM detector (librosa)
-- Job 26: Key detector (chroma analysis)
-- Job 27: Energy curve analyzer
-- Job 28: Track library (Supabase catalog)
-- Job 29: Harmonic compatibility engine (Camelot wheel)
-- Job 30: Set planner (energy arc)
-- Job 31: Transition engine
-- Job 32: Amapiano transition conventions
-- Job 33: Set renderer (continuous mix file)
-- Job 34: Phase 05 gate test
+### Phase 05 — DJ Engine ✓ COMPLETE
+- Job 25 ✓ Audio analysis — BPM + key (Krumhansl-Schmuckler)
+- Job 26 ✓ Camelot wheel + track library + harmonic compatibility
+- Job 27 ✓ DJ set planner — Amapiano energy arc, 5 phases
+- Job 28 ✓ Set renderer — crossfade, log drum sync, hard cut
+
+### DJ Engine endpoints:
+  GET  /api/audio/dj/status   — capabilities, energy arc
+  POST /api/audio/dj/render   — full set render (600s)
+
+### Phase 06 — Amapianorize ✓ COMPLETE
+- Job 29 ✓ Source analyzer (SourceProfile, character classification)
+- Job 30 ✓ Rhythm transplant (BPM stretch + groove injection)
+- Job 31 ✓ Harmonic anchor + full pipeline (POST /amapianorize/transform)
+
+### Amapianorize pipeline:
+  Any audio → analyze → separate → rhythm transplant →
+  harmonic anchor → mix → master → Amapiano output
+
+### Amapianorize endpoints:
+  POST /api/audio/amapianorize/transform        — full pipeline (600s)
+  POST /api/audio/amapianorize/analyze          — source profile only
+  POST /api/audio/amapianorize/rhythm-transplant — rhythm only
+  GET  /api/audio/amapianorize/grooves          — groove templates
+  GET  /api/audio/amapianorize/status           — pipeline status
+
+### Phase 07 — Agent Loop (next — FINAL PHASE)
+- Job 32: Control fidelity evaluator
+- Job 33: Authenticity scorer
+- Job 34: Section-aware evaluator
+- Job 35: Revision loop (evaluate → mutate → regenerate)
+- Job 36: Experiment runner (ablations)
+- Job 37: Results store (Supabase logging)
+- Job 38: Weight tuner + feedback trainer
+- Job 39: Dataset builder
+- Job 40: Full agent gate test (goal → evaluated audio, autonomous)
