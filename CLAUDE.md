@@ -64,13 +64,13 @@ Mode 2: CTL → MusicGen conditioning → Replicate prediction
 Mode 3: Reserved. Architecture ready. Activates by config.
 
 ### Tests passing:
-  api:               102
+  api:               122
   ctl:                39
   suno-exporter:      16
-  ac-ami:            126
+  ac-ami:            156
   replicate-client:   12
   ───────────────────────
-  Total:             295 (+ 9 Python)
+  Total:             345 (+ 22 Python)
 
 ### Phase 04 — Audio Production ✓ COMPLETE
 - Job 20 ✓ Demucs stem separation (htdemucs, 4 stems)
