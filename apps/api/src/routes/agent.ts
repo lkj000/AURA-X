@@ -4,6 +4,7 @@ import { runRevisionLoop } from "../agent/revisionLoop";
 import { tuneWeightsForSubgenre } from "../agent/weightTuner";
 import { exportDataset, getDatasetStats } from "../agent/datasetPipeline";
 import { runAgent } from "../agent/agentRunner";
+import { triggerFinetune } from "../agent/finetuneRunner";
 import { getTemporalClient } from "../temporal/client";
 import { WorkflowNotFoundError } from "@temporalio/client";
 
@@ -154,6 +155,28 @@ router.get("/workflow/:workflowId", async (req: Request, res: Response): Promise
     }
     res.status(500).json({ error: (err as Error).message });
   }
+});
+
+// POST /api/agent/finetune
+// Body: { subgenre?, min_score?, training_steps?, learning_rate?, triggered_by }
+router.post("/finetune", async (req: Request, res: Response): Promise<void> => {
+  const { subgenre, min_score, training_steps, learning_rate, triggered_by } = req.body;
+
+  if (!triggered_by) {
+    res.status(400).json({ error: "triggered_by is required" });
+    return;
+  }
+
+  const result = await triggerFinetune({
+    subgenre,
+    min_score:      min_score      ?? 0.65,
+    training_steps: training_steps ?? 1000,
+    learning_rate:  learning_rate  ?? 1e-4,
+    triggered_by,
+  });
+
+  const statusCode = result.status === "rejected" ? 422 : 202;
+  res.status(statusCode).json(result);
 });
 
 // GET /api/agent/status
