@@ -1,3 +1,16 @@
+// Seedance 2.0 by ByteDance — text-to-video / image-to-video
+// Replicate model: bytedance/seedance-1-0 (production alias for 2.0 line)
+// Outputs: MP4 video URL
+// seedance-2.0: multimodal, native audio, intelligent duration control
+// Inputs: prompt, duration (-1 for auto), resolution, aspect_ratio, generate_audio
+export const SEEDANCE_MODEL = "bytedance/seedance-2.0" as const;
+
+export const SEEDANCE_DEFAULTS = {
+  duration:      5,         // seconds (5 | 10)
+  resolution:    "720p",    // "480p" | "720p" | "1080p"
+  aspect_ratio:  "16:9",
+} as const;
+
 // MusicGen model versions on Replicate
 // We use facebook/musicgen — the standard open model
 // Do NOT use unofficial or forked versions

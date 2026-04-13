@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from "axios";
-import { MUSICGEN_MODELS, MusicGenModelKey, MUSICGEN_DEFAULTS } from "./models";
+import { MUSICGEN_MODELS, MusicGenModelKey, MUSICGEN_DEFAULTS, SEEDANCE_MODEL } from "./models";
 
 const REPLICATE_API_BASE = "https://api.replicate.com/v1";
 const DEFAULT_POLL_INTERVAL_MS = 3000;
@@ -43,6 +43,26 @@ export type GenerationResult = {
   predictionId: string;
   status: "succeeded" | "failed" | "canceled";
   audioUrl: string | null;
+  error: string | null;
+  durationMs: number;
+};
+
+export type SeedanceInput = {
+  prompt: string;
+  duration?: number;           // seconds, or -1 for auto (Seedance 2.0)
+  resolution?: "480p" | "720p";
+  aspect_ratio?: "16:9" | "9:16" | "1:1" | "adaptive";
+  generate_audio?: boolean;    // Seedance 2.0 native audio
+  image?: string;              // optional image URL for image-to-video
+  reference_images?: string[];
+  reference_videos?: string[];
+  reference_audios?: string[];
+};
+
+export type VideoGenerationResult = {
+  predictionId: string;
+  status: "succeeded" | "failed" | "canceled";
+  videoUrl: string | null;
   error: string | null;
   durationMs: number;
 };
@@ -174,6 +194,60 @@ export class ReplicateClient {
       predictionId: prediction.id,
       status: completed.status as "failed" | "canceled",
       audioUrl: null,
+      error: completed.error,
+      durationMs,
+    };
+  }
+
+  // ─── SEEDANCE VIDEO GENERATION ─────────────────────
+  // Calls the Replicate model API endpoint (not the versioned /predictions endpoint)
+  // because Seedance is accessed as a deployment model, not a pinned version hash.
+  async generateVideo(input: SeedanceInput): Promise<VideoGenerationResult> {
+    const startTime = Date.now();
+
+    const payload = {
+      input: {
+        prompt: input.prompt,
+        duration: input.duration ?? 5,
+        resolution: input.resolution ?? "720p",
+        aspect_ratio: input.aspect_ratio ?? "16:9",
+        generate_audio: input.generate_audio ?? true,
+        reference_images: input.reference_images ?? [],
+        reference_videos: input.reference_videos ?? [],
+        reference_audios: input.reference_audios ?? [],
+        ...(input.image ? { image: input.image } : {}),
+      },
+    };
+
+    let prediction: Prediction;
+    try {
+      const response = await this.http.post<Prediction>(
+        `/models/${SEEDANCE_MODEL}/predictions`,
+        payload
+      );
+      prediction = response.data;
+    } catch (err) {
+      throw this.normalizeError(err, "generateVideo");
+    }
+
+    const completed = await this.waitForCompletion(prediction.id, {
+      maxPolls: 120, // 6 min — video takes longer than audio
+      pollIntervalMs: 3000,
+    });
+
+    const durationMs = Date.now() - startTime;
+
+    if (completed.status === "succeeded") {
+      const videoUrl = Array.isArray(completed.output)
+        ? (completed.output[0] ?? null)
+        : (completed.output as string | null);
+      return { predictionId: prediction.id, status: "succeeded", videoUrl, error: null, durationMs };
+    }
+
+    return {
+      predictionId: prediction.id,
+      status: completed.status as "failed" | "canceled",
+      videoUrl: null,
       error: completed.error,
       durationMs,
     };
