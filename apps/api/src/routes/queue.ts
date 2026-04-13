@@ -4,6 +4,15 @@ import { audioQueue, generationQueue } from "../queue";
 const router = Router();
 
 router.get("/status", async (_req: Request, res: Response): Promise<void> => {
+  if (!audioQueue || !generationQueue) {
+    res.json({
+      queues: "disabled",
+      reason: "No Redis — set REDIS_URL to enable queued jobs",
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+
   try {
     const [
       audioWaiting, audioActive, audioFailed, audioCompleted,

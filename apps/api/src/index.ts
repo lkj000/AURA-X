@@ -1,12 +1,41 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import generateRouter from "./routes/generate";
 import audioRouter from "./routes/audio";
 import queueRouter from "./routes/queue";
 import evaluateRouter from "./routes/evaluate";
 import agentRouter from "./routes/agent";
+import videoRouter from "./routes/video";
 
 const app = express();
+
+// CORS — allow the web app and any localhost port in dev
+const allowedOrigins = (process.env.CORS_ORIGIN ?? "").split(",").filter(Boolean);
+app.use((req, res, next) => {
+  const origin = req.headers.origin ?? "";
+  const allowed =
+    allowedOrigins.includes(origin) ||
+    /^http:\/\/localhost(:\d+)?$/.test(origin);
+  if (allowed) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  }
+  if (req.method === "OPTIONS") { res.sendStatus(204); return; }
+  next();
+});
+
 app.use(express.json());
+
+app.get("/", (_req, res) => {
+  res.json({
+    service: "aura-x-api",
+    version: "0.1.0",
+    endpoints: ["/health", "/api/generate", "/api/audio", "/api/queue", "/api/evaluate", "/api/agent", "/api/video"],
+  });
+});
 
 app.get("/health", (_req, res) => {
   res.json({
@@ -22,6 +51,7 @@ app.use("/api/audio", audioRouter);
 app.use("/api/queue", queueRouter);
 app.use("/api/evaluate", evaluateRouter);
 app.use("/api/agent", agentRouter);
+app.use("/api/video", videoRouter);
 
 // Start BullMQ workers (side-effect import — only in server process)
 if (require.main === module) {

@@ -176,6 +176,7 @@ async function enqueueMode2Completion(data: {
   prediction_id: string;
 }): Promise<void> {
   const { generationQueue } = await import("../queue");
+  if (!generationQueue) return; // Redis unavailable in local dev
   await generationQueue.add(
     "generation.mode2.completion",
     {

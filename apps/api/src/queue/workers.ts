@@ -2,6 +2,14 @@ import { Worker, Job } from "bullmq";
 import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
 import { connection, AudioJobData, GenerationJobData, enqueueAudioAnalysis } from "./index";
+
+if (!connection) {
+  console.log("[workers] Skipping worker startup — no Redis connection.");
+  // Export empty module — routes still work, jobs just won't process
+  module.exports = {};
+  // @ts-ignore
+  return;
+}
 import { supabase } from "../lib/supabase";
 import { createReplicateClient } from "@aura-x/replicate-client";
 

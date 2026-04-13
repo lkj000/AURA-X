@@ -1,24 +1,7 @@
-import { Queue } from "bullmq";
 import IORedis from "ioredis";
 
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
-
-function parseRedisUrl(url: string) {
-  const parsed = new URL(url);
-  return {
-    host: parsed.hostname,
-    port: parseInt(parsed.port || "6379", 10),
-    password: parsed.password || undefined,
-    tls: parsed.protocol === "rediss:" ? {} : undefined,
-    maxRetriesPerRequest: null as null, // required by BullMQ
-  };
-}
-
-export const connection = parseRedisUrl(redisUrl);
-
-// ─── QUEUES ───────────────────────────────────────────────────────────────────
-export const audioQueue    = new Queue("audio-processing", { connection });
-export const generationQueue = new Queue("generation", { connection });
+const isLocalhost = redisUrl.includes("localhost") || redisUrl.includes("127.0.0.1");
 
 // ─── JOB TYPES ────────────────────────────────────────────────────────────────
 export type AudioAnalyzeJob = {
@@ -46,9 +29,42 @@ export type GenerationMode2Job = {
 export type AudioJobData      = AudioAnalyzeJob | AudioStemsJob;
 export type GenerationJobData = GenerationMode2Job;
 
+// ─── CONNECTION + QUEUES ──────────────────────────────────────────────────────
+// When REDIS_URL points to localhost and Redis isn't running, skip BullMQ
+// entirely so it doesn't flood the console with reconnect errors.
+// Set REDIS_URL to a real server (Railway) to enable queued jobs.
+
+let _audioQueue: import("bullmq").Queue | null = null;
+let _generationQueue: import("bullmq").Queue | null = null;
+export let connection: IORedis | null = null;
+
+if (!isLocalhost) {
+  const { Queue } = require("bullmq") as typeof import("bullmq");
+
+  connection = new IORedis(redisUrl, {
+    maxRetriesPerRequest: null,
+    enableOfflineQueue: false,
+  });
+
+  connection.on("error", (err: Error) => {
+    console.error("[queue] Redis error:", err.message);
+  });
+
+  _audioQueue    = new Queue("audio-processing", { connection });
+  _generationQueue = new Queue("generation", { connection });
+
+  console.log("[queue] BullMQ connected to Redis:", redisUrl.replace(/:\/\/.*@/, "://***@"));
+} else {
+  console.log("[queue] No Redis in local dev — queue jobs disabled. Set REDIS_URL to enable.");
+}
+
+export const audioQueue    = _audioQueue;
+export const generationQueue = _generationQueue;
+
 // ─── ENQUEUE HELPERS ──────────────────────────────────────────────────────────
 export async function enqueueAudioAnalysis(data: Omit<AudioAnalyzeJob, "type">) {
-  return audioQueue.add(
+  if (!_audioQueue) return null;
+  return _audioQueue.add(
     "audio.analyze",
     { ...data, type: "audio.analyze" } as AudioAnalyzeJob,
     {
@@ -61,7 +77,8 @@ export async function enqueueAudioAnalysis(data: Omit<AudioAnalyzeJob, "type">) 
 }
 
 export async function enqueueAudioStems(data: Omit<AudioStemsJob, "type">) {
-  return audioQueue.add(
+  if (!_audioQueue) return null;
+  return _audioQueue.add(
     "audio.stems",
     { ...data, type: "audio.stems" } as AudioStemsJob,
     {
@@ -74,7 +91,8 @@ export async function enqueueAudioStems(data: Omit<AudioStemsJob, "type">) {
 }
 
 export async function enqueueMode2Generation(data: Omit<GenerationMode2Job, "type">) {
-  return generationQueue.add(
+  if (!_generationQueue) return null;
+  return _generationQueue.add(
     "generation.mode2",
     { ...data, type: "generation.mode2" } as GenerationMode2Job,
     {
