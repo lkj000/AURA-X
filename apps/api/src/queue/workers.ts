@@ -34,8 +34,58 @@ export const audioWorker = new Worker<AudioJobData>(
         { timeout: 120000 }
       );
 
-      console.log(`[audio.analyze] ✓ BPM: ${response.data.bpm}, Key: ${response.data.key}`);
-      return response.data;
+      const analysis = response.data as {
+        bpm: number;
+        key: string;
+        mode: string;
+        energy_mean: number;
+        onset_density: number;
+        bpm_confidence: number;
+        key_confidence: number;
+      };
+
+      console.log(`[audio.analyze] ✓ BPM: ${analysis.bpm}, Key: ${analysis.key}`);
+
+      // ─── Update dataset_records with real signal features ────────────────
+      // Compute a signal-grounded composite score:
+      //   bpm_score    = proximity to Amapiano centre (110 BPM), ±30 BPM window
+      //   energy_score = RMS energy (already 0-1 normalised by analyser)
+      //   onset_score  = groove density (≥4 onsets/sec = max score)
+      const bpmScore    = Math.max(0, 1.0 - Math.abs(analysis.bpm - 110) / 30);
+      const energyScore = Math.min(1.0, Math.max(0, analysis.energy_mean));
+      const onsetScore  = Math.min(1.0, (analysis.onset_density ?? 0) / 4.0);
+      const compositeScore = parseFloat(
+        (0.50 * bpmScore + 0.30 * energyScore + 0.20 * onsetScore).toFixed(3)
+      );
+
+      const { data: dsRow } = await supabase
+        .from("dataset_records")
+        .select("id")
+        .eq("track_id", track_id)
+        .limit(1)
+        .single();
+
+      if (dsRow) {
+        await supabase
+          .from("dataset_records")
+          .update({
+            bpm:             analysis.bpm,
+            key:             analysis.key,
+            composite_score: compositeScore,
+            metadata:        {
+              bpm_confidence:  analysis.bpm_confidence,
+              key_confidence:  analysis.key_confidence,
+              energy_mean:     analysis.energy_mean,
+              onset_density:   analysis.onset_density,
+              analyzed_at:     new Date().toISOString(),
+            },
+          })
+          .eq("track_id", track_id);
+
+        console.log(`[audio.analyze] ✓ dataset_records updated — BPM:${analysis.bpm} Key:${analysis.key} score:${compositeScore}`);
+      }
+
+      return { ...analysis, composite_score: compositeScore };
     }
 
     if (type === "audio.stems") {

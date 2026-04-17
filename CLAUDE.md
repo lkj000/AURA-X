@@ -155,7 +155,7 @@ The agent autonomously:
   Phase 07 ✓  Agent Loop (6 jobs)
 
 ### Phase 08 — ML Layer ✓ SCAFFOLD COMPLETE
-- Job 38 ✓ Audio feature bridge (signal→score loop closed)
+- Job 38 ✓ Audio feature bridge — real BPM/key/score written to dataset_records after every audio.analyze job; backfill script for 207 ingested tracks
 - Job 39 ✓ Temporal scaffold (DatasetIngestionWorkflow)
 - Job 40 ✓ Dataset pipeline (train/val/test 80/10/10 split)
 - Job 41 ✓ MusicGen fine-tuning on Modal (AudioCraft A10G)
@@ -176,10 +176,10 @@ The agent autonomously:
   ac_ami_lift field = % improvement full_stack over prompt_only
 
 ### Final test count:
-  api:               240
+  api:               250
   ctl:                39
   suno-exporter:      16
   ac-ami:            168
   replicate-client:   12
   ───────────────────────
-  Total:             475 (+ 42 Python)
+  Total:             485 (+ 42 Python)
