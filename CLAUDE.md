@@ -13,7 +13,7 @@ Built by Okovanggo AI. Agentic build methodology — one job, one gate, one comm
 
 ## Dev notes
 - API always runs on port 3002
-- Audio service always runs on port 8000
+- Audio service runs on port 8000 (use 8080 on Windows — WinError 10013 blocks 8000)
 - Never commit .env files
 - Always run pnpm install from root
 - TypeScript API: cd apps/api && npx ts-node src/index.ts
@@ -155,7 +155,11 @@ The agent autonomously:
   Phase 07 ✓  Agent Loop (6 jobs)
 
 ### Phase 08 — ML Layer ✓ SCAFFOLD COMPLETE
-- Job 38 ✓ Audio feature bridge — real BPM/key/score written to dataset_records after every audio.analyze job; backfill script for 207 ingested tracks
+- Job 38 ✓ Audio feature bridge — real BPM/key/score written to dataset_records after every audio.analyze job
+  - Backfill complete: 389/389 records updated, 0 failed, 0 placeholders remaining
+  - Mean composite score: 70.5% | Train: 315 / Val: 41 / Test: 33
+  - Run: cd apps/api && node node_modules/ts-node/dist/bin.js --transpile-only scripts/backfill_audio_analysis.ts [--dry-run] [--limit N] [--force]
+  - Requires: uvicorn main:app --reload --port 8080 (Windows) or 8000 (Linux/Mac)
 - Job 39 ✓ Temporal scaffold (DatasetIngestionWorkflow)
 - Job 40 ✓ Dataset pipeline (train/val/test 80/10/10 split)
 - Job 41 ✓ MusicGen fine-tuning on Modal (AudioCraft A10G)
