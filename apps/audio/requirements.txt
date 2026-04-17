@@ -8,3 +8,5 @@ demucs
 torch
 torchaudio
 pedalboard
+librosa
+numpy
