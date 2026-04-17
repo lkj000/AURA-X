@@ -39,13 +39,15 @@ jest.mock("bullmq", () => ({
   })),
 }));
 
-jest.mock("ioredis", () =>
-  jest.fn().mockImplementation(() => ({
+jest.mock("ioredis", () => {
+  // Force non-localhost REDIS_URL so queue/index.ts initialises queues
+  process.env.REDIS_URL = "redis://test-server:6379";
+  return jest.fn().mockImplementation(() => ({
     on: jest.fn(),
     quit: jest.fn().mockResolvedValue("OK"),
     status: "ready",
-  }))
-);
+  }));
+});
 
 // ─── Now safe to import queue module ─────────────────────────────────────────
 import {
@@ -83,7 +85,7 @@ describe("BullMQ Queue", () => {
       storage_path: "aura-x-audio/raw/test.wav",
       format: "wav",
     });
-    expect(job.id).toBe(mockJobId);
+    expect(job!.id).toBe(mockJobId);
   });
 
   it("4. enqueued audio job has name 'audio.analyze'", async () => {
@@ -117,7 +119,7 @@ describe("BullMQ Queue", () => {
       ctl_id: "ctl-002",
       generation_id: "gen-003",
     });
-    expect(job.id).toBe(mockJobId);
+    expect(job!.id).toBe(mockJobId);
     expect(mockAdd).toHaveBeenCalledWith(
       "generation.mode2",
       expect.objectContaining({ type: "generation.mode2", generation_id: "gen-003" }),

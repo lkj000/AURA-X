@@ -70,6 +70,15 @@ jest.mock("axios", () => ({
 
 jest.mock("uuid", () => ({ v4: jest.fn().mockReturnValue("mock-uuid-file-id") }));
 
+// ─── queue/index mock — provide truthy connection so workers.ts doesn't bail ──
+
+jest.mock("../queue/index", () => ({
+  connection: { status: "ready" },
+  enqueueAudioAnalysis: jest.fn().mockResolvedValue({ id: "job-1" }),
+  enqueueMode2Generation: jest.fn().mockResolvedValue({ id: "job-1" }),
+  enqueueAudioStems: jest.fn().mockResolvedValue({ id: "job-1" }),
+}));
+
 // ─── Imports ──────────────────────────────────────────────────────────────────
 
 import { Worker } from "bullmq";
@@ -215,12 +224,10 @@ describe("Generation Worker", () => {
   });
 
   it("10. enqueueAudioAnalysis called with correct audio_file_id", async () => {
+    const { enqueueAudioAnalysis } = jest.requireMock("../queue/index");
     await workerProcessor(makeJob());
-    // generationQueue.add is used by enqueueAudioAnalysis (via audioQueue.add)
-    expect(mockQueueAdd).toHaveBeenCalledWith(
-      "audio.analyze",
-      expect.objectContaining({ audio_file_id: "mock-uuid-file-id" }),
-      expect.any(Object)
+    expect(enqueueAudioAnalysis).toHaveBeenCalledWith(
+      expect.objectContaining({ audio_file_id: "mock-uuid-file-id" })
     );
   });
 

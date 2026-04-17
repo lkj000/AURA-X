@@ -52,6 +52,15 @@ jest.mock("@aura-x/replicate-client", () => ({
 
 jest.mock("uuid", () => ({ v4: jest.fn().mockReturnValue("mock-uuid") }));
 
+// ─── queue/index mock — provide truthy connection so workers.ts doesn't bail ──
+
+jest.mock("../queue/index", () => ({
+  connection: { status: "ready" },
+  enqueueAudioAnalysis: jest.fn().mockResolvedValue({ id: "job-1" }),
+  enqueueMode2Generation: jest.fn().mockResolvedValue({ id: "job-1" }),
+  enqueueAudioStems: jest.fn().mockResolvedValue({ id: "job-1" }),
+}));
+
 // ─── axios mock ──────────────────────────────────────────────────────────────
 
 const mockAxiosPost = jest.fn();

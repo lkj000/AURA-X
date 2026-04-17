@@ -299,7 +299,15 @@ def finetune_musicgen(
     checkpoint_volume.commit()
     print(f"[finetune] Checkpoint saved to /checkpoints/{run_id}/model.pt")
 
-    # ─── 6. Return metrics ────────────────────────────────────────────────────
+    # ─── 6. Clear auto-trigger run lock ──────────────────────────────────────
+    try:
+        from modal_auto_trigger import mark_finetune_complete
+        mark_finetune_complete.remote()
+        print("[finetune] Auto-trigger lock cleared.")
+    except Exception as e:
+        print(f"[finetune] Warning: could not clear trigger lock: {e}")
+
+    # ─── 7. Return metrics ────────────────────────────────────────────────────
     final_loss = (
         sum(losses[-50:]) / min(50, len(losses)) if losses else 0
     )
