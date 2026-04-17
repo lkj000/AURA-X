@@ -12,3 +12,5 @@ dist
 .venv
 venv
 apps/api/temporal-certs/
+data/
+*.mp3
