@@ -161,14 +161,14 @@ jobs:
       - name: Build @aura-x/ctl (required by API tests)
         run: cd packages/ctl && pnpm build
 
-      - name: Build @aura-x/ac-ami (required by API tests)
-        run: cd packages/ac-ami && pnpm build
-
       - name: Build @aura-x/suno-exporter (required by API tests)
         run: cd packages/suno-exporter && pnpm build
 
       - name: Build @aura-x/replicate-client (required by API tests)
         run: cd packages/replicate-client && pnpm build
+
+      - name: Build @aura-x/ac-ami (required by API tests)
+        run: cd packages/ac-ami && pnpm build
 
       - name: Install Python audio service dependencies
         run: pip install -r apps/audio/requirements.txt
