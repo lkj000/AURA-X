@@ -82,6 +82,12 @@ jobs:
       - name: Build @aura-x/ctl (required by ac-ami imports)
         run: cd packages/ctl && pnpm build
 
+      - name: Build @aura-x/suno-exporter (required by AC-AMI tests)
+        run: cd packages/suno-exporter && pnpm build
+
+      - name: Build @aura-x/replicate-client (required by AC-AMI tests)
+        run: cd packages/replicate-client && pnpm build
+
       - name: Test @aura-x/ac-ami
         run: cd packages/ac-ami && pnpm test
 
