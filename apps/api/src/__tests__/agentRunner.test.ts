@@ -95,6 +95,33 @@ jest.mock("../generation/generationAgent", () => ({
   }),
 }));
 
+// ─── Mock Temporal client (POST /run now starts AutonomousGenerationWorkflow) ─
+
+const mockAgentWorkflowHandle = {
+  workflowId: "agent-run-okovanggo-ai-1234567890",
+  firstExecutionRunId: "run-agent-001",
+};
+
+const mockAgentWorkflowStart = jest.fn().mockResolvedValue(mockAgentWorkflowHandle);
+const mockAgentWorkflowGetHandle = jest.fn().mockReturnValue(mockAgentWorkflowHandle);
+
+const mockTemporalClient = {
+  workflow: {
+    start:     mockAgentWorkflowStart,
+    getHandle: mockAgentWorkflowGetHandle,
+  },
+};
+
+jest.mock("../temporal/client", () => ({
+  getTemporalClient: jest.fn().mockResolvedValue(mockTemporalClient),
+}));
+
+jest.mock("@temporalio/client", () => ({
+  WorkflowNotFoundError: class WorkflowNotFoundError extends Error {
+    constructor(msg?: string) { super(msg); this.name = "WorkflowNotFoundError"; }
+  },
+}));
+
 // ─── Express app setup ───────────────────────────────────────────────────────
 
 import express from "express";
@@ -107,39 +134,14 @@ app.use("/api/agent", agentRouter);
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("Agent Runner — POST /api/agent/run", () => {
+describe("Agent Runner — POST /api/agent/run (T13: Temporal AutonomousGenerationWorkflow)", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-
-    // Default supabase mock: track insert succeeds, everything else is a no-op
-    mockSingle.mockResolvedValue({ data: { id: "track-uuid-001" }, error: null });
-    mockSelect.mockReturnValue({ single: mockSingle });
-    mockInsert.mockReturnValue({ select: mockSelect });
-    mockEq.mockResolvedValue({ data: {}, error: null });
-    mockUpdate.mockReturnValue({ eq: mockEq });
-
-    // Route mockFrom based on table name
-    mockFrom.mockImplementation((table: string) => {
-      if (table === "generations") {
-        // For the suno bundle fetch — return no data
-        const s = jest.fn().mockResolvedValue({ data: null, error: null });
-        const e = jest.fn().mockReturnValue({ single: s });
-        const sel = jest.fn().mockReturnValue({ eq: e });
-        return { select: sel };
-      }
-      return { insert: mockInsert, update: mockUpdate, select: mockSelect };
-    });
-
-    // Re-apply revision result (cleared by clearAllMocks)
-    const { runRevisionLoop } = require("../agent/revisionLoop");
-    (runRevisionLoop as jest.Mock).mockResolvedValue(MOCK_REVISION_RESULT);
-
-    const { storeResult } = require("../agent/resultsStore");
-    (storeResult as jest.Mock).mockResolvedValue("result-uuid-001");
+    mockAgentWorkflowStart.mockResolvedValue(mockAgentWorkflowHandle);
   });
 
-  // ─── Input validation ─────────────────────────────────────────────────────
+  // ─── Input validation (unchanged) ────────────────────────────────────────
 
   it("1. Missing title → 400", async () => {
     const res = await request(app)
@@ -165,64 +167,75 @@ describe("Agent Runner — POST /api/agent/run", () => {
     expect(res.body.error).toBeDefined();
   });
 
-  // ─── Successful run ───────────────────────────────────────────────────────
+  // ─── T13: non-blocking 202 + workflowId ──────────────────────────────────
 
-  it("4. Valid goal → 200", async () => {
+  it("4. Valid goal → 202 (non-blocking — Temporal workflow started)", async () => {
     const res = await request(app)
       .post("/api/agent/run")
       .send({ title: "Night Drive", subgenre: "private_school", created_by: "okovanggo_ai" });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
   });
 
-  it("5. Response has status field ('complete' or 'partial')", async () => {
+  it("5. Response has workflow_id string", async () => {
     const res = await request(app)
       .post("/api/agent/run")
       .send({ title: "Night Drive", subgenre: "private_school", created_by: "okovanggo_ai" });
-    expect(res.status).toBe(200);
-    expect(["complete", "partial"]).toContain(res.body.status);
+    expect(res.status).toBe(202);
+    expect(typeof res.body.workflow_id).toBe("string");
+    expect(res.body.workflow_id.length).toBeGreaterThan(0);
   });
 
-  it("6. Response has track_id (non-empty string)", async () => {
+  it("6. Response has run_id string", async () => {
     const res = await request(app)
       .post("/api/agent/run")
       .send({ title: "Night Drive", subgenre: "private_school", created_by: "okovanggo_ai" });
-    expect(res.status).toBe(200);
-    expect(typeof res.body.track_id).toBe("string");
-    expect(res.body.track_id.length).toBeGreaterThan(0);
+    expect(res.status).toBe(202);
+    expect(typeof res.body.run_id).toBe("string");
   });
 
-  it("7. Response has ctl object", async () => {
+  it("7. Response status field is 'started'", async () => {
     const res = await request(app)
       .post("/api/agent/run")
       .send({ title: "Night Drive", subgenre: "private_school", created_by: "okovanggo_ai" });
-    expect(res.status).toBe(200);
-    expect(res.body.ctl).toBeDefined();
-    expect(typeof res.body.ctl).toBe("object");
+    expect(res.status).toBe(202);
+    expect(res.body.status).toBe("started");
   });
 
-  it("8. Response has validation_passed boolean", async () => {
-    const res = await request(app)
+  it("8. Temporal workflow started with AutonomousGenerationWorkflow name", async () => {
+    await request(app)
       .post("/api/agent/run")
       .send({ title: "Night Drive", subgenre: "private_school", created_by: "okovanggo_ai" });
-    expect(res.status).toBe(200);
-    expect(typeof res.body.validation_passed).toBe("boolean");
+    expect(mockAgentWorkflowStart).toHaveBeenCalledWith(
+      "AutonomousGenerationWorkflow",
+      expect.any(Object),
+    );
   });
 
-  it("9. Response has agent_log array with entries", async () => {
-    const res = await request(app)
+  it("9. Workflow args contain goal with title, subgenre, created_by", async () => {
+    await request(app)
       .post("/api/agent/run")
-      .send({ title: "Night Drive", subgenre: "private_school", created_by: "okovanggo_ai" });
-    expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.agent_log)).toBe(true);
-    expect(res.body.agent_log.length).toBeGreaterThan(0);
+      .send({ title: "Night Drive", subgenre: "sgija", created_by: "test-producer" });
+    expect(mockAgentWorkflowStart).toHaveBeenCalledWith(
+      "AutonomousGenerationWorkflow",
+      expect.objectContaining({
+        args: [expect.objectContaining({
+          goal: expect.objectContaining({
+            title:      "Night Drive",
+            subgenre:   "sgija",
+            created_by: "test-producer",
+          }),
+        })],
+      }),
+    );
   });
 
-  it("10. agent_log contains '[agent] ✓ Complete'", async () => {
+  it("10. Temporal client failure → 500 with error message", async () => {
+    mockAgentWorkflowStart.mockRejectedValueOnce(new Error("Temporal unavailable"));
     const res = await request(app)
       .post("/api/agent/run")
       .send({ title: "Night Drive", subgenre: "private_school", created_by: "okovanggo_ai" });
-    expect(res.status).toBe(200);
-    expect(res.body.agent_log).toContain("[agent] ✓ Complete");
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/Temporal unavailable/);
   });
 
 });

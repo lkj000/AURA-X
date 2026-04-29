@@ -3,7 +3,6 @@ import { CTLv1Schema } from "@aura-x/ctl";
 import { runRevisionLoop } from "../agent/revisionLoop";
 import { tuneWeightsForSubgenre } from "../agent/weightTuner";
 import { exportDataset, getDatasetStats } from "../agent/datasetPipeline";
-import { runAgent } from "../agent/agentRunner";
 import { triggerFinetune } from "../agent/finetuneRunner";
 import { runAblationStudy } from "../agent/ablationRunner";
 import { getTemporalClient } from "../temporal/client";
@@ -70,8 +69,9 @@ router.get("/dataset/stats", async (_req: Request, res: Response): Promise<void>
   res.json(stats);
 });
 
-// POST /api/agent/run — FULL AUTONOMOUS AGENT
+// POST /api/agent/run — FULL AUTONOMOUS AGENT (Temporal AutonomousGenerationWorkflow)
 // Body: { title, subgenre, bpm?, key?, emotional_profile?, generation_mode?, created_by }
+// Returns 202 immediately with workflowId — poll GET /api/agent/workflow/:workflowId for result
 router.post("/run", async (req: Request, res: Response): Promise<void> => {
   const { title, subgenre, bpm, key, emotional_profile, generation_mode, created_by } = req.body;
 
@@ -80,13 +80,25 @@ router.post("/run", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const result = await runAgent({
-    title, subgenre, bpm, key,
-    emotional_profile, generation_mode, created_by,
-  });
+  try {
+    const client     = await getTemporalClient();
+    const taskQueue  = process.env.TEMPORAL_AGENT_TASK_QUEUE ?? "aura-x-agent";
+    const workflowId = `agent-run-${created_by.replace(/[^a-z0-9]/gi, "-")}-${Date.now()}`;
 
-  const statusCode = result.status === "failed" ? 500 : 200;
-  res.status(statusCode).json(result);
+    const handle = await client.workflow.start("AutonomousGenerationWorkflow", {
+      taskQueue,
+      workflowId,
+      args: [{ goal: { title, subgenre, bpm, key, emotional_profile, generation_mode, created_by } }],
+    });
+
+    res.status(202).json({
+      workflow_id: handle.workflowId,
+      run_id:      handle.firstExecutionRunId,
+      status:      "started",
+    });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to start agent workflow: ${(err as Error).message}` });
+  }
 });
 
 // POST /api/agent/ingest
