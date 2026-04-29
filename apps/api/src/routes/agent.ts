@@ -141,7 +141,7 @@ router.post("/ingest", async (req: Request, res: Response): Promise<void> => {
 });
 
 // GET /api/agent/workflow/:workflowId
-// Returns status of a Temporal workflow
+// Returns status of a Temporal workflow — all terminal states mapped, not_found is 200
 router.get("/workflow/:workflowId", async (req: Request, res: Response): Promise<void> => {
   const { workflowId } = req.params;
 
@@ -150,20 +150,54 @@ router.get("/workflow/:workflowId", async (req: Request, res: Response): Promise
     const handle = client.workflow.getHandle(workflowId);
     const desc   = await handle.describe();
 
-    const status = desc.status.name === "RUNNING"   ? "running"
-                 : desc.status.name === "COMPLETED"  ? "completed"
-                 : "failed";
+    const temporalStatus = desc.status.name;
+
+    const status =
+      temporalStatus === "RUNNING"    ? "running"
+    : temporalStatus === "COMPLETED"  ? "completed"
+    : temporalStatus === "FAILED"     ? "failed"
+    : temporalStatus === "TERMINATED" ? "terminated"
+    : temporalStatus === "TIMED_OUT"  ? "timed_out"
+    : temporalStatus === "CANCELLED"  ? "cancelled"
+    : "unknown";
 
     if (status === "completed") {
-      const result = await handle.result();
+      let result: unknown;
+      try {
+        result = await handle.result();
+      } catch (resultErr) {
+        res.json({
+          workflow_id: workflowId,
+          run_id: desc.runId,
+          status: "failed",
+          error: (resultErr as Error).message,
+        });
+        return;
+      }
       res.json({ workflow_id: workflowId, run_id: desc.runId, status, result });
       return;
     }
 
+    if (
+      status === "failed"     ||
+      status === "terminated" ||
+      status === "timed_out"  ||
+      status === "cancelled"
+    ) {
+      res.json({
+        workflow_id: workflowId,
+        run_id: desc.runId,
+        status,
+        error: `Workflow ended with status: ${temporalStatus}`,
+      });
+      return;
+    }
+
+    // running or unknown — no result yet
     res.json({ workflow_id: workflowId, run_id: desc.runId, status });
   } catch (err) {
     if (err instanceof WorkflowNotFoundError) {
-      res.status(404).json({ workflow_id: workflowId, status: "not_found" });
+      res.json({ workflow_id: workflowId, status: "not_found" });
       return;
     }
     res.status(500).json({ error: (err as Error).message });

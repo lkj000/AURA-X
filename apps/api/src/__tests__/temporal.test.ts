@@ -217,6 +217,8 @@ describe("Temporal — POST /api/agent/ingest", () => {
 
 describe("Temporal — GET /api/agent/workflow/:workflowId", () => {
 
+  beforeEach(() => jest.clearAllMocks());
+
   it("8. Completed workflow returns result", async () => {
     mockWorkflowHandle.describe.mockResolvedValue({
       runId: "run-001",
@@ -240,12 +242,111 @@ describe("Temporal — GET /api/agent/workflow/:workflowId", () => {
     expect(res.body.result).toBeUndefined();
   });
 
-  it("10. Unknown workflow → 404", async () => {
+  it("10. Unknown workflow → 200 with status: not_found", async () => {
     const { WorkflowNotFoundError } = require("@temporalio/client");
     mockWorkflowHandle.describe.mockRejectedValue(new WorkflowNotFoundError("not found"));
     const res = await request(app).get("/api/agent/workflow/does-not-exist");
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(200);
     expect(res.body.status).toBe("not_found");
+  });
+
+  it("11. AutonomousGenerationWorkflow completed — result has AgentGenerationResult shape", async () => {
+    mockWorkflowHandle.describe.mockResolvedValue({
+      runId: "run-agent-001",
+      status: { name: "COMPLETED" },
+    });
+    mockWorkflowHandle.result.mockResolvedValue({
+      status: "complete",
+      track_id: "track-agent-001",
+      generation_id: "gen-agent-001",
+      ctl: { global: { bpm: 112, key: "F#m" }, evaluation_targets: {} },
+      validation_passed: true,
+      composite_score: 0.91,
+      signal_composite_score: 0.87,
+      passed_signal_gate: true,
+      iterations_run: 2,
+      mutations_applied: 3,
+    });
+    const res = await request(app).get("/api/agent/workflow/agent-run-okovanggo-ai-1234567890");
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("completed");
+    expect(res.body.result.track_id).toBe("track-agent-001");
+    expect(res.body.result.validation_passed).toBe(true);
+    expect(res.body.result.composite_score).toBe(0.91);
+    expect(res.body.result.iterations_run).toBe(2);
+  });
+
+  it("12. Agent workflow result includes suno_bundle when present", async () => {
+    mockWorkflowHandle.describe.mockResolvedValue({
+      runId: "run-agent-002",
+      status: { name: "COMPLETED" },
+    });
+    mockWorkflowHandle.result.mockResolvedValue({
+      status: "complete",
+      track_id: "track-agent-002",
+      ctl: { global: { bpm: 112, key: "F#m" }, evaluation_targets: {} },
+      validation_passed: true,
+      composite_score: 0.88,
+      iterations_run: 1,
+      mutations_applied: 0,
+      suno_bundle: {
+        style_prompt: "Amapiano private school 112 BPM F#m",
+        lyrics_prompt: "[VERSE]\nTest lyrics",
+        warnings: [],
+      },
+    });
+    const res = await request(app).get("/api/agent/workflow/agent-run-okovanggo-ai-9999999999");
+    expect(res.status).toBe(200);
+    expect(res.body.result.suno_bundle).toBeDefined();
+    expect(res.body.result.suno_bundle.style_prompt).toContain("Amapiano");
+  });
+
+  it("13. TERMINATED status → status: terminated with error field", async () => {
+    mockWorkflowHandle.describe.mockResolvedValue({
+      runId: "run-001",
+      status: { name: "TERMINATED" },
+    });
+    const res = await request(app).get("/api/agent/workflow/agent-run-terminated");
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("terminated");
+    expect(res.body.error).toBeDefined();
+    expect(res.body.result).toBeUndefined();
+  });
+
+  it("14. TIMED_OUT status → status: timed_out with error field", async () => {
+    mockWorkflowHandle.describe.mockResolvedValue({
+      runId: "run-001",
+      status: { name: "TIMED_OUT" },
+    });
+    const res = await request(app).get("/api/agent/workflow/agent-run-timedout");
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("timed_out");
+    expect(res.body.error).toBeDefined();
+    expect(res.body.result).toBeUndefined();
+  });
+
+  it("15. handle.result() throws — completed workflow with exception → status: failed with error", async () => {
+    mockWorkflowHandle.describe.mockResolvedValue({
+      runId: "run-001",
+      status: { name: "COMPLETED" },
+    });
+    mockWorkflowHandle.result.mockRejectedValue(new Error("Activity generateCTL failed: upstream timeout"));
+    const res = await request(app).get("/api/agent/workflow/agent-run-errored");
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("failed");
+    expect(res.body.error).toMatch(/upstream timeout/);
+  });
+
+  it("16. CANCELLED status → status: cancelled with error field", async () => {
+    mockWorkflowHandle.describe.mockResolvedValue({
+      runId: "run-001",
+      status: { name: "CANCELLED" },
+    });
+    const res = await request(app).get("/api/agent/workflow/agent-run-cancelled");
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("cancelled");
+    expect(res.body.error).toBeDefined();
+    expect(res.body.result).toBeUndefined();
   });
 
 });
