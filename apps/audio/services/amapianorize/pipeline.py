@@ -2,7 +2,7 @@ from typing import Optional
 from lib.supabase_client import supabase
 from services.amapianorize.source_analyzer import analyze_source
 from services.stems import separate_stems
-from services.amapianorize.rhythm_transplant import transplant_rhythm
+from services.amapianorize.rhythm_transplant import transplant_rhythm, _snap_to_amapiano_bpm
 from services.amapianorize.harmonic_anchor import extract_harmonic_anchor
 from services.mixer import render_mix
 from services.master import master_audio
@@ -44,6 +44,17 @@ def run_amapianorize(
 
     chosen_subgenre = target_subgenre or analysis["recommended_subgenre"]
     chosen_bpm = target_bpm or analysis["bpm"]
+
+    snapped_bpm = _snap_to_amapiano_bpm(chosen_bpm)
+    if snapped_bpm is None:
+        return {
+            "status": "incompatible",
+            "error": f"Source BPM {chosen_bpm:.1f} has no halftime or doubletime path to Amapiano range (104–116 BPM)",
+            "source_bpm": chosen_bpm,
+            "pipeline_log": [],
+        }
+    chosen_bpm = snapped_bpm
+
     pipeline_log.append(
         f"Source: {analysis['source_character']}, "
         f"BPM={analysis['bpm']}, Key={analysis['key']}, "
@@ -161,6 +172,24 @@ def run_amapianorize(
     pipeline_log.append(
         f"Master: {master_result['master_file_id']} @ {master_result['target_lufs']} LUFS"
     )
+
+    # Minimal output sanity check — Phase 2 will extend this with Contrast Score
+    _VALID_AMAPIANO_SUBGENRES = {
+        "private_school", "sgija", "bacardi", "stixx_sgija",
+        "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano",
+    }
+    if not (102 <= chosen_bpm <= 118):
+        return {
+            "status": "degraded",
+            "warning": f"Output BPM {chosen_bpm:.1f} outside Amapiano range (102–118)",
+            "pipeline_log": pipeline_log,
+        }
+    if chosen_subgenre not in _VALID_AMAPIANO_SUBGENRES:
+        return {
+            "status": "degraded",
+            "warning": f"Subgenre '{chosen_subgenre}' is not a recognised Amapiano subgenre",
+            "pipeline_log": pipeline_log,
+        }
 
     return {
         "status": "complete",

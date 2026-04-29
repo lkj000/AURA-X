@@ -147,10 +147,10 @@ def _classify_source_character(
     if 104 <= bpm <= 116 and low_mid_ratio > 0.15:
         return "amapiano_adjacent"
 
-    if 120 <= bpm <= 128 and low_mid_ratio > 0.12 and flatness < 0.01:
+    if 120 <= bpm <= 135 and low_mid_ratio > 0.12 and flatness < 0.01:
         return "deep_house"
 
-    if spectral_centroid > 3000 and rhythm_strength > 0.6:
+    if spectral_centroid > 3000 and rhythm_strength > 0.6 and flatness > 0.05:
         return "electronic"
 
     if 70 <= bpm <= 100 and spectral_centroid < 2500:

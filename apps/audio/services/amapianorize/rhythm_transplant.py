@@ -148,13 +148,14 @@ def transplant_rhythm(
     }
 
 
-def _snap_to_amapiano_bpm(bpm: float) -> float:
-    """Snap BPM to valid Amapiano range, considering halftime/doubletime."""
-    candidates = [bpm, bpm * 2, bpm / 2]
-    for candidate in candidates:
+def _snap_to_amapiano_bpm(bpm: float):
+    """Snap BPM to valid Amapiano range via halftime/doubletime search.
+    Returns float if a path exists, None if the source is incompatible."""
+    for factor in [1, 0.5, 2, 0.25, 4]:
+        candidate = bpm * factor
         if 104 <= candidate <= 116:
             return round(candidate, 1)
-    return max(104.0, min(116.0, bpm))
+    return None
 
 
 def _apply_groove_feel(
