@@ -60,6 +60,26 @@ export async function runGeneration(
 
   // ─── MODE 1: SUNO PROMPT EXPORT ───────────────────
   if (mode === "mode_1_suno") {
+    // Gate: same Amapiano BPM validation as Mode 2
+    const bpmCheck = validateMode2Bpm(req.ctl.global.bpm);
+    if (!bpmCheck.valid) {
+      await supabase
+        .from("generations")
+        .update({
+          status: "failed",
+          error_message: `Incompatible BPM: ${req.ctl.global.bpm} has no Amapiano path (104–116 direct or via halftime/doubletime)`,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", generation_id);
+      return {
+        generation_id,
+        track_id: req.track_id,
+        mode,
+        status: "incompatible",
+        error: `BPM ${req.ctl.global.bpm} has no Amapiano path (104–116 direct or via halftime/doubletime)`,
+      };
+    }
+
     try {
       const bundle = exportForSuno(req.ctl);
 

@@ -254,6 +254,24 @@ describe("Generation Agent", () => {
     );
   });
 
+  // ─── Mode 1 BPM gate ─────────────────────────────────────────────────────
+
+  it("18. Mode 1 with BPM 130 → 422 incompatible", async () => {
+    const body = makeBody("mode_1_suno");
+    body.ctl.global.bpm = 130;
+    const res = await request(app).post("/api/generate").send(body);
+    expect(res.status).toBe(422);
+    expect(res.body.status).toBe("incompatible");
+  });
+
+  it("19. Mode 1 with BPM 112 → 200 complete (valid Amapiano BPM)", async () => {
+    const body = makeBody("mode_1_suno");
+    body.ctl.global.bpm = 112;
+    const res = await request(app).post("/api/generate").send(body);
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("complete");
+  });
+
   // ─── Mode 3 ────────────────────────────────────────────────────────────────
 
   it("11. POST /api/generate with mode_3_suno_api → 500", async () => {
