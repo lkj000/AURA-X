@@ -30,7 +30,7 @@ RUN cd packages/ctl              && pnpm build
 RUN cd packages/replicate-client && pnpm build
 RUN cd packages/suno-exporter    && pnpm build
 RUN cd packages/ac-ami           && pnpm build
-RUN cd apps/api                  && pnpm build
+RUN cd apps/api                  && pnpm exec tsc -p tsconfig.build.json
 
 EXPOSE 3003
 CMD ["node", "apps/api/dist/index.js"]
