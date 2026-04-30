@@ -130,7 +130,7 @@ export interface GenerationStatus {
   prompt_style?: string;
   prompt_lyrics?: string;
   replicate_id?: string;
-  audio_files?: unknown[];
+  audio_files?: { id: string; file_type: string; duration_sec?: number }[];
 }
 
 export const getGenerationStatus = (generationId: string) =>
@@ -203,6 +203,66 @@ export const getVideoPromptPreview = (params: {
   });
   return request<{ visual_prompt: string }>(`/api/video/prompt-preview?${q}`);
 };
+
+// ── Track library ────────────────────────────────────────────────────────────
+
+export interface TrackSummary {
+  id: string;
+  title: string;
+  subgenre: string;
+  bpm: number;
+  key: string;
+  created_by: string;
+  created_at: string;
+  composite_score: number | null;
+  generation_id: string | null;
+}
+
+export interface TrackDetail extends TrackSummary {
+  status: string;
+  generation_mode: string;
+  updated_at: string;
+  ctl_snapshot: Record<string, unknown> | null;
+  generation: {
+    id: string;
+    mode: string;
+    status: string;
+    prompt_style?: string;
+    created_at: string;
+  } | null;
+  passed_gate: boolean | null;
+  feedback_count: number;
+  feedback_avg: number | null;
+}
+
+export interface TracksListResult {
+  tracks: TrackSummary[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export const listTracks = (params?: {
+  subgenre?: string;
+  bpm_min?: number;
+  bpm_max?: number;
+  key?: string;
+  page?: number;
+  limit?: number;
+}) => {
+  const q = new URLSearchParams();
+  if (params?.subgenre)           q.set("subgenre", params.subgenre);
+  if (params?.bpm_min != null)    q.set("bpm_min", String(params.bpm_min));
+  if (params?.bpm_max != null)    q.set("bpm_max", String(params.bpm_max));
+  if (params?.key)                q.set("key", params.key);
+  if (params?.page != null)       q.set("page", String(params.page));
+  if (params?.limit != null)      q.set("limit", String(params.limit));
+  const qs = q.toString();
+  return request<TracksListResult>(`/api/tracks${qs ? `?${qs}` : ""}`);
+};
+
+export const getTrack = (trackId: string) =>
+  request<TrackDetail>(`/api/tracks/${trackId}`);
 
 // ── Feedback ─────────────────────────────────────────────────────────────────
 
