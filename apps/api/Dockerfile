@@ -23,7 +23,8 @@ COPY packages/ac-ami/tsconfig.json    ./packages/ac-ami/
 COPY packages/replicate-client/src              ./packages/replicate-client/src
 COPY packages/replicate-client/tsconfig.json    ./packages/replicate-client/
 COPY apps/api/src             ./apps/api/src
-COPY apps/api/tsconfig.json   ./apps/api/
+COPY apps/api/tsconfig.json       ./apps/api/
+COPY apps/api/tsconfig.build.json ./apps/api/
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 RUN cd packages/ctl              && pnpm build
