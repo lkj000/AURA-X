@@ -18,18 +18,47 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ── Agent ────────────────────────────────────────────────────────────────────
 
-export interface AgentRunResult {
-  status: "complete" | "partial" | "failed";
-  track_id: string;
-  generation_id?: string;
-  validation_passed: boolean;
-  composite_score: number;
-  signal_composite_score?: number;
-  passed_signal_gate?: boolean;
-  iterations_run: number;
-  mutations_applied: number;
-  suno_bundle?: { style_prompt: string; lyrics_prompt: string };
-  agent_log: string[];
+// POST /api/agent/run → 202 Accepted (Temporal workflow started)
+export interface WorkflowStartResult {
+  workflow_id: string;
+  run_id: string;
+  status: "started";
+}
+
+// GET /api/agent/workflow/:workflowId → poll result
+export interface WorkflowPollResult {
+  workflow_id: string;
+  run_id?: string;
+  status:
+    | "running"
+    | "completed"
+    | "failed"
+    | "incompatible"
+    | "degraded"
+    | "terminated"
+    | "timed_out"
+    | "cancelled"
+    | "not_found";
+  result?: {
+    status: "complete" | "partial";
+    track_id: string;
+    generation_id?: string;
+    ctl: Record<string, unknown>;
+    validation_passed: boolean;
+    composite_score: number;
+    signal_composite_score?: number;
+    passed_signal_gate?: boolean;
+    iterations_run: number;
+    mutations_applied: number;
+    suno_bundle?: {
+      style_prompt: string;
+      lyrics_prompt: string;
+      warnings?: string[];
+    };
+  };
+  error?: string;
+  contrast_score?: number;
+  subgenre_match?: boolean;
 }
 
 export interface AgentRunInput {
@@ -43,10 +72,17 @@ export interface AgentRunInput {
 }
 
 export const agentRun = (body: AgentRunInput) =>
-  request<AgentRunResult>("/api/agent/run", {
+  request<WorkflowStartResult>("/api/agent/run", {
     method: "POST",
     body: JSON.stringify(body),
   });
+
+export async function pollWorkflowStatus(
+  workflowId: string
+): Promise<WorkflowPollResult> {
+  const res = await fetch(`${BASE}/api/agent/workflow/${workflowId}`);
+  return res.json() as Promise<WorkflowPollResult>;
+}
 
 // ── Dataset stats ────────────────────────────────────────────────────────────
 
