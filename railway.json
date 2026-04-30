@@ -6,6 +6,7 @@
   },
   "deploy": {
     "startCommand": "node apps/api/dist/index.js",
+    "numReplicas": 1,
     "healthcheckPath": "/health",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
