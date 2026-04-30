@@ -66,7 +66,7 @@ if (require.main === module) {
   require("./queue/workers");
 }
 
-const PORT = parseInt(process.env.PORT_API ?? "3002", 10);
+const PORT = parseInt(process.env.PORT ?? process.env.PORT_API ?? "3002", 10);
 
 if (require.main === module) {
   app.listen(PORT, () => {
