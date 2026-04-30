@@ -121,7 +121,7 @@ export async function runVideoGeneration(req: VideoRequest): Promise<VideoRespon
     result = await client.generateVideo({
       prompt: visual_prompt,
       duration: req.duration ?? 5,
-      resolution: req.resolution ?? "720p",
+      resolution: (req.resolution === "1080p" ? "720p" : req.resolution) ?? "720p",
       aspect_ratio: "16:9",
     });
   } catch (err) {

@@ -28,7 +28,7 @@ export async function startWorker(): Promise<Worker> {
   const worker = await Worker.create({
     connection,
     namespace,
-    taskQueueName: taskQueue,
+    taskQueue: taskQueue,
     workflowsPath: require.resolve("./workflows/datasetIngestion"),
     activities:    datasetActivities,
   });
@@ -54,7 +54,7 @@ export async function startAgentWorker(): Promise<Worker> {
   const worker = await Worker.create({
     connection,
     namespace,
-    taskQueueName: taskQueue,
+    taskQueue: taskQueue,
     workflowsPath: require.resolve("./workflows/autonomousGeneration"),
     activities:    agentActivities,
   });
