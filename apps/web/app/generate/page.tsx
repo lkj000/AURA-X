@@ -4,9 +4,11 @@ import {
   agentRun,
   pollWorkflowStatus,
   generateVideo,
+  submitFeedback,
   type WorkflowStartResult,
   type WorkflowPollResult,
   type VideoGenerationResult,
+  type FeedbackResult,
 } from "@/lib/api";
 import { SUBGENRES, SUBGENRE_LABELS, KEYS, fmt, scoreColor, cn } from "@/lib/utils";
 
@@ -217,6 +219,147 @@ function GenerationStatusPanel({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Rating panel ────────────────────────────────────────────────────────────
+
+function RatingPanel({
+  trackId,
+  generationId,
+  ctlSnapshot,
+  compositeScore,
+  subgenre,
+  bpm,
+  musicalKey,
+}: {
+  trackId: string;
+  generationId: string;
+  ctlSnapshot?: Record<string, unknown>;
+  compositeScore?: number;
+  subgenre?: string;
+  bpm?: number;
+  musicalKey?: string;
+}) {
+  const [rating, setRating]         = useState<number | null>(null);
+  const [hover, setHover]           = useState<number | null>(null);
+  const [cultural, setCultural]     = useState<number | null>(null);
+  const [notes, setNotes]           = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult]         = useState<FeedbackResult | null>(null);
+  const [error, setError]           = useState<string | null>(null);
+
+  if (result) {
+    return (
+      <div className="rounded-xl border border-emerald-800 bg-emerald-950/40 p-5">
+        <p className="text-sm font-medium text-emerald-400">
+          {result.promoted_to_gold ? "Promoted to gold standard" : "Feedback saved"}
+        </p>
+        <p className="text-xs text-zinc-500 mt-1">
+          {result.promoted_to_gold
+            ? "This generation will be used to fine-tune the model."
+            : "Rating recorded. Needs score ≥ 4 + CTL snapshot to promote."}
+        </p>
+      </div>
+    );
+  }
+
+  async function handleSubmit() {
+    if (!rating) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await submitFeedback({
+        track_id: trackId,
+        generation_id: generationId,
+        rating,
+        subgenre_notes: notes || undefined,
+        cultural_accuracy: cultural ?? undefined,
+        ctl_snapshot: ctlSnapshot,
+        composite_score: compositeScore,
+        subgenre: subgenre,
+        bpm: bpm,
+        key: musicalKey,
+      });
+      setResult(res);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Feedback failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4">
+      <p className="text-sm font-medium text-white">Rate this generation</p>
+
+      {/* Star rating */}
+      <div className="space-y-1">
+        <p className="text-xs text-zinc-500">Overall quality</p>
+        <div className="flex gap-1">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <button
+              key={star}
+              onClick={() => setRating(star)}
+              onMouseEnter={() => setHover(star)}
+              onMouseLeave={() => setHover(null)}
+              className="text-2xl leading-none transition-colors"
+            >
+              <span className={(hover ?? rating ?? 0) >= star ? "text-yellow-400" : "text-zinc-700"}>
+                ★
+              </span>
+            </button>
+          ))}
+          {rating && (
+            <span className="ml-2 text-xs text-zinc-500 self-center">
+              {["", "Poor", "Below average", "Average", "Good", "Excellent"][rating]}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Cultural accuracy */}
+      <div className="space-y-1">
+        <p className="text-xs text-zinc-500">Cultural accuracy (optional)</p>
+        <div className="flex gap-1">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <button
+              key={star}
+              onClick={() => setCultural(cultural === star ? null : star)}
+              className="text-xl leading-none transition-colors"
+            >
+              <span className={(cultural ?? 0) >= star ? "text-violet-400" : "text-zinc-700"}>
+                ★
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Notes */}
+      <div className="space-y-1">
+        <p className="text-xs text-zinc-500">Subgenre notes (optional)</p>
+        <textarea
+          rows={2}
+          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-violet-500 resize-none"
+          placeholder="e.g. log drum a bit weak, piano chords feel authentic…"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </div>
+
+      {error && (
+        <p className="text-xs text-red-400">{error}</p>
+      )}
+
+      <button
+        onClick={handleSubmit}
+        disabled={!rating || submitting}
+        className="w-full py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+      >
+        {submitting ? "Saving…" : "Submit rating"}
+      </button>
     </div>
   );
 }
@@ -492,6 +635,19 @@ export default function GeneratePage() {
           elapsed={elapsed}
           workflowId={displayWfId}
           onRetry={handleRetry}
+        />
+      )}
+
+      {/* Producer rating — only show once completed with a generation_id */}
+      {displayPoll?.status === "completed" && displayPoll.result?.generation_id && (
+        <RatingPanel
+          trackId={displayPoll.result.track_id}
+          generationId={displayPoll.result.generation_id}
+          ctlSnapshot={displayPoll.result.ctl as Record<string, unknown>}
+          compositeScore={displayPoll.result.composite_score}
+          subgenre={form.subgenre}
+          bpm={Number(form.bpm)}
+          musicalKey={form.key}
         />
       )}
 

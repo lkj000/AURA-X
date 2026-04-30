@@ -204,6 +204,32 @@ export const getVideoPromptPreview = (params: {
   return request<{ visual_prompt: string }>(`/api/video/prompt-preview?${q}`);
 };
 
+// ── Feedback ─────────────────────────────────────────────────────────────────
+
+export interface FeedbackInput {
+  track_id: string;
+  generation_id: string;
+  rating: number;
+  subgenre_notes?: string;
+  cultural_accuracy?: number;
+  ctl_snapshot?: Record<string, unknown>;
+  composite_score?: number;
+  subgenre?: string;
+  bpm?: number;
+  key?: string;
+}
+
+export interface FeedbackResult {
+  feedback_id: string;
+  promoted_to_gold: boolean;
+}
+
+export const submitFeedback = (body: FeedbackInput) =>
+  request<FeedbackResult>("/api/feedback/rate", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
 // ── Finetune ─────────────────────────────────────────────────────────────────
 
 export const triggerFinetune = (body: {
