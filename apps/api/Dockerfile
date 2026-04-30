@@ -27,9 +27,9 @@ COPY apps/api/tsconfig.json   ./apps/api/
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 RUN cd packages/ctl              && pnpm build
-RUN cd packages/suno-exporter    && pnpm build
-RUN cd packages/ac-ami           && pnpm build
 RUN cd packages/replicate-client && pnpm build
+RUN cd packages/ac-ami           && pnpm build
+RUN cd packages/suno-exporter    && pnpm build
 RUN cd apps/api                  && pnpm build
 
 EXPOSE 3003
