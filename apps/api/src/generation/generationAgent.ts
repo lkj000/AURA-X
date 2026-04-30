@@ -3,6 +3,7 @@ import { exportForSuno } from "@aura-x/suno-exporter";
 import { conditionForMode2 } from "@aura-x/ac-ami";
 import { createReplicateClient } from "@aura-x/replicate-client";
 import { supabase } from "../lib/supabase";
+import { validateMode2Bpm } from "./mode2QualityGate";
 
 export type GenerationRequest = {
   track_id: string;
@@ -15,13 +16,15 @@ export type GenerationResponse = {
   generation_id: string;
   track_id: string;
   mode: string;
-  status: "complete" | "queued" | "failed";
+  status: "complete" | "queued" | "failed" | "incompatible" | "degraded";
   suno_bundle?: {
     style_prompt: string;
     lyrics_prompt: string;
     warnings: string[];
   };
   replicate_prediction_id?: string;
+  contrast_score?: number;
+  subgenre_match?: boolean;
   message?: string;
   error?: string;
 };
@@ -99,6 +102,26 @@ export async function runGeneration(
 
   // ─── MODE 2: MUSICGEN VIA REPLICATE ───────────────
   if (mode === "mode_2_musicgen") {
+    // Gate 1: pre-generation BPM validation
+    const bpmCheck = validateMode2Bpm(req.ctl.global.bpm);
+    if (!bpmCheck.valid) {
+      await supabase
+        .from("generations")
+        .update({
+          status: "failed",
+          error_message: `Incompatible BPM: ${req.ctl.global.bpm} has no Amapiano path (104–116 direct or via halftime/doubletime)`,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", generation_id);
+      return {
+        generation_id,
+        track_id: req.track_id,
+        mode,
+        status: "incompatible",
+        error: `BPM ${req.ctl.global.bpm} has no Amapiano path (104–116 direct or via halftime/doubletime)`,
+      };
+    }
+
     try {
       const conditioning = conditionForMode2(req.ctl);
       const client = createReplicateClient();

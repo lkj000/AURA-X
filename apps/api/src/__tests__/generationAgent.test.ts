@@ -211,6 +211,49 @@ describe("Generation Agent", () => {
     expect(conditionForMode2).toHaveBeenCalledTimes(1);
   });
 
+  // ─── Mode 2 quality gates (Gate 1 — BPM validation) ──────────────────────
+
+  it("13. Mode 2 with BPM 130 → 422 with status: incompatible", async () => {
+    const body = makeBody("mode_2_musicgen");
+    body.ctl.global.bpm = 130;
+    const res = await request(app).post("/api/generate").send(body);
+    expect(res.status).toBe(422);
+    expect(res.body.status).toBe("incompatible");
+  });
+
+  it("14. Mode 2 with BPM 130 → Replicate NOT called", async () => {
+    const body = makeBody("mode_2_musicgen");
+    body.ctl.global.bpm = 130;
+    await request(app).post("/api/generate").send(body);
+    expect(mockCreatePrediction).not.toHaveBeenCalled();
+  });
+
+  it("15. Mode 2 with BPM 112 → Replicate IS called (valid Amapiano BPM)", async () => {
+    const body = makeBody("mode_2_musicgen");
+    body.ctl.global.bpm = 112;
+    const res = await request(app).post("/api/generate").send(body);
+    expect(res.body.status).toBe("queued");
+    expect(mockCreatePrediction).toHaveBeenCalledTimes(1);
+  });
+
+  it("16. Mode 2 with BPM 117 → incompatible (just above Amapiano max 116)", async () => {
+    const body = makeBody("mode_2_musicgen");
+    body.ctl.global.bpm = 117;
+    const res = await request(app).post("/api/generate").send(body);
+    expect(res.status).toBe(422);
+    expect(res.body.status).toBe("incompatible");
+    expect(mockCreatePrediction).not.toHaveBeenCalled();
+  });
+
+  it("17. Mode 2 incompatible BPM → supabase update called with error_message containing BPM", async () => {
+    const body = makeBody("mode_2_musicgen");
+    body.ctl.global.bpm = 130;
+    await request(app).post("/api/generate").send(body);
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed", error_message: expect.stringContaining("130") })
+    );
+  });
+
   // ─── Mode 3 ────────────────────────────────────────────────────────────────
 
   it("11. POST /api/generate with mode_3_suno_api → 500", async () => {

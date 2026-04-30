@@ -28,7 +28,10 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     mode_override,
   });
 
-  const statusCode = result.status === "failed" ? 500 : 200;
+  const statusCode =
+    result.status === "failed"       ? 500
+  : result.status === "incompatible" ? 422
+  : 200;
   res.status(statusCode).json(result);
 });
 

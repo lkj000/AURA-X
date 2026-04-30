@@ -58,9 +58,14 @@ jest.mock("@aura-x/replicate-client", () => ({
 
 // ─── axios mock ──────────────────────────────────────────────────────────────
 
+// Default post response: bpm=110, energy=0.75, onset=4.0
+// contrastScore = 0.50*1.0 + 0.30*0.75 + 0.20*1.0 = 0.925 → passes Gate 2
 jest.mock("axios", () => ({
   get: jest.fn().mockResolvedValue({
     data: Buffer.from("fake-audio-data"),
+  }),
+  post: jest.fn().mockResolvedValue({
+    data: { bpm: 110, energy_mean: 0.75, onset_density: 4.0 },
   }),
   default: { get: jest.fn() },
   isAxiosError: jest.fn().mockReturnValue(false),
@@ -150,6 +155,10 @@ describe("Generation Worker", () => {
     mockStorageFrom.mockReturnValue({ upload: mockStorageUpload });
     mockStorageUpload.mockResolvedValue({ data: { path: "test/path.wav" }, error: null });
     (axios.get as jest.Mock).mockResolvedValue({ data: Buffer.from("fake-audio-data") });
+    // Default: passing quality gate (contrastScore ≈ 0.925)
+    (axios.post as jest.Mock).mockResolvedValue({
+      data: { bpm: 110, energy_mean: 0.75, onset_density: 4.0 },
+    });
     mockQueueAdd.mockResolvedValue({ id: "job-1" });
   });
 
@@ -229,6 +238,55 @@ describe("Generation Worker", () => {
     expect(enqueueAudioAnalysis).toHaveBeenCalledWith(
       expect.objectContaining({ audio_file_id: "mock-uuid-file-id" })
     );
+  });
+
+  // ─── Quality gates (Gate 2: Contrast Score, Gate 3: Subgenre) ────────────
+
+  it("11. Contrast score below threshold → status: degraded", async () => {
+    // bpm=80: bpmScore=0, energy=0.2, onset=1 → score≈0.11 (below 0.6)
+    (axios.post as jest.Mock).mockResolvedValue({
+      data: { bpm: 80, energy_mean: 0.2, onset_density: 1.0 },
+    });
+    const result = await workerProcessor(makeJob()) as Record<string, unknown>;
+    expect(result.status).toBe("degraded");
+  });
+
+  it("12. Contrast score below threshold → contrast_score field in result", async () => {
+    (axios.post as jest.Mock).mockResolvedValue({
+      data: { bpm: 80, energy_mean: 0.2, onset_density: 1.0 },
+    });
+    const result = await workerProcessor(makeJob()) as Record<string, unknown>;
+    expect(typeof result.contrast_score).toBe("number");
+    expect(result.contrast_score as number).toBeLessThan(0.6);
+  });
+
+  it("13. Contrast score above threshold → status: complete (Gate 2 passes)", async () => {
+    // Default mock: bpm=110, energy=0.75, onset=4 → score≈0.925
+    const result = await workerProcessor(makeJob()) as Record<string, unknown>;
+    expect(result.status).toBe("complete");
+    expect(result.contrast_score as number).toBeGreaterThanOrEqual(0.6);
+  });
+
+  it("14. Audio analysis service throws → graceful fallback, status: complete", async () => {
+    (axios.post as jest.Mock).mockRejectedValue(new Error("Audio service down"));
+    const result = await workerProcessor(makeJob()) as Record<string, unknown>;
+    expect(result.status).toBe("complete");
+  });
+
+  it("15. Detected BPM in Amapiano range → subgenre_match true", async () => {
+    (axios.post as jest.Mock).mockResolvedValue({
+      data: { bpm: 112, energy_mean: 0.75, onset_density: 4.0 },
+    });
+    const result = await workerProcessor(makeJob()) as Record<string, unknown>;
+    expect(result.subgenre_match).toBe(true);
+  });
+
+  it("16. Detected BPM outside Amapiano range → subgenre_match false", async () => {
+    (axios.post as jest.Mock).mockResolvedValue({
+      data: { bpm: 130, energy_mean: 0.75, onset_density: 4.0 },
+    });
+    const result = await workerProcessor(makeJob()) as Record<string, unknown>;
+    expect(result.subgenre_match).toBe(false);
   });
 
 });

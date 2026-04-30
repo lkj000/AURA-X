@@ -2,6 +2,11 @@ import { Worker, Job } from "bullmq";
 import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
 import { connection, AudioJobData, GenerationJobData, enqueueAudioAnalysis } from "./index";
+import {
+  contrastScoreFromAnalysis,
+  subgenreMatchesAmapiano,
+  CONTRAST_SCORE_THRESHOLD,
+} from "../generation/mode2QualityGate";
 
 if (!connection) {
   console.log("[workers] Skipping worker startup — no Redis connection.");
@@ -196,6 +201,44 @@ export const generationWorker = new Worker(
         },
       });
 
+    // ─── 4a. QUALITY GATE: CONTRAST SCORE + SUBGENRE ─
+    const AUDIO_SERVICE_URL = process.env.AUDIO_SERVICE_URL ?? "http://localhost:8000";
+    let contrastScore = CONTRAST_SCORE_THRESHOLD; // default pass when service unavailable
+    let subgenreMatch = true;
+
+    try {
+      const qgResp = await axios.post(
+        `${AUDIO_SERVICE_URL}/analysis/analyze`,
+        { audio_file_id: fileId, track_id },
+        { timeout: 120000 }
+      );
+      const qgAnalysis = qgResp.data as {
+        bpm: number;
+        energy_mean: number;
+        onset_density?: number;
+      };
+      contrastScore = contrastScoreFromAnalysis(qgAnalysis);
+      subgenreMatch = subgenreMatchesAmapiano(qgAnalysis.bpm).match;
+    } catch {
+      // Audio service unavailable — skip quality gate gracefully
+    }
+
+    if (contrastScore < CONTRAST_SCORE_THRESHOLD) {
+      await supabase
+        .from("generations")
+        .update({
+          status: "degraded",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", generation_id);
+      return {
+        status: "degraded",
+        generation_id,
+        contrast_score: contrastScore,
+        subgenre_match: subgenreMatch,
+      };
+    }
+
     // ─── 5. UPDATE GENERATION RECORD ────────────────
     await supabase
       .from("generations")
@@ -214,7 +257,7 @@ export const generationWorker = new Worker(
     });
 
     console.log(`[generation.mode2] ✓ Generation ${generation_id} complete — ${storagePath}`);
-    return { status: "complete", generation_id, audio_file_id: fileId };
+    return { status: "complete", generation_id, audio_file_id: fileId, contrast_score: contrastScore, subgenre_match: subgenreMatch };
   },
   {
     connection,
