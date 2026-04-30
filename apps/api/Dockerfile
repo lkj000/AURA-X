@@ -3,7 +3,7 @@ WORKDIR /app
 RUN npm install -g pnpm
 
 # ── Workspace manifests ───────────────────────────────────────────────────────
-COPY package.json pnpm-workspace.yaml turbo.json ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json ./
 COPY packages/ctl/package.json              ./packages/ctl/
 COPY packages/suno-exporter/package.json    ./packages/suno-exporter/
 COPY packages/ac-ami/package.json           ./packages/ac-ami/
