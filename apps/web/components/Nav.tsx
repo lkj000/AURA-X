@@ -9,6 +9,7 @@ const links = [
   { href: "/tracks", label: "Tracks" },
   { href: "/marketplace", label: "Marketplace" },
   { href: "/earnings", label: "Earnings" },
+  { href: "/onboarding", label: "Sign up" },
   { href: "/dataset", label: "Dataset" },
 ];
 

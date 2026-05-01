@@ -290,6 +290,27 @@ export const submitFeedback = (body: FeedbackInput) =>
     body: JSON.stringify(body),
   });
 
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
+export interface AuthResult {
+  artist_id: string;
+  name: string;
+  email: string;
+  token: string;
+}
+
+export const registerArtist = (body: { name: string; email: string; password: string; country?: string }) =>
+  request<AuthResult>("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const loginArtist = (body: { email: string; password: string }) =>
+  request<AuthResult>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
 // ── Marketplace ──────────────────────────────────────────────────────────────
 
 export interface MarketplaceTier {
