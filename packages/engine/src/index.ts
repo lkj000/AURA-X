@@ -34,6 +34,7 @@ export type {
   AmapianEvaluation, Enhancement,
   MidiNote, BlendStrategy, ArrangementStrategy, RefinementAction,
   DimensionDelta, ComparisonReport,
+  PatternFingerprint, PatternSimilarity,
 }                                                     from "./types";
 
 export {
@@ -96,3 +97,6 @@ export type { VariationOptions }                      from "./groove/variation_e
 
 // ── Comparative evaluation ────────────────────────────────────────────────────
 export { compareEvaluations, compareBuffers }         from "./evaluation/comparison";
+
+// ── Pattern fingerprinting ────────────────────────────────────────────────────
+export { fingerprintGroovePlan, comparePatterns }     from "./groove/pattern_fingerprint";

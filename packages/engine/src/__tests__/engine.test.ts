@@ -23,6 +23,7 @@ import { analyzeAndPlan } from "../pipeline/analysis_pipeline";
 import { evaluateBuffer, buildEnhancement } from "../pipeline/evaluation";
 import { generateGrooveVariations } from "../groove/variation_engine";
 import { compareEvaluations } from "../evaluation/comparison";
+import { fingerprintGroovePlan, comparePatterns } from "../groove/pattern_fingerprint";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -1454,7 +1455,110 @@ describe("comparison_engine", () => {
   });
 });
 
-// ── 22. Lane grammar constants ────────────────────────────────────────────────
+// ── 22. Pattern fingerprinting & similarity ───────────────────────────────────
+
+describe("pattern_fingerprint", () => {
+  const set = generateGrooveVariations("sgija");
+
+  test("fingerprintGroovePlan returns a PatternFingerprint", () => {
+    const fp = fingerprintGroovePlan(set.main);
+    expect(fp).toBeDefined();
+    expect(fp.hash).toBeDefined();
+    expect(fp.vectors).toBeDefined();
+  });
+
+  test("hash is a 32-char hex string", () => {
+    const fp = fingerprintGroovePlan(set.main);
+    expect(fp.hash).toHaveLength(32);
+    expect(/^[0-9a-f]+$/.test(fp.hash)).toBe(true);
+  });
+
+  test("same plan produces identical hash (deterministic)", () => {
+    const fp1 = fingerprintGroovePlan(set.main);
+    const fp2 = fingerprintGroovePlan(set.main);
+    expect(fp1.hash).toBe(fp2.hash);
+  });
+
+  test("different variants produce different hashes", () => {
+    const hashes = [set.main, set.variation, set.fill, set.breakdown, set.build]
+      .map((p) => fingerprintGroovePlan(p).hash);
+    const unique = new Set(hashes);
+    expect(unique.size).toBe(5);
+  });
+
+  test("density in [0, 1]", () => {
+    for (const variant of [set.main, set.variation, set.fill, set.breakdown, set.build]) {
+      const { density } = fingerprintGroovePlan(variant);
+      expect(density).toBeGreaterThanOrEqual(0);
+      expect(density).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("fill has higher density than breakdown", () => {
+    const fillDensity = fingerprintGroovePlan(set.fill).density;
+    const bdDensity   = fingerprintGroovePlan(set.breakdown).density;
+    expect(fillDensity).toBeGreaterThan(bdDensity);
+  });
+
+  test("vectors have 16 elements each", () => {
+    const fp = fingerprintGroovePlan(set.main);
+    expect(fp.vectors.kick).toHaveLength(16);
+    expect(fp.vectors.hat).toHaveLength(16);
+    expect(fp.vectors.shaker).toHaveLength(16);
+    expect(fp.vectors.log).toHaveLength(16);
+  });
+
+  test("all vector values are 0 or 1", () => {
+    const fp = fingerprintGroovePlan(set.main);
+    for (const v of [...fp.vectors.kick, ...fp.vectors.hat, ...fp.vectors.shaker, ...fp.vectors.log]) {
+      expect([0, 1]).toContain(v);
+    }
+  });
+
+  test("comparePatterns — self similarity is 1.0", () => {
+    const sim = comparePatterns(set.main, set.main);
+    expect(sim.overallSim).toBeCloseTo(1.0, 9);
+    expect(sim.kickSim).toBeCloseTo(1.0, 9);
+    expect(sim.logSim).toBeCloseTo(1.0, 9);
+  });
+
+  test("comparePatterns — self comparison isMatch true", () => {
+    const sim = comparePatterns(set.main, set.main);
+    expect(sim.isMatch).toBe(true);
+  });
+
+  test("comparePatterns — all similarity scores in [0, 1]", () => {
+    const sim = comparePatterns(set.main, set.fill);
+    expect(sim.kickSim).toBeGreaterThanOrEqual(0); expect(sim.kickSim).toBeLessThanOrEqual(1);
+    expect(sim.hatSim).toBeGreaterThanOrEqual(0);  expect(sim.hatSim).toBeLessThanOrEqual(1);
+    expect(sim.shakerSim).toBeGreaterThanOrEqual(0); expect(sim.shakerSim).toBeLessThanOrEqual(1);
+    expect(sim.logSim).toBeGreaterThanOrEqual(0);  expect(sim.logSim).toBeLessThanOrEqual(1);
+    expect(sim.overallSim).toBeGreaterThanOrEqual(0); expect(sim.overallSim).toBeLessThanOrEqual(1);
+  });
+
+  test("comparePatterns — fingerprintA/B match individual hashes", () => {
+    const fpA = fingerprintGroovePlan(set.main);
+    const fpB = fingerprintGroovePlan(set.variation);
+    const sim  = comparePatterns(set.main, set.variation);
+    expect(sim.fingerprintA).toBe(fpA.hash);
+    expect(sim.fingerprintB).toBe(fpB.hash);
+  });
+
+  test("comparePatterns — works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      const s = generateGrooveVariations(lane);
+      expect(() => comparePatterns(s.main, s.variation)).not.toThrow();
+    }
+  });
+
+  test("breakdown vs fill similarity lower than main vs variation", () => {
+    const simClose = comparePatterns(set.main, set.variation).overallSim;
+    const simFar   = comparePatterns(set.breakdown, set.fill).overallSim;
+    expect(simClose).toBeGreaterThan(simFar);
+  });
+});
+
+// ── 23. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;

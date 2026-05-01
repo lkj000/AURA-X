@@ -385,6 +385,31 @@ export interface ComparisonReport {
   improvements:  string[];  // human-readable improvement messages
 }
 
+// ─── Pattern fingerprinting ───────────────────────────────────────────────────
+
+export interface PatternFingerprint {
+  lane:    Lane;
+  hash:    string;          // 32-char hex (two chained FNV-1a hashes)
+  vectors: {
+    kick:   readonly number[];  // 16-step binary
+    hat:    readonly number[];
+    shaker: readonly number[];
+    log:    readonly number[];
+  };
+  density: number;          // total hits / 64 (all voices combined), ∈ [0, 1]
+}
+
+export interface PatternSimilarity {
+  fingerprintA: string;     // hash of plan A
+  fingerprintB: string;     // hash of plan B
+  kickSim:      number;     // [0, 1] — 1 = identical kick patterns
+  hatSim:       number;
+  shakerSim:    number;
+  logSim:       number;
+  overallSim:   number;     // weighted: log 0.35, kick 0.30, hat 0.20, shaker 0.15
+  isMatch:      boolean;    // overallSim >= 0.75
+}
+
 // ─── Groove variations ────────────────────────────────────────────────────────
 
 export type GrooveVariationType = "main" | "variation" | "fill" | "breakdown" | "build";
