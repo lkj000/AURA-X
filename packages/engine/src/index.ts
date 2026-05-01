@@ -67,6 +67,7 @@ export type {
   SectionTickRange, TickMap,
   RetrogradResult,
   EuclideanResult,
+  PolyrhythmLayer, PolyrhythmResult,
 }                                                     from "./types";
 
 export {
@@ -232,6 +233,10 @@ export type { RetrogradeOptions }                     from "./groove/retrograde"
 // ── Euclidean rhythm generator ────────────────────────────────────────────────
 export { generateEuclidean }                          from "./groove/euclidean_rhythm";
 export type { EuclideanOptions }                      from "./groove/euclidean_rhythm";
+
+// ── Polyrhythm layer generator ────────────────────────────────────────────────
+export { generatePolyrhythm }                         from "./groove/polyrhythm_generator";
+export type { PolyrhythmOptions }                     from "./groove/polyrhythm_generator";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";

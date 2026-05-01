@@ -464,6 +464,22 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Polyrhythm ───────────────────────────────────────────────────────────────
+
+export interface PolyrhythmLayer {
+  hits:     number;     // onset count
+  steps:    number;     // step count (cycle length)
+  pattern:  number[];   // Euclidean binary pattern of length `steps`
+  tickGrid: number[];   // absolute tick position of each step within one bar
+}
+
+export interface PolyrhythmResult {
+  layerA:      PolyrhythmLayer;
+  layerB:      PolyrhythmLayer;
+  ticksPerBar: number;
+  ratio:       string;   // e.g. "3:4"
+}
+
 // ─── Euclidean rhythm ─────────────────────────────────────────────────────────
 
 export interface EuclideanResult {

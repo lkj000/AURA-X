@@ -58,6 +58,7 @@ import { normalizeDensity }      from "../groove/density_normalizer";
 import { buildTickMap }          from "../daw_export/bar_tick_converter";
 import { retrogradePattern }     from "../groove/retrograde";
 import { generateEuclidean }     from "../groove/euclidean_rhythm";
+import { generatePolyrhythm }   from "../groove/polyrhythm_generator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -4661,5 +4662,81 @@ describe("57. Euclidean rhythm generator", () => {
   test("E(5,16) and E(7,16) — common Amapiano densities have correct hit counts", () => {
     expect(generateEuclidean(5, 16).hits).toBe(5);
     expect(generateEuclidean(7, 16).hits).toBe(7);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 58. Polyrhythm layer generator
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("58. Polyrhythm layer generator", () => {
+  const r34  = generatePolyrhythm();                              // 3:4 default
+  const r43  = generatePolyrhythm({ stepsA: 4, stepsB: 3 });
+  const TPB  = 1920;
+
+  test("default ratio is '3:4'", () => {
+    expect(r34.ratio).toBe("3:4");
+  });
+
+  test("layerA pattern length equals stepsA", () => {
+    expect(r34.layerA.pattern).toHaveLength(3);
+  });
+
+  test("layerB pattern length equals stepsB", () => {
+    expect(r34.layerB.pattern).toHaveLength(4);
+  });
+
+  test("tickGrid length equals steps for each layer", () => {
+    expect(r34.layerA.tickGrid).toHaveLength(r34.layerA.steps);
+    expect(r34.layerB.tickGrid).toHaveLength(r34.layerB.steps);
+  });
+
+  test("first tickGrid entry is 0 for both layers", () => {
+    expect(r34.layerA.tickGrid[0]).toBe(0);
+    expect(r34.layerB.tickGrid[0]).toBe(0);
+  });
+
+  test("tickGrid entries are monotonically increasing", () => {
+    for (const layer of [r34.layerA, r34.layerB]) {
+      for (let i = 1; i < layer.tickGrid.length; i++) {
+        expect(layer.tickGrid[i]).toBeGreaterThan(layer.tickGrid[i - 1]);
+      }
+    }
+  });
+
+  test("last tickGrid entry < ticksPerBar", () => {
+    expect(r34.layerA.tickGrid[r34.layerA.tickGrid.length - 1]).toBeLessThan(TPB);
+    expect(r34.layerB.tickGrid[r34.layerB.tickGrid.length - 1]).toBeLessThan(TPB);
+  });
+
+  test("3:4 tickGrid A at [0, 640, 1280] with default ticksPerBar=1920", () => {
+    expect(r34.layerA.tickGrid).toEqual([0, 640, 1280]);
+  });
+
+  test("3:4 tickGrid B at [0, 480, 960, 1440] with default ticksPerBar=1920", () => {
+    expect(r34.layerB.tickGrid).toEqual([0, 480, 960, 1440]);
+  });
+
+  test("ratio reflects actual stepsA:stepsB", () => {
+    expect(r43.ratio).toBe("4:3");
+    expect(generatePolyrhythm({ stepsA: 5, stepsB: 7 }).ratio).toBe("5:7");
+  });
+
+  test("ticksPerBar is honoured and reflected in output", () => {
+    const r = generatePolyrhythm({ ticksPerBar: 960 });
+    expect(r.ticksPerBar).toBe(960);
+    expect(r.layerA.tickGrid[1]).toBe(Math.round(960 / 3));
+  });
+
+  test("custom hits are applied to each layer", () => {
+    const r = generatePolyrhythm({ stepsA: 4, hitsA: 2, stepsB: 4, hitsB: 3 });
+    expect(r.layerA.hits).toBe(2);
+    expect(r.layerB.hits).toBe(3);
+    expect(r.layerA.pattern.reduce((s, v) => s + v, 0)).toBe(2);
+    expect(r.layerB.pattern.reduce((s, v) => s + v, 0)).toBe(3);
+  });
+
+  test("output is deterministic", () => {
+    expect(generatePolyrhythm()).toEqual(generatePolyrhythm());
   });
 });
