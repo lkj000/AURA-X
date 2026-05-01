@@ -57,6 +57,7 @@ export type {
   WidthPoint, WidthAutomation,
   ScaleName, QuantizedNote, ScaleQuantizeResult,
   TensionLabel, ChordTension, TensionArc,
+  StructureRule, StructureValidation,
 }                                                     from "./types";
 
 export {
@@ -163,6 +164,9 @@ export { quantizeToScale, SCALE_INTERVALS }           from "./intelligence/scale
 
 // ── Harmonic tension scorer ───────────────────────────────────────────────────
 export { scoreTension }                               from "./intelligence/tension_scorer";
+
+// ── Song structure validator ──────────────────────────────────────────────────
+export { validateStructure }                          from "./pipeline/structure_validator";
 
 // ── Sample recommendation ─────────────────────────────────────────────────────
 export { recommendSamples }                           from "./intelligence/sample_recommender";

@@ -447,6 +447,21 @@ export interface ReverbSpec {
   params:     ReverbParams[];   // one per stem, ordered sub_bass → air
 }
 
+// ─── Structure validation ─────────────────────────────────────────────────────
+
+export interface StructureRule {
+  name:   string;
+  passes: boolean;
+  message: string;   // human-readable pass / fail description
+}
+
+export interface StructureValidation {
+  passes:     boolean;         // true iff every rule passes
+  score:      number;          // passing rules / total rules [0, 1]
+  rules:      StructureRule[];
+  violations: string[];        // messages of failed rules
+}
+
 // ─── Harmonic tension ─────────────────────────────────────────────────────────
 
 export type TensionLabel = "resolved" | "mild" | "moderate" | "tense" | "dissonant";

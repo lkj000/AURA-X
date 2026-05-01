@@ -48,6 +48,7 @@ import { scheduleVocalChops } from "../intelligence/vocal_chop_scheduler";
 import { generateWidthAutomation } from "../arrangement/width_automator";
 import { quantizeToScale, SCALE_INTERVALS } from "../intelligence/scale_quantizer";
 import { scoreTension } from "../intelligence/tension_scorer";
+import { validateStructure } from "../pipeline/structure_validator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -3784,6 +3785,81 @@ describe("tension_scorer", () => {
     for (const lane of LANES) {
       const p = buildChordProgression({ lane });
       expect(() => scoreTension(p)).not.toThrow();
+    }
+  });
+});
+
+// ── 48. Song structure validator ──────────────────────────────────────────────
+
+describe("structure_validator", () => {
+  const arc = planArrangementArc("private_school", { totalBars: 64 });
+  const sv  = validateStructure(arc);
+
+  test("standard arc passes all 12 rules (passes = true)", () => {
+    expect(sv.passes).toBe(true);
+  });
+
+  test("score is 1.0 when all rules pass", () => {
+    expect(sv.score).toBe(1.0);
+  });
+
+  test("exactly 12 rules are evaluated", () => {
+    expect(sv.rules).toHaveLength(12);
+  });
+
+  test("violations array is empty for a valid arc", () => {
+    expect(sv.violations).toHaveLength(0);
+  });
+
+  test("score is in [0, 1]", () => {
+    expect(sv.score).toBeGreaterThanOrEqual(0);
+    expect(sv.score).toBeLessThanOrEqual(1);
+  });
+
+  test("passes === (score === 1.0)", () => {
+    expect(sv.passes).toBe(sv.score === 1.0);
+  });
+
+  test("each rule has a non-empty name and message", () => {
+    for (const r of sv.rules) {
+      expect(r.name.length).toBeGreaterThan(0);
+      expect(r.message.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("out-of-range BPM triggers amapiano_bpm_range failure", () => {
+    const slowArc = planArrangementArc("private_school", { bpm: 80, totalBars: 64 });
+    const result  = validateStructure(slowArc);
+    const bpmRule = result.rules.find((r) => r.name === "amapiano_bpm_range")!;
+    expect(bpmRule.passes).toBe(false);
+    expect(result.violations).toContain(bpmRule.message);
+  });
+
+  test("totalBars below 16 triggers total_bars_valid failure", () => {
+    const tinyArc = planArrangementArc("private_school", { totalBars: 8 });
+    const result  = validateStructure(tinyArc);
+    const rule    = result.rules.find((r) => r.name === "total_bars_valid")!;
+    expect(rule.passes).toBe(false);
+  });
+
+  test("score decreases proportionally with number of violations", () => {
+    const slowArc = planArrangementArc("private_school", { bpm: 80, totalBars: 8 });
+    const result  = validateStructure(slowArc);
+    const passCount = result.rules.filter((r) => r.passes).length;
+    expect(result.score).toBeCloseTo(passCount / 12, 6);
+  });
+
+  test("drop1 and drop2 intensity rules pass for standard arc", () => {
+    const d1 = sv.rules.find((r) => r.name === "drop1_high_intensity")!;
+    const d2 = sv.rules.find((r) => r.name === "drop2_high_intensity")!;
+    expect(d1.passes).toBe(true);
+    expect(d2.passes).toBe(true);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      const a = planArrangementArc(lane, { totalBars: 64 });
+      expect(() => validateStructure(a)).not.toThrow();
     }
   });
 });
