@@ -49,6 +49,7 @@ export type {
   TransposeResult,
   GainPoint, StemGainCurve, GainAutomation,
   SidechainCurve,
+  FilterPoint, FilterAutomation,
 }                                                     from "./types";
 
 export {
@@ -127,6 +128,9 @@ export type { ArcOptions }                            from "./arrangement/arc_pl
 
 // ── Stem gain automation ──────────────────────────────────────────────────────
 export { automateGains }                              from "./arrangement/stem_gain_automator";
+
+// ── Filter automation ─────────────────────────────────────────────────────────
+export { generateFilterAutomation }                   from "./arrangement/filter_automator";
 
 // ── Mix spec ──────────────────────────────────────────────────────────────────
 export { generateMixSpec }                            from "./mix/mix_spec";

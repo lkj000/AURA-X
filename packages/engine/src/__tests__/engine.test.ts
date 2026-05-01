@@ -40,6 +40,7 @@ import { scoreGrooveComplexity } from "../groove/complexity_scorer";
 import { transposeProgression } from "../intelligence/key_transposer";
 import { automateGains } from "../arrangement/stem_gain_automator";
 import { generateSidechain } from "../groove/sidechain_generator";
+import { generateFilterAutomation } from "../arrangement/filter_automator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -3092,6 +3093,78 @@ describe("sidechain_generator", () => {
     for (const lane of LANES) {
       const lp: import("../types").GroovePlan = { ...scPlan, lane };
       expect(() => generateSidechain(lp, { bpm: 114 })).not.toThrow();
+    }
+  });
+});
+
+// ── 40. Filter automation generator ──────────────────────────────────────────
+
+describe("filter_automator", () => {
+  const arc = planArrangementArc("private_school", { totalBars: 64 });
+  const fa  = generateFilterAutomation(arc);
+
+  test("totalBars matches arc", () => {
+    expect(fa.totalBars).toBe(arc.totalBars);
+  });
+
+  test("points are in strictly ascending bar order", () => {
+    for (let i = 1; i < fa.points.length; i++) {
+      expect(fa.points[i].bar).toBeGreaterThan(fa.points[i - 1].bar);
+    }
+  });
+
+  test("no duplicate bar values", () => {
+    const bars = fa.points.map((p) => p.bar);
+    expect(new Set(bars).size).toBe(bars.length);
+  });
+
+  test("all cutoffHz values in audible range [20, 20000]", () => {
+    for (const p of fa.points) {
+      expect(p.cutoffHz).toBeGreaterThanOrEqual(20);
+      expect(p.cutoffHz).toBeLessThanOrEqual(20000);
+    }
+  });
+
+  test("first point is at bar 0", () => {
+    expect(fa.points[0].bar).toBe(0);
+  });
+
+  test("first point cutoffHz is INITIAL_HZ (300) — filter sealed at start", () => {
+    expect(fa.points[0].cutoffHz).toBe(300);
+  });
+
+  test("drop1 section ends with cutoffHz >= 18000", () => {
+    const drop1 = arc.sections.find((s) => s.name === "drop1")!;
+    const pt    = fa.points.find((p) => p.bar === drop1.endBar);
+    expect(pt?.cutoffHz).toBeGreaterThanOrEqual(18000);
+  });
+
+  test("breakdown section ends with cutoffHz <= 1200", () => {
+    const bd = arc.sections.find((s) => s.name === "breakdown")!;
+    const pt = fa.points.find((p) => p.bar === bd.endBar);
+    expect(pt?.cutoffHz).toBeLessThanOrEqual(1200);
+  });
+
+  test("outro_fade section ends at minimum cutoffHz (400)", () => {
+    const last = fa.points[fa.points.length - 1];
+    expect(last.cutoffHz).toBe(400);
+  });
+
+  test("build1 end cutoffHz > build1 start cutoffHz (filter opens)", () => {
+    const build1 = arc.sections.find((s) => s.name === "build1")!;
+    const start  = fa.points.find((p) => p.bar === build1.startBar)!;
+    const end    = fa.points.find((p) => p.bar === build1.endBar)!;
+    expect(end.cutoffHz).toBeGreaterThan(start.cutoffHz);
+  });
+
+  test("has at least as many points as sections + 1 (initial point)", () => {
+    expect(fa.points.length).toBeGreaterThanOrEqual(arc.sections.length + 1);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      const a = planArrangementArc(lane, { totalBars: 32 });
+      expect(() => generateFilterAutomation(a)).not.toThrow();
     }
   });
 });

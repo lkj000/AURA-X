@@ -419,6 +419,18 @@ export interface TransposeResult {
   semitones:   number;            // signed shortest-path offset (−6 … +6)
 }
 
+// ─── Filter automation ────────────────────────────────────────────────────────
+
+export interface FilterPoint {
+  bar:      number;   // absolute bar index within the arrangement
+  cutoffHz: number;   // LP filter cutoff frequency in Hz [20, 20000]
+}
+
+export interface FilterAutomation {
+  totalBars: number;
+  points:    FilterPoint[];   // ascending by bar; interpolate linearly
+}
+
 // ─── Sidechain automation ─────────────────────────────────────────────────────
 
 export interface SidechainCurve {
