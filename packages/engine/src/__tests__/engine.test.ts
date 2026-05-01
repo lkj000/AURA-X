@@ -51,6 +51,7 @@ import { scoreTension } from "../intelligence/tension_scorer";
 import { validateStructure } from "../pipeline/structure_validator";
 import { generateCallResponse } from "../groove/call_response_generator";
 import { deduplicateMidi } from "../daw_export/midi_deduplicator";
+import { shapeVelocities } from "../groove/velocity_shaper";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -4057,5 +4058,102 @@ describe("50. MIDI note deduplicator", () => {
     const r = deduplicateMidi([n(60, 0, 3), n(62, 0, 3)], { minDurationTicks: 5 });
     expect(r.notes).toHaveLength(0);
     expect(r.removedCount).toBe(2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 51. Pattern velocity shaper
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("51. Pattern velocity shaper", () => {
+  const allActive = new Array(16).fill(1);
+  const allSilent = new Array(16).fill(0);
+  // kick-like pattern: 0, 4, 8, 12
+  const kickPat   = allActive.map((_, i) => (i % 4 === 0 ? 1 : 0));
+
+  test("all-silent pattern returns all-zero velocities, peakStep -1, meanVelocity 0", () => {
+    const r = shapeVelocities(allSilent);
+    expect(r.velocities.every((v) => v === 0)).toBe(true);
+    expect(r.peakStep).toBe(-1);
+    expect(r.meanVelocity).toBe(0);
+  });
+
+  test("all-active pattern: all 16 velocities in [1, 127]", () => {
+    const r = shapeVelocities(allActive);
+    for (const v of r.velocities) {
+      expect(v).toBeGreaterThanOrEqual(1);
+      expect(v).toBeLessThanOrEqual(127);
+    }
+  });
+
+  test("velocities array is always length 16", () => {
+    expect(shapeVelocities([]).velocities).toHaveLength(16);
+    expect(shapeVelocities(allActive).velocities).toHaveLength(16);
+    expect(shapeVelocities([1, 0, 1]).velocities).toHaveLength(16);
+  });
+
+  test("pattern is a defensive copy (not the original reference)", () => {
+    const input = [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0];
+    const r = shapeVelocities(input);
+    input[0] = 0;
+    expect(r.pattern[0]).toBe(1);
+  });
+
+  test("downbeat (step 0) louder than odd ghost step (step 1) when both active", () => {
+    const r = shapeVelocities(allActive, { seed: "test" });
+    expect(r.velocities[0]).toBeGreaterThan(r.velocities[1]);
+  });
+
+  test("peakStep points to the step with the highest velocity", () => {
+    const r = shapeVelocities(allActive);
+    const maxV = Math.max(...r.velocities);
+    expect(r.velocities[r.peakStep]).toBe(maxV);
+  });
+
+  test("meanVelocity is the mean of active-step velocities", () => {
+    const r = shapeVelocities(kickPat);
+    const active = r.velocities.filter((v) => v > 0);
+    const expected = active.reduce((s, v) => s + v, 0) / active.length;
+    expect(r.meanVelocity).toBeCloseTo(expected, 6);
+  });
+
+  test("ghost=false raises odd-step velocities above ghost=true", () => {
+    const rGhost    = shapeVelocities(allActive, { ghost: true,  seed: "g" });
+    const rNoGhost  = shapeVelocities(allActive, { ghost: false, seed: "g" });
+    // Average odd-step velocity should be higher when ghost=false
+    const oddAvgG  = [1,3,5,7,9,11,13,15].reduce((s, i) => s + rGhost.velocities[i],   0) / 8;
+    const oddAvgNG = [1,3,5,7,9,11,13,15].reduce((s, i) => s + rNoGhost.velocities[i], 0) / 8;
+    expect(oddAvgNG).toBeGreaterThan(oddAvgG);
+  });
+
+  test("higher accentStrength → higher velocity on downbeat (step 0)", () => {
+    const rLow  = shapeVelocities(allActive, { accentStrength: 0.0, seed: "a" });
+    const rHigh = shapeVelocities(allActive, { accentStrength: 0.5, seed: "a" });
+    expect(rHigh.velocities[0]).toBeGreaterThanOrEqual(rLow.velocities[0]);
+  });
+
+  test("output is deterministic for identical inputs", () => {
+    const r1 = shapeVelocities(allActive, { seed: "s1" });
+    const r2 = shapeVelocities(allActive, { seed: "s1" });
+    expect(r1.velocities).toEqual(r2.velocities);
+  });
+
+  test("different seeds produce different velocity arrays", () => {
+    const r1 = shapeVelocities(allActive, { seed: "seedA" });
+    const r2 = shapeVelocities(allActive, { seed: "seedB" });
+    expect(r1.velocities).not.toEqual(r2.velocities);
+  });
+
+  test("silent steps always have velocity 0 regardless of options", () => {
+    const r = shapeVelocities(kickPat, { ghost: false, accentStrength: 1.0 });
+    for (let i = 0; i < 16; i++) {
+      if (kickPat[i] === 0) expect(r.velocities[i]).toBe(0);
+    }
+  });
+
+  test("baseVelocity is honoured — lower base → lower mean velocity", () => {
+    const rLow  = shapeVelocities(allActive, { baseVelocity: 40, seed: "b" });
+    const rHigh = shapeVelocities(allActive, { baseVelocity: 100, seed: "b" });
+    expect(rHigh.meanVelocity).toBeGreaterThan(rLow.meanVelocity);
   });
 });

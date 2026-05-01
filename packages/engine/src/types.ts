@@ -464,6 +464,15 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Velocity shape ───────────────────────────────────────────────────────────
+
+export interface VelocityShape {
+  pattern:      number[];   // 16-step binary (input copy)
+  velocities:   number[];   // 16-element: MIDI velocity [1,127] on active steps, 0 on silent
+  peakStep:     number;     // index of loudest active step; -1 if no active steps
+  meanVelocity: number;     // mean velocity of active steps; 0 if no active steps
+}
+
 // ─── Call-and-response ────────────────────────────────────────────────────────
 
 export interface CallAndResponse {

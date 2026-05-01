@@ -60,6 +60,7 @@ export type {
   StructureRule, StructureValidation,
   CallAndResponse,
   MidiNoteEvent, DeduplicateResult,
+  VelocityShape,
 }                                                     from "./types";
 
 export {
@@ -198,6 +199,10 @@ export type { SidechainOptions }                      from "./groove/sidechain_g
 // ── Groove interpolator ───────────────────────────────────────────────────────
 export { interpolateGrooves }                         from "./groove/groove_interpolator";
 export type { InterpolateOptions }                    from "./groove/groove_interpolator";
+
+// ── Pattern velocity shaper ───────────────────────────────────────────────────
+export { shapeVelocities }                            from "./groove/velocity_shaper";
+export type { VelocityShapeOptions }                  from "./groove/velocity_shaper";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";
