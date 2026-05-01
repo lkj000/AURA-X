@@ -18,6 +18,7 @@ import { applyPerceptionModel, computeBEff, computePerceptualDensity, barkScale 
 import { decomposeStems } from "../perception/stem_decomposer";
 import { computeCulturalAlignment } from "../cultural/cultural_encoder";
 import { CULTURAL_PROFILES } from "../cultural/cultural_profiles";
+import { synthesizeCtl } from "../ctl_synthesis/ctl_synthesizer";
 import { evaluateBuffer, buildEnhancement } from "../index";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
@@ -1110,6 +1111,95 @@ describe("cultural_encoder", () => {
     expect(result.cultural.alignmentScore).toBeLessThanOrEqual(1);
     expect(result.cultural.ctlConditioning.mixProfile).toBeDefined();
     expect(Array.isArray(result.cultural.deviations)).toBe(true);
+  });
+});
+
+// ── 18. CTL Spec Synthesis ────────────────────────────────────────────────────
+
+describe("ctl_synthesizer", () => {
+  let evaluation: ReturnType<typeof evaluateBuffer>;
+
+  beforeAll(() => { evaluation = evaluateBuffer(buildWav(4)); });
+
+  test("synthesizeCtl — does not throw", () => {
+    expect(() => synthesizeCtl(evaluation, "Test Track", "test_user")).not.toThrow();
+  });
+
+  test("schema_version is ctl_v1", () => {
+    const ctl = synthesizeCtl(evaluation, "Test Track", "test_user");
+    expect(ctl.schema_version).toBe("ctl_v1");
+  });
+
+  test("global.subgenre matches bestFitLane", () => {
+    const ctl = synthesizeCtl(evaluation, "Test Track", "test_user");
+    expect(ctl.global.subgenre).toBe(evaluation.laneScores.bestFitLane);
+  });
+
+  test("global.bpm is in [95, 130]", () => {
+    const ctl = synthesizeCtl(evaluation, "Test Track", "test_user");
+    expect(ctl.global.bpm).toBeGreaterThanOrEqual(95);
+    expect(ctl.global.bpm).toBeLessThanOrEqual(130);
+  });
+
+  test("global.key is a non-empty string", () => {
+    const ctl = synthesizeCtl(evaluation, "Test Track", "test_user");
+    expect(typeof ctl.global.key).toBe("string");
+    expect(ctl.global.key.length).toBeGreaterThan(0);
+  });
+
+  test("style_constraints.preferred_keys is non-empty", () => {
+    const ctl = synthesizeCtl(evaluation, "Test Track", "test_user");
+    expect(Array.isArray(ctl.style_constraints.preferred_keys)).toBe(true);
+    expect(ctl.style_constraints.preferred_keys.length).toBeGreaterThan(0);
+  });
+
+  test("all evaluation_targets in [0, 1]", () => {
+    const ctl = synthesizeCtl(evaluation, "Test Track", "test_user");
+    const et  = ctl.evaluation_targets;
+    for (const v of Object.values(et)) {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("sections is non-empty array", () => {
+    const ctl = synthesizeCtl(evaluation, "Test Track", "test_user");
+    expect(Array.isArray(ctl.sections)).toBe(true);
+    expect(ctl.sections.length).toBeGreaterThan(0);
+  });
+
+  test("groove_patterns has at least 1 pattern with 16 steps", () => {
+    const ctl = synthesizeCtl(evaluation, "Test Track", "test_user");
+    expect(ctl.groove_patterns.length).toBeGreaterThan(0);
+    expect(ctl.groove_patterns[0].steps).toHaveLength(16);
+  });
+
+  test("curves.energy values are in [0, 1]", () => {
+    const ctl = synthesizeCtl(evaluation, "Test Track", "test_user");
+    for (const pt of ctl.curves.energy) {
+      expect(pt.value).toBeGreaterThanOrEqual(0);
+      expect(pt.value).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("curves.log_drum_density values are in [0, 1]", () => {
+    const ctl = synthesizeCtl(evaluation, "Test Track", "test_user");
+    for (const pt of ctl.curves.log_drum_density) {
+      expect(pt.value).toBeGreaterThanOrEqual(0);
+      expect(pt.value).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("global.mix_profile matches cultural ctlConditioning", () => {
+    const ctl = synthesizeCtl(evaluation, "Test Track", "test_user");
+    expect(ctl.global.mix_profile).toBe(evaluation.cultural.ctlConditioning.mixProfile);
+  });
+
+  test("cultural_lineage has required keys", () => {
+    const ctl = synthesizeCtl(evaluation, "Test Track", "test_user");
+    expect(ctl.cultural_lineage).toHaveProperty("deep_house");
+    expect(ctl.cultural_lineage).toHaveProperty("kwaito");
+    expect(ctl.cultural_lineage).toHaveProperty("log_drum_innovation");
   });
 });
 

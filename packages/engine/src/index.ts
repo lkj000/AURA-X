@@ -67,6 +67,10 @@ export { decomposeStems }                             from "./perception/stem_de
 export { computeCulturalAlignment }                   from "./cultural/cultural_encoder";
 export { CULTURAL_PROFILES }                          from "./cultural/cultural_profiles";
 
+// ── CTL synthesis ─────────────────────────────────────────────────────────────
+export { synthesizeCtl }                              from "./ctl_synthesis/ctl_synthesizer";
+export type { CTLv1 }                                 from "./ctl_synthesis/ctl_synthesizer";
+
 // ── ML engine ─────────────────────────────────────────────────────────────────
 export {
   emptyPolicy, updatePolicy, computeActionScore, laneLeaderboard,
