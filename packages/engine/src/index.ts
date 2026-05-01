@@ -64,6 +64,7 @@ export type {
   SwingResult,
   StemMuteEvent, MuteSchedule,
   DensityNormalizeResult,
+  SectionTickRange, TickMap,
 }                                                     from "./types";
 
 export {
@@ -217,6 +218,10 @@ export { generateMuteSchedule }                       from "./arrangement/stem_m
 // ── Groove density normalizer ─────────────────────────────────────────────────
 export { normalizeDensity }                           from "./groove/density_normalizer";
 export type { NormalizeDensityOptions }               from "./groove/density_normalizer";
+
+// ── Bar-to-tick converter ─────────────────────────────────────────────────────
+export { buildTickMap }                               from "./daw_export/bar_tick_converter";
+export type { TickMapOptions }                        from "./daw_export/bar_tick_converter";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";

@@ -464,6 +464,24 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Bar-to-tick map ──────────────────────────────────────────────────────────
+
+export interface SectionTickRange {
+  section:   SectionName;
+  startTick: number;
+  endTick:   number;
+  bars:      number;   // endBar − startBar
+}
+
+export interface TickMap {
+  sections:     SectionTickRange[];
+  dropTick:     number;   // absolute tick of arc.dropBar
+  totalTicks:   number;   // tick length of full arrangement
+  ticksPerBeat: number;
+  ticksPerBar:  number;
+  beatsPerBar:  number;
+}
+
 // ─── Groove density normalization ────────────────────────────────────────────
 
 export interface DensityNormalizeResult {

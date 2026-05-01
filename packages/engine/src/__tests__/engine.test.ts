@@ -55,6 +55,7 @@ import { shapeVelocities } from "../groove/velocity_shaper";
 import { quantizeSwing }         from "../groove/swing_quantizer";
 import { generateMuteSchedule }  from "../arrangement/stem_mute_automator";
 import { normalizeDensity }      from "../groove/density_normalizer";
+import { buildTickMap }          from "../daw_export/bar_tick_converter";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -4417,5 +4418,85 @@ describe("54. Groove density normalizer", () => {
   test("output pattern is binary — only 0s and 1s", () => {
     const r = normalizeDensity(half, { targetFill: 0.75 });
     expect(r.pattern.every((v) => v === 0 || v === 1)).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 55. Bar-to-tick converter
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("55. Bar-to-tick converter", () => {
+  const arc  = planArrangementArc("sgija");   // 8 sections, 128 bars, bpm 114
+  const tmap = buildTickMap(arc);
+  const TPB  = 480;
+  const BPB  = 4;
+  const TPR  = TPB * BPB;   // 1920 ticks per bar
+
+  test("sections count matches arc sections count", () => {
+    expect(tmap.sections).toHaveLength(arc.sections.length);
+  });
+
+  test("sections are in arc order", () => {
+    expect(tmap.sections.map((s) => s.section)).toEqual(
+      arc.sections.map((s) => s.name),
+    );
+  });
+
+  test("startTick = startBar × ticksPerBar", () => {
+    for (let i = 0; i < arc.sections.length; i++) {
+      expect(tmap.sections[i].startTick).toBe(arc.sections[i].startBar * TPR);
+    }
+  });
+
+  test("endTick = endBar × ticksPerBar", () => {
+    for (let i = 0; i < arc.sections.length; i++) {
+      expect(tmap.sections[i].endTick).toBe(arc.sections[i].endBar * TPR);
+    }
+  });
+
+  test("first section startTick = 0", () => {
+    expect(tmap.sections[0].startTick).toBe(0);
+  });
+
+  test("last section endTick = totalTicks", () => {
+    const last = tmap.sections[tmap.sections.length - 1];
+    expect(last.endTick).toBe(tmap.totalTicks);
+  });
+
+  test("adjacent sections share tick boundaries", () => {
+    for (let i = 0; i < tmap.sections.length - 1; i++) {
+      expect(tmap.sections[i].endTick).toBe(tmap.sections[i + 1].startTick);
+    }
+  });
+
+  test("dropTick = arc.dropBar × ticksPerBar", () => {
+    expect(tmap.dropTick).toBe(arc.dropBar * TPR);
+  });
+
+  test("totalTicks = arc.totalBars × ticksPerBar", () => {
+    expect(tmap.totalTicks).toBe(arc.totalBars * TPR);
+  });
+
+  test("ticksPerBar = ticksPerBeat × beatsPerBar", () => {
+    expect(tmap.ticksPerBar).toBe(tmap.ticksPerBeat * tmap.beatsPerBar);
+  });
+
+  test("bars = endBar − startBar for each section", () => {
+    for (let i = 0; i < arc.sections.length; i++) {
+      const s = arc.sections[i];
+      expect(tmap.sections[i].bars).toBe(s.endBar - s.startBar);
+    }
+  });
+
+  test("custom ticksPerBeat doubles all ticks proportionally", () => {
+    const t960 = buildTickMap(arc, { ticksPerBeat: 960 });
+    expect(t960.totalTicks).toBe(tmap.totalTicks * 2);
+    expect(t960.sections[0].endTick).toBe(tmap.sections[0].endTick * 2);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      expect(() => buildTickMap(planArrangementArc(lane))).not.toThrow();
+    }
   });
 });
