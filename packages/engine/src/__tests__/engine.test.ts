@@ -14,6 +14,7 @@ import { transferGroove } from "../high_end_engine/groove_transfer";
 import { evaluateRender } from "../high_end_engine/render_evaluator";
 import { emptyPolicy, updatePolicy, computeActionScore, laneLeaderboard } from "../ml_engine/adaptive_action_learning";
 import { exportGrooveToMidi, groovePlanToMidi } from "../daw_export/midi_export";
+import { applyPerceptionModel, computeBEff, computePerceptualDensity, barkScale } from "../perception/perception_model";
 import { evaluateBuffer, buildEnhancement } from "../index";
 import { LANE_GRAMMARS, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
@@ -809,7 +810,105 @@ describe("buildEnhancement", () => {
   });
 });
 
-// ── 15. Lane grammar constants ────────────────────────────────────────────────
+// ── 15. O.211 Perception Model ────────────────────────────────────────────────
+
+describe("perception_model", () => {
+  const standardFeatures = dummyFeatures();   // sgija-like: bpm 114, energyRms 0.50, swing 0.53, sync 0.45
+
+  test("barkScale — 1 kHz gives ~8.5 Bark", () => {
+    const b = barkScale(1000);
+    expect(b).toBeGreaterThan(7.0);
+    expect(b).toBeLessThan(10.0);
+  });
+
+  test("barkScale — 100 Hz < 1000 Hz (monotone)", () => {
+    expect(barkScale(100)).toBeLessThan(barkScale(1000));
+    expect(barkScale(1000)).toBeLessThan(barkScale(10000));
+  });
+
+  test("computeBEff — in [0, 1] for standard features", () => {
+    const bEff = computeBEff(standardFeatures);
+    expect(bEff).toBeGreaterThanOrEqual(0);
+    expect(bEff).toBeLessThanOrEqual(1);
+  });
+
+  test("computeBEff — increases with spectral centroid", () => {
+    const low  = computeBEff(dummyFeatures({ spectralCentroid: 500 }));
+    const high = computeBEff(dummyFeatures({ spectralCentroid: 4000 }));
+    expect(high).toBeGreaterThan(low);
+  });
+
+  test("computePerceptualDensity — in [0, 1]", () => {
+    const d = computePerceptualDensity(standardFeatures);
+    expect(d).toBeGreaterThanOrEqual(0);
+    expect(d).toBeLessThanOrEqual(1);
+  });
+
+  test("computePerceptualDensity — high-energy features yield higher density", () => {
+    const low  = computePerceptualDensity(dummyFeatures({ energyRms: 0.10 }));
+    const high = computePerceptualDensity(dummyFeatures({ energyRms: 0.90 }));
+    expect(high).toBeGreaterThan(low);
+  });
+
+  test("applyPerceptionModel — returns exactly 3 anchors", () => {
+    const report = applyPerceptionModel(standardFeatures);
+    expect(report.anchors).toHaveLength(3);
+  });
+
+  test("applyPerceptionModel — anchor types are log_drum, harmonic, groove", () => {
+    const report = applyPerceptionModel(standardFeatures);
+    const types  = report.anchors.map((a) => a.type);
+    expect(types).toContain("log_drum");
+    expect(types).toContain("harmonic");
+    expect(types).toContain("groove");
+  });
+
+  test("applyPerceptionModel — all anchor strengths in [0, 1]", () => {
+    const report = applyPerceptionModel(standardFeatures);
+    for (const a of report.anchors) {
+      expect(a.strength).toBeGreaterThanOrEqual(0);
+      expect(a.strength).toBeLessThanOrEqual(1);
+      expect(a.clarity).toBeGreaterThanOrEqual(0);
+      expect(a.clarity).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("applyPerceptionModel — dominantAnchor is one of 3 types", () => {
+    const report = applyPerceptionModel(standardFeatures);
+    expect(["log_drum", "harmonic", "groove"]).toContain(report.dominantAnchor);
+  });
+
+  test("applyPerceptionModel — densityLabel is valid", () => {
+    const report = applyPerceptionModel(standardFeatures);
+    expect(["sparse", "balanced", "dense", "overcrowded"]).toContain(report.densityLabel);
+  });
+
+  test("applyPerceptionModel — passesGate is boolean, violations is array", () => {
+    const report = applyPerceptionModel(standardFeatures);
+    expect(typeof report.passesGate).toBe("boolean");
+    expect(Array.isArray(report.violations)).toBe(true);
+  });
+
+  test("applyPerceptionModel — overcrowded features yield density > balanced features", () => {
+    const busy  = dummyFeatures({ energyRms: 0.95, highEnergy: 0.75, groove: { swingRatio: 0.53, syncopationIndex: 0.90 } });
+    const light = dummyFeatures({ energyRms: 0.10, highEnergy: 0.05, groove: { swingRatio: 0.53, syncopationIndex: 0.10 } });
+    const dBusy  = computePerceptualDensity(busy);
+    const dLight = computePerceptualDensity(light);
+    expect(dBusy).toBeGreaterThan(dLight);
+  });
+
+  test("evaluateBuffer — result includes perception field", () => {
+    const wav    = buildWav(4);
+    const result = evaluateBuffer(wav);
+    expect(result.perception).toBeDefined();
+    expect(result.perception.anchors).toHaveLength(3);
+    expect(typeof result.perception.bEff).toBe("number");
+    expect(typeof result.perception.density).toBe("number");
+    expect(typeof result.perception.passesGate).toBe("boolean");
+  });
+});
+
+// ── 16. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;

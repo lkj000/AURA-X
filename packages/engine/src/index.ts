@@ -26,6 +26,7 @@ export type {
   SamplePlan, SampleEntry,
   RenderEvaluation,
   ActionPolicy, ActionUtility, ConvergenceState,
+  PerceptualAnchor, PerceptualAnchorType, PerceptionReport, DensityLabel,
   AmapianEvaluation, Enhancement,
   MidiNote, BlendStrategy, ArrangementStrategy, RefinementAction,
 }                                                     from "./types";
@@ -54,6 +55,11 @@ export { ConvergenceTracker }                         from "./high_end_engine/co
 export { buildRefinementPlan }                        from "./high_end_engine/refinement";
 export type { RefinementPlan }                        from "./high_end_engine/refinement";
 
+// ── Perception model ──────────────────────────────────────────────────────────
+export {
+  applyPerceptionModel, computeBEff, computePerceptualDensity, barkScale,
+}                                                     from "./perception/perception_model";
+
 // ── ML engine ─────────────────────────────────────────────────────────────────
 export {
   emptyPolicy, updatePolicy, computeActionScore, laneLeaderboard,
@@ -72,6 +78,7 @@ import { scoreLaneQuality }            from "./audio_intelligence/lane_quality";
 import { extractGroovePattern }        from "./intelligence/groove_pattern";
 import { AMAPIANO_THRESHOLD, LANE_GRAMMARS, LANE_TARGETS } from "./types";
 import type { AmapianEvaluation, Enhancement, GroovePlan } from "./types";
+import { applyPerceptionModel } from "./perception/perception_model";
 
 export function evaluateBuffer(buffer: Buffer): AmapianEvaluation {
   const wav        = parseWavMono(buffer);
@@ -79,6 +86,8 @@ export function evaluateBuffer(buffer: Buffer): AmapianEvaluation {
   const laneScores = scoreAuthenticityLanes(features);
   const quality    = scoreLaneQuality(features, laneScores.bestFitLane);
   const groove     = extractGroovePattern(wav.samples, wav.sampleRate, features.bpm, features.groove.swingRatio);
+
+  const perception = applyPerceptionModel(features);
 
   const issues: string[] = [];
   if (!features.logDrum?.isLogDrum)
@@ -89,16 +98,19 @@ export function evaluateBuffer(buffer: Buffer): AmapianEvaluation {
     issues.push("Swing ratio too straight — target 0.50–0.54");
   if (laneScores.overallAuthenticity < AMAPIANO_THRESHOLD)
     issues.push(`Low lane authenticity (${laneScores.overallAuthenticity.toFixed(3)} < ${AMAPIANO_THRESHOLD})`);
+  for (const v of perception.violations)
+    issues.push(`[O.211] ${v}`);
 
   return {
     features,
     laneScores,
     quality,
     groove,
-    logDrum:          features.logDrum,
-    harmonic:         features.harmonic,
-    passesThreshold:  laneScores.overallAuthenticity >= AMAPIANO_THRESHOLD,
-    threshold:        AMAPIANO_THRESHOLD,
+    logDrum:         features.logDrum,
+    harmonic:        features.harmonic,
+    perception,
+    passesThreshold: laneScores.overallAuthenticity >= AMAPIANO_THRESHOLD,
+    threshold:       AMAPIANO_THRESHOLD,
     issues,
   };
 }

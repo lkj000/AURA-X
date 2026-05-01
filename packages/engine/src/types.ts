@@ -279,6 +279,30 @@ export interface MidiNote {
   duration: number;    // in ticks
 }
 
+// ─── O.211 Perception Model ───────────────────────────────────────────────────
+
+export type PerceptualAnchorType = "log_drum" | "harmonic" | "groove";
+
+export interface PerceptualAnchor {
+  type:      PerceptualAnchorType;
+  strength:  number;    // [0, 1] — perceptual dominance
+  clarity:   number;    // [0, 1] — distinctness/cleanness
+  isPresent: boolean;   // strength >= 0.40
+}
+
+export type DensityLabel = "sparse" | "balanced" | "dense" | "overcrowded";
+
+export interface PerceptionReport {
+  bEff:            number;                              // effective perceptual bandwidth [0, 1]
+  density:         number;                              // perceptual density [0, 1]
+  densityLabel:    DensityLabel;
+  anchors:         PerceptualAnchor[];                  // [log_drum, harmonic, groove]
+  anchorStrengths: Record<PerceptualAnchorType, number>;
+  dominantAnchor:  PerceptualAnchorType;
+  passesGate:      boolean;                             // all O.211 constraints satisfied
+  violations:      string[];
+}
+
 // ─── Full evaluation ──────────────────────────────────────────────────────────
 
 export interface AmapianEvaluation {
@@ -288,6 +312,7 @@ export interface AmapianEvaluation {
   groove:            GroovePattern | null;
   logDrum:           LogDrumFingerprint | null;
   harmonic:          HarmonicProfile | null;
+  perception:        PerceptionReport;
   passesThreshold:   boolean;
   threshold:         number;
   issues:            string[];
