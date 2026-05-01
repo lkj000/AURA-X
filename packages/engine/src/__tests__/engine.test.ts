@@ -57,6 +57,7 @@ import { generateMuteSchedule }  from "../arrangement/stem_mute_automator";
 import { normalizeDensity }      from "../groove/density_normalizer";
 import { buildTickMap }          from "../daw_export/bar_tick_converter";
 import { retrogradePattern }     from "../groove/retrograde";
+import { generateEuclidean }     from "../groove/euclidean_rhythm";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -4575,5 +4576,90 @@ describe("56. Pattern retrograde", () => {
 
   test("output is deterministic", () => {
     expect(retrogradePattern(pat)).toEqual(retrogradePattern(pat));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 57. Euclidean rhythm generator
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("57. Euclidean rhythm generator", () => {
+  test("E(0,16) — zero hits returns all zeros", () => {
+    const r = generateEuclidean(0, 16);
+    expect(r.pattern.every((v) => v === 0)).toBe(true);
+    expect(r.hits).toBe(0);
+  });
+
+  test("E(16,16) — all hits returns all ones", () => {
+    const r = generateEuclidean(16, 16);
+    expect(r.pattern.every((v) => v === 1)).toBe(true);
+    expect(r.hits).toBe(16);
+  });
+
+  test("E(4,16) — four-on-the-floor: hits at 0, 4, 8, 12", () => {
+    const r = generateEuclidean(4, 16);
+    expect(r.pattern[0]).toBe(1);
+    expect(r.pattern[4]).toBe(1);
+    expect(r.pattern[8]).toBe(1);
+    expect(r.pattern[12]).toBe(1);
+    expect(r.pattern.reduce((s, v) => s + v, 0)).toBe(4);
+  });
+
+  test("E(8,16) — every other step active", () => {
+    const r = generateEuclidean(8, 16);
+    expect(r.pattern.reduce((s, v) => s + v, 0)).toBe(8);
+    // Every even step should be 1
+    for (let i = 0; i < 16; i += 2) expect(r.pattern[i]).toBe(1);
+  });
+
+  test("E(3,8) — Afro-Cuban tresillo: [1,0,0,1,0,0,1,0]", () => {
+    const r = generateEuclidean(3, 8);
+    expect(r.pattern).toEqual([1, 0, 0, 1, 0, 0, 1, 0]);
+  });
+
+  test("actual hit count always equals requested hits", () => {
+    for (const h of [1, 3, 5, 7, 11, 13]) {
+      const r = generateEuclidean(h, 16);
+      expect(r.pattern.reduce((s, v) => s + v, 0)).toBe(h);
+    }
+  });
+
+  test("pattern length equals steps", () => {
+    expect(generateEuclidean(3, 8).pattern).toHaveLength(8);
+    expect(generateEuclidean(5, 16).pattern).toHaveLength(16);
+    expect(generateEuclidean(7, 32).pattern).toHaveLength(32);
+  });
+
+  test("density = hits / steps", () => {
+    const r = generateEuclidean(5, 16);
+    expect(r.density).toBeCloseTo(5 / 16, 6);
+  });
+
+  test("offset rotates the pattern cyclically", () => {
+    const r0 = generateEuclidean(4, 16, { offset: 0 });
+    const r4 = generateEuclidean(4, 16, { offset: 4 });
+    expect(r4.pattern).toEqual([...r0.pattern.slice(4), ...r0.pattern.slice(0, 4)]);
+  });
+
+  test("offset equal to steps wraps to original", () => {
+    const r0  = generateEuclidean(5, 16, { offset: 0  });
+    const r16 = generateEuclidean(5, 16, { offset: 16 });
+    expect(r16.pattern).toEqual(r0.pattern);
+  });
+
+  test("output is binary — only 0s and 1s", () => {
+    for (const h of [1, 5, 7, 12]) {
+      const r = generateEuclidean(h, 16);
+      expect(r.pattern.every((v) => v === 0 || v === 1)).toBe(true);
+    }
+  });
+
+  test("output is deterministic", () => {
+    expect(generateEuclidean(5, 16)).toEqual(generateEuclidean(5, 16));
+  });
+
+  test("E(5,16) and E(7,16) — common Amapiano densities have correct hit counts", () => {
+    expect(generateEuclidean(5, 16).hits).toBe(5);
+    expect(generateEuclidean(7, 16).hits).toBe(7);
   });
 });

@@ -464,6 +464,16 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Euclidean rhythm ─────────────────────────────────────────────────────────
+
+export interface EuclideanResult {
+  pattern: number[];   // binary rhythm pattern of length `steps`
+  hits:    number;     // actual 1-count (clamped input)
+  steps:   number;     // total step count
+  offset:  number;     // cyclic rotation applied
+  density: number;     // hits / steps
+}
+
 // ─── Pattern retrograde / mirror ─────────────────────────────────────────────
 
 export interface RetrogradResult {

@@ -66,6 +66,7 @@ export type {
   DensityNormalizeResult,
   SectionTickRange, TickMap,
   RetrogradResult,
+  EuclideanResult,
 }                                                     from "./types";
 
 export {
@@ -227,6 +228,10 @@ export type { TickMapOptions }                        from "./daw_export/bar_tic
 // ── Pattern retrograde ────────────────────────────────────────────────────────
 export { retrogradePattern }                          from "./groove/retrograde";
 export type { RetrogradeOptions }                     from "./groove/retrograde";
+
+// ── Euclidean rhythm generator ────────────────────────────────────────────────
+export { generateEuclidean }                          from "./groove/euclidean_rhythm";
+export type { EuclideanOptions }                      from "./groove/euclidean_rhythm";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";
