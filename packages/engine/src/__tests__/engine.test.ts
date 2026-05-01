@@ -16,8 +16,10 @@ import { emptyPolicy, updatePolicy, computeActionScore, laneLeaderboard } from "
 import { exportGrooveToMidi, groovePlanToMidi } from "../daw_export/midi_export";
 import { applyPerceptionModel, computeBEff, computePerceptualDensity, barkScale } from "../perception/perception_model";
 import { decomposeStems } from "../perception/stem_decomposer";
+import { computeCulturalAlignment } from "../cultural/cultural_encoder";
+import { CULTURAL_PROFILES } from "../cultural/cultural_profiles";
 import { evaluateBuffer, buildEnhancement } from "../index";
-import { LANE_GRAMMARS, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
+import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
 // ── WAV builder ───────────────────────────────────────────────────────────────
@@ -1020,7 +1022,98 @@ describe("stem_decomposer", () => {
   });
 });
 
-// ── 17. Lane grammar constants ────────────────────────────────────────────────
+// ── 17. Cultural encoding ─────────────────────────────────────────────────────
+
+describe("cultural_encoder", () => {
+  const features = dummyFeatures();   // sgija-like: bpm 114, energy 0.50, swing 0.53, sync 0.45
+
+  test("CULTURAL_PROFILES covers all 8 lanes", () => {
+    for (const lane of LANES) {
+      expect(CULTURAL_PROFILES[lane]).toBeDefined();
+    }
+  });
+
+  test("alignmentScore is in [0, 1] for all lanes", () => {
+    for (const lane of LANES) {
+      const alignment = computeCulturalAlignment(features, lane);
+      expect(alignment.alignmentScore).toBeGreaterThanOrEqual(0);
+      expect(alignment.alignmentScore).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("markerScores has keys: bpm, energy, swing, syncopation, spectral", () => {
+    const { markerScores } = computeCulturalAlignment(features, "sgija");
+    for (const key of ["bpm", "energy", "swing", "syncopation", "spectral"]) {
+      expect(markerScores).toHaveProperty(key);
+    }
+  });
+
+  test("all markerScores are in [0, 1]", () => {
+    const { markerScores } = computeCulturalAlignment(features, "private_school");
+    for (const score of Object.values(markerScores)) {
+      expect(score).toBeGreaterThanOrEqual(0);
+      expect(score).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("deviations is array of strings", () => {
+    const { deviations } = computeCulturalAlignment(features, "mbiraiano");
+    expect(Array.isArray(deviations)).toBe(true);
+    for (const d of deviations) expect(typeof d).toBe("string");
+  });
+
+  test("ctlConditioning has mixProfile, bpmTarget, keyBias, culturalDirectives", () => {
+    const { ctlConditioning } = computeCulturalAlignment(features, "bacardi");
+    expect(ctlConditioning).toHaveProperty("mixProfile");
+    expect(ctlConditioning).toHaveProperty("bpmTarget");
+    expect(ctlConditioning).toHaveProperty("keyBias");
+    expect(ctlConditioning).toHaveProperty("culturalDirectives");
+  });
+
+  test("keyBias is non-empty for every lane", () => {
+    for (const lane of LANES) {
+      const { ctlConditioning } = computeCulturalAlignment(features, lane);
+      expect(Array.isArray(ctlConditioning.keyBias)).toBe(true);
+      expect(ctlConditioning.keyBias.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("gqom_fusion has dark_tribal mixProfile", () => {
+    const { ctlConditioning } = computeCulturalAlignment(features, "gqom_fusion");
+    expect(ctlConditioning.mixProfile).toBe("dark_tribal");
+  });
+
+  test("mbiraiano has spiritual_organic mixProfile", () => {
+    const { ctlConditioning } = computeCulturalAlignment(features, "mbiraiano");
+    expect(ctlConditioning.mixProfile).toBe("spiritual_organic");
+  });
+
+  test("high-alignment features score higher than misaligned features", () => {
+    const aligned    = dummyFeatures({ bpm: 114, energyRms: 0.80, spectralCentroid: 1525 });
+    const misaligned = dummyFeatures({ bpm: 140, energyRms: 0.10, spectralCentroid: 4000 });
+    const scoreA = computeCulturalAlignment(aligned,    "sgija").alignmentScore;
+    const scoreM = computeCulturalAlignment(misaligned, "sgija").alignmentScore;
+    expect(scoreA).toBeGreaterThan(scoreM);
+  });
+
+  test("culturalDirectives is non-empty array of strings", () => {
+    const { ctlConditioning } = computeCulturalAlignment(features, "private_school");
+    expect(Array.isArray(ctlConditioning.culturalDirectives)).toBe(true);
+    expect(ctlConditioning.culturalDirectives.length).toBeGreaterThan(0);
+    for (const d of ctlConditioning.culturalDirectives) expect(typeof d).toBe("string");
+  });
+
+  test("evaluateBuffer — result includes cultural field", () => {
+    const result = evaluateBuffer(buildWav(4));
+    expect(result.cultural).toBeDefined();
+    expect(result.cultural.alignmentScore).toBeGreaterThanOrEqual(0);
+    expect(result.cultural.alignmentScore).toBeLessThanOrEqual(1);
+    expect(result.cultural.ctlConditioning.mixProfile).toBeDefined();
+    expect(Array.isArray(result.cultural.deviations)).toBe(true);
+  });
+});
+
+// ── 19. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;

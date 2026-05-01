@@ -28,6 +28,7 @@ export type {
   ActionPolicy, ActionUtility, ConvergenceState,
   PerceptualAnchor, PerceptualAnchorType, PerceptionReport, DensityLabel,
   StemName, VirtualStem, StemDecomposition,
+  CulturalProfile, CtlConditioning, CulturalAlignment, MixProfile,
   AmapianEvaluation, Enhancement,
   MidiNote, BlendStrategy, ArrangementStrategy, RefinementAction,
 }                                                     from "./types";
@@ -62,6 +63,10 @@ export {
 }                                                     from "./perception/perception_model";
 export { decomposeStems }                             from "./perception/stem_decomposer";
 
+// ── Cultural encoding ─────────────────────────────────────────────────────────
+export { computeCulturalAlignment }                   from "./cultural/cultural_encoder";
+export { CULTURAL_PROFILES }                          from "./cultural/cultural_profiles";
+
 // ── ML engine ─────────────────────────────────────────────────────────────────
 export {
   emptyPolicy, updatePolicy, computeActionScore, laneLeaderboard,
@@ -82,6 +87,7 @@ import { AMAPIANO_THRESHOLD, LANE_GRAMMARS, LANE_TARGETS } from "./types";
 import type { AmapianEvaluation, Enhancement, GroovePlan } from "./types";
 import { applyPerceptionModel } from "./perception/perception_model";
 import { decomposeStems }        from "./perception/stem_decomposer";
+import { computeCulturalAlignment } from "./cultural/cultural_encoder";
 
 export function evaluateBuffer(buffer: Buffer): AmapianEvaluation {
   const wav        = parseWavMono(buffer);
@@ -92,6 +98,7 @@ export function evaluateBuffer(buffer: Buffer): AmapianEvaluation {
 
   const perception = applyPerceptionModel(features);
   const stems      = decomposeStems(wav.samples, wav.sampleRate, features);
+  const cultural   = computeCulturalAlignment(features, laneScores.bestFitLane);
 
   const issues: string[] = [];
   if (!features.logDrum?.isLogDrum)
@@ -116,6 +123,7 @@ export function evaluateBuffer(buffer: Buffer): AmapianEvaluation {
     harmonic:        features.harmonic,
     perception,
     stems,
+    cultural,
     passesThreshold: laneScores.overallAuthenticity >= AMAPIANO_THRESHOLD,
     threshold:       AMAPIANO_THRESHOLD,
     issues,

@@ -302,6 +302,43 @@ export interface StemDecomposition {
   balanceIssues:   string[];
 }
 
+// ─── Cultural encoding ────────────────────────────────────────────────────────
+
+export type MixProfile =
+  | "luxury_noir"
+  | "raw_street"
+  | "bounce_club"
+  | "spiritual_organic"
+  | "dark_tribal"
+  | "crossover_rb";
+
+export interface CulturalProfile {
+  lane:              Lane;
+  lineage:           readonly string[];       // production ancestry chain
+  geoOrigin:         string;                  // geographic birthplace
+  emotionalProfile:  readonly string[];       // dominant emotional tones
+  productionMarkers: readonly string[];       // characteristic production techniques
+  mixProfile:        MixProfile;
+  bpmRange:          readonly [number, number];
+  keyBias:           readonly string[];       // preferred tonal centres
+  tempoFeel:         "slow" | "mid" | "fast";
+}
+
+export interface CtlConditioning {
+  mixProfile:         MixProfile;
+  bpmTarget:          number;
+  keyBias:            string[];
+  culturalDirectives: string[];
+}
+
+export interface CulturalAlignment {
+  lane:            Lane;
+  alignmentScore:  number;                  // [0, 1] weighted Gaussian fit
+  markerScores:    Record<string, number>;  // per-dimension scores
+  deviations:      string[];               // human-readable mismatches
+  ctlConditioning: CtlConditioning;
+}
+
 // ─── O.211 Perception Model ───────────────────────────────────────────────────
 
 export type PerceptualAnchorType = "log_drum" | "harmonic" | "groove";
@@ -337,6 +374,7 @@ export interface AmapianEvaluation {
   harmonic:          HarmonicProfile | null;
   perception:        PerceptionReport;
   stems:             StemDecomposition;
+  cultural:          CulturalAlignment;
   passesThreshold:   boolean;
   threshold:         number;
   issues:            string[];
