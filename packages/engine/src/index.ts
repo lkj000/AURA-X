@@ -52,6 +52,7 @@ export type {
   FilterPoint, FilterAutomation,
   ReverbParams, ReverbSpec,
   CompressorParams, CompressorSpec,
+  EqBandType, EqBand, StemEq, EqSpec,
 }                                                     from "./types";
 
 export {
@@ -142,6 +143,9 @@ export { calculateReverb }                            from "./mix/reverb_calcula
 
 // ── Compressor generator ──────────────────────────────────────────────────────
 export { generateCompressorSpec }                     from "./mix/compressor_generator";
+
+// ── EQ curve generator ────────────────────────────────────────────────────────
+export { generateEqSpec }                             from "./mix/eq_generator";
 
 // ── Sample recommendation ─────────────────────────────────────────────────────
 export { recommendSamples }                           from "./intelligence/sample_recommender";

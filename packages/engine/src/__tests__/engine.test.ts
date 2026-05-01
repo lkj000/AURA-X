@@ -43,6 +43,7 @@ import { generateSidechain } from "../groove/sidechain_generator";
 import { generateFilterAutomation } from "../arrangement/filter_automator";
 import { calculateReverb } from "../mix/reverb_calculator";
 import { generateCompressorSpec } from "../mix/compressor_generator";
+import { generateEqSpec } from "../mix/eq_generator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -3353,6 +3354,101 @@ describe("compressor_generator", () => {
     const profiles = ["luxury_noir", "raw_street", "bounce_club", "spiritual_organic", "dark_tribal", "crossover_rb"] as const;
     for (const mp of profiles) {
       expect(() => generateCompressorSpec(114, mp)).not.toThrow();
+    }
+  });
+});
+
+// ── 43. EQ curve generator ────────────────────────────────────────────────────
+
+describe("eq_generator", () => {
+  const spec = generateEqSpec("private_school", "luxury_noir");
+
+  test("returns one StemEq per stem (5 total)", () => {
+    expect(spec.stems).toHaveLength(5);
+  });
+
+  test("each stem has exactly 4 bands", () => {
+    for (const s of spec.stems) expect(s.bands).toHaveLength(4);
+  });
+
+  test("all freqHz values in [20, 20000]", () => {
+    for (const s of spec.stems) {
+      for (const b of s.bands) {
+        expect(b.freqHz).toBeGreaterThanOrEqual(20);
+        expect(b.freqHz).toBeLessThanOrEqual(20000);
+      }
+    }
+  });
+
+  test("all gainDb values in [−24, +24]", () => {
+    for (const s of spec.stems) {
+      for (const b of s.bands) {
+        expect(b.gainDb).toBeGreaterThanOrEqual(-24);
+        expect(b.gainDb).toBeLessThanOrEqual(24);
+      }
+    }
+  });
+
+  test("all q values in [0.1, 10]", () => {
+    for (const s of spec.stems) {
+      for (const b of s.bands) {
+        expect(b.q).toBeGreaterThanOrEqual(0.1);
+        expect(b.q).toBeLessThanOrEqual(10);
+      }
+    }
+  });
+
+  test("band 0 of every stem is a highpass (lowcut or lowshelf)", () => {
+    for (const s of spec.stems) {
+      expect(["lowcut", "lowshelf"]).toContain(s.bands[0].type);
+    }
+  });
+
+  test("cut filter bands (lowcut / highcut) have gainDb = 0", () => {
+    for (const s of spec.stems) {
+      for (const b of s.bands) {
+        if (b.type === "lowcut" || b.type === "highcut") {
+          expect(b.gainDb).toBe(0);
+        }
+      }
+    }
+  });
+
+  test("luxury_noir produces higher air-shelf gainDb than raw_street for chord_pad", () => {
+    const lux = generateEqSpec("private_school", "luxury_noir");
+    const raw = generateEqSpec("private_school", "raw_street");
+    const luxAir = lux.stems.find((s) => s.stem === "chord_pad")!.bands[3].gainDb;
+    const rawAir = raw.stems.find((s) => s.stem === "chord_pad")!.bands[3].gainDb;
+    expect(luxAir).toBeGreaterThan(rawAir);
+  });
+
+  test("raw_street produces higher body gainDb than luxury_noir for log_drum", () => {
+    const raw = generateEqSpec("private_school", "raw_street");
+    const lux = generateEqSpec("private_school", "luxury_noir");
+    const rawBody = raw.stems.find((s) => s.stem === "log_drum")!.bands[1].gainDb;
+    const luxBody = lux.stems.find((s) => s.stem === "log_drum")!.bands[1].gainDb;
+    expect(rawBody).toBeGreaterThan(luxBody);
+  });
+
+  test("gqom_fusion has lower sub_bass HP freqHz than private_school (deeper sub)", () => {
+    const gqom  = generateEqSpec("gqom_fusion",    "crossover_rb");
+    const ps    = generateEqSpec("private_school",  "crossover_rb");
+    const gHp   = gqom.stems.find((s) => s.stem === "sub_bass")!.bands[0].freqHz;
+    const psHp  = ps.stems.find((s)   => s.stem === "sub_bass")!.bands[0].freqHz;
+    expect(gHp).toBeLessThan(psHp);
+  });
+
+  test("lane and mixProfile are reflected in output", () => {
+    expect(spec.lane).toBe("private_school");
+    expect(spec.mixProfile).toBe("luxury_noir");
+  });
+
+  test("works for all 8 lanes × 6 MixProfiles without throwing", () => {
+    const profiles = ["luxury_noir", "raw_street", "bounce_club", "spiritual_organic", "dark_tribal", "crossover_rb"] as const;
+    for (const lane of LANES) {
+      for (const mp of profiles) {
+        expect(() => generateEqSpec(lane, mp)).not.toThrow();
+      }
     }
   });
 });

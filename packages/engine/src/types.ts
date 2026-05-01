@@ -447,6 +447,28 @@ export interface ReverbSpec {
   params:     ReverbParams[];   // one per stem, ordered sub_bass → air
 }
 
+// ─── EQ spec ──────────────────────────────────────────────────────────────────
+
+export type EqBandType = "lowcut" | "lowshelf" | "peak" | "highshelf" | "highcut";
+
+export interface EqBand {
+  type:   EqBandType;
+  freqHz: number;    // center / corner frequency [20, 20000]
+  gainDb: number;    // gain in dB [−24, +24]; 0 for cut filters
+  q:      number;    // Q / bandwidth [0.1, 10]
+}
+
+export interface StemEq {
+  stem:  StemName;
+  bands: EqBand[];   // 4 bands per stem: HP → body → mid → air
+}
+
+export interface EqSpec {
+  lane:       Lane;
+  mixProfile: MixProfile;
+  stems:      StemEq[];   // one per stem
+}
+
 // ─── Compressor spec ──────────────────────────────────────────────────────────
 
 export interface CompressorParams {
