@@ -40,7 +40,8 @@ app.get("/", (_req, res) => {
   res.json({
     service: "aura-x-api",
     version: "0.1.0",
-    endpoints: ["/health", "/api/generate", "/api/audio", "/api/queue", "/api/evaluate", "/api/agent", "/api/video", "/api/feedback", "/api/auth", "/api/tracks", "/api/licensing", "/api/royalties"],
+    version: "4.0.0",
+    endpoints: ["/health", "/api/generate", "/api/audio", "/api/queue", "/api/evaluate", "/api/agent", "/api/video", "/api/feedback", "/api/auth", "/api/tracks", "/api/licensing", "/api/royalties", "/api/marketplace", "/api/earnings"],
   });
 });
 
@@ -48,7 +49,7 @@ app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
     service: "aura-x-api",
-    version: "0.1.0",
+    version: "4.0.0",
     mode: process.env.NODE_ENV ?? "development",
   });
 });

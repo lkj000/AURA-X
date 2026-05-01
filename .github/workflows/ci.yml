@@ -204,12 +204,7 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy API service
+      - name: Deploy AURA-X service
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service aura-x-api --detach
-
-      - name: Deploy Web service
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service aura-x-web --detach
+        run: railway up --service AURA-X --detach
