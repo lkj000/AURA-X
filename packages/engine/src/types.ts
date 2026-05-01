@@ -410,6 +410,26 @@ export interface PatternSimilarity {
   isMatch:      boolean;    // overallSim >= 0.75
 }
 
+// ─── Sample recommendation ────────────────────────────────────────────────────
+
+export type SampleRole = "log_drum" | "chord_stab" | "bassline" | "top_loop" | "atmosphere" | "fx";
+
+export interface SampleRecommendation {
+  role:        SampleRole;
+  description: string;          // human-readable instrument/texture description
+  tags:        string[];         // searchable keywords
+  confidence:  number;           // [0, 1] — fit score for this lane
+  bpmRange:    [number, number]; // usable BPM window
+  keyHints:    string[];         // suggested keys/modes
+}
+
+export interface SamplePack {
+  lane:            Lane;
+  recommendations: SampleRecommendation[];  // exactly 6, one per SampleRole
+  culturalTags:    string[];                // lineage + geo tags
+  totalCount:      number;
+}
+
 // ─── Mix spec ─────────────────────────────────────────────────────────────────
 
 export interface StemMixParams {

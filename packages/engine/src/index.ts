@@ -37,6 +37,7 @@ export type {
   PatternFingerprint, PatternSimilarity,
   SectionName, ArrangementSection, ArrangementArc,
   StemMixParams, MasterChain, MixSpec,
+  SampleRole, SampleRecommendation, SamplePack,
 }                                                     from "./types";
 
 export {
@@ -109,3 +110,7 @@ export type { ArcOptions }                            from "./arrangement/arc_pl
 
 // ── Mix spec ──────────────────────────────────────────────────────────────────
 export { generateMixSpec }                            from "./mix/mix_spec";
+
+// ── Sample recommendation ─────────────────────────────────────────────────────
+export { recommendSamples }                           from "./intelligence/sample_recommender";
+export type { RecommenderOptions }                    from "./intelligence/sample_recommender";

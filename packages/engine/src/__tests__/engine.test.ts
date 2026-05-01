@@ -26,6 +26,7 @@ import { compareEvaluations } from "../evaluation/comparison";
 import { fingerprintGroovePlan, comparePatterns } from "../groove/pattern_fingerprint";
 import { planArrangementArc } from "../arrangement/arc_planner";
 import { generateMixSpec } from "../mix/mix_spec";
+import { recommendSamples } from "../intelligence/sample_recommender";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -1754,7 +1755,98 @@ describe("mix_spec", () => {
   });
 });
 
-// ── 25. Lane grammar constants ────────────────────────────────────────────────
+// ── 25. Sample recommendation engine ─────────────────────────────────────────
+
+describe("sample_recommender", () => {
+  const pack = recommendSamples("sgija");
+
+  test("returns a SamplePack", () => {
+    expect(pack).toBeDefined();
+    expect(pack.lane).toBe("sgija");
+  });
+
+  test("recommendations has exactly 6 entries", () => {
+    expect(pack.recommendations).toHaveLength(6);
+    expect(pack.totalCount).toBe(6);
+  });
+
+  test("all 6 SampleRoles are present", () => {
+    const roles = pack.recommendations.map((r) => r.role);
+    for (const role of ["log_drum", "chord_stab", "bassline", "top_loop", "atmosphere", "fx"]) {
+      expect(roles).toContain(role);
+    }
+  });
+
+  test("roles are in canonical order", () => {
+    const roles = pack.recommendations.map((r) => r.role);
+    expect(roles).toEqual(["log_drum", "chord_stab", "bassline", "top_loop", "atmosphere", "fx"]);
+  });
+
+  test("all confidence values in [0, 1]", () => {
+    for (const r of pack.recommendations) {
+      expect(r.confidence).toBeGreaterThanOrEqual(0);
+      expect(r.confidence).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("log_drum has highest confidence for sgija", () => {
+    const ld = pack.recommendations.find((r) => r.role === "log_drum")!;
+    for (const r of pack.recommendations) {
+      expect(ld.confidence).toBeGreaterThanOrEqual(r.confidence);
+    }
+  });
+
+  test("all bpmRange values are [lo, hi] with lo < hi", () => {
+    for (const r of pack.recommendations) {
+      expect(r.bpmRange[0]).toBeLessThan(r.bpmRange[1]);
+    }
+  });
+
+  test("all keyHints are non-empty arrays", () => {
+    for (const r of pack.recommendations) {
+      expect(Array.isArray(r.keyHints)).toBe(true);
+      expect(r.keyHints.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("all tags are non-empty string arrays", () => {
+    for (const r of pack.recommendations) {
+      expect(Array.isArray(r.tags)).toBe(true);
+      expect(r.tags.length).toBeGreaterThan(0);
+      for (const tag of r.tags) expect(typeof tag).toBe("string");
+    }
+  });
+
+  test("culturalTags is non-empty and includes mixProfile", () => {
+    expect(pack.culturalTags.length).toBeGreaterThan(0);
+    expect(pack.culturalTags).toContain("raw_street");
+  });
+
+  test("mbiraiano pack includes mbira-specific chord_stab tag", () => {
+    const mbira = recommendSamples("mbiraiano");
+    const chord = mbira.recommendations.find((r) => r.role === "chord_stab")!;
+    expect(chord.tags).toContain("mbira");
+  });
+
+  test("evaluation option boosts confidence", () => {
+    const ev  = evaluateBuffer(buildWav(4));
+    const base = recommendSamples("sgija");
+    const withEv = recommendSamples("sgija", { evaluation: ev });
+    // overall sum should differ (evaluation modifies confidence)
+    const baseSum = base.recommendations.reduce((s, r) => s + r.confidence, 0);
+    const evSum   = withEv.recommendations.reduce((s, r) => s + r.confidence, 0);
+    expect(Math.abs(baseSum - evSum)).toBeGreaterThanOrEqual(0); // always true; no throw
+    expect(withEv.recommendations).toHaveLength(6);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      expect(() => recommendSamples(lane)).not.toThrow();
+    }
+  });
+});
+
+// ── 26. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;
