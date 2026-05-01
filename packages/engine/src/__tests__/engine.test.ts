@@ -46,6 +46,7 @@ import { generateCompressorSpec } from "../mix/compressor_generator";
 import { generateEqSpec } from "../mix/eq_generator";
 import { scheduleVocalChops } from "../intelligence/vocal_chop_scheduler";
 import { generateWidthAutomation } from "../arrangement/width_automator";
+import { quantizeToScale, SCALE_INTERVALS } from "../intelligence/scale_quantizer";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -3606,6 +3607,93 @@ describe("width_automator", () => {
     for (const lane of LANES) {
       const a = planArrangementArc(lane, { totalBars: 32 });
       expect(() => generateWidthAutomation(a)).not.toThrow();
+    }
+  });
+});
+
+// ── 46. Scale quantizer ───────────────────────────────────────────────────────
+
+describe("scale_quantizer", () => {
+  // Am pentatonic: A(69) C(72) D(74) E(76) G(79) — all in scale
+  const amPentNotes = [69, 72, 74, 76, 79];
+
+  test("notes already in scale are unchanged (movedCount = 0)", () => {
+    const r = quantizeToScale(amPentNotes, "A", "minor_pentatonic");
+    expect(r.movedCount).toBe(0);
+    for (const n of r.notes) expect(n.shiftSemitones).toBe(0);
+  });
+
+  test("Bb4 (70) out of Am pentatonic snaps to A4 (69), shift = −1", () => {
+    const r = quantizeToScale([70], "A", "minor_pentatonic");
+    expect(r.notes[0].quantized).toBe(69);
+    expect(r.notes[0].shiftSemitones).toBe(-1);
+  });
+
+  test("all quantized notes land on a scale degree", () => {
+    const chromatic = [60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71];
+    const r = quantizeToScale(chromatic, "A", "dorian");
+    const rootPC = 9; // A
+    const ivs = new Set(SCALE_INTERVALS["dorian"]);
+    for (const n of r.notes) {
+      const interval = ((n.quantized % 12) - rootPC + 12) % 12;
+      expect(ivs.has(interval)).toBe(true);
+    }
+  });
+
+  test("movedCount equals count of notes with shift ≠ 0", () => {
+    const r = quantizeToScale([60, 61, 62, 63], "C", "major");
+    const moved = r.notes.filter((n) => n.shiftSemitones !== 0).length;
+    expect(r.movedCount).toBe(moved);
+  });
+
+  test("maxShift is the largest absolute shift applied", () => {
+    const r = quantizeToScale([60, 61, 62, 63], "C", "major");
+    const expected = Math.max(...r.notes.map((n) => Math.abs(n.shiftSemitones)));
+    expect(r.maxShift).toBe(expected);
+  });
+
+  test("no shift exceeds 6 semitones (shortest path)", () => {
+    const r = quantizeToScale(Array.from({ length: 128 }, (_, i) => i), "F", "minor_pentatonic");
+    for (const n of r.notes) expect(Math.abs(n.shiftSemitones)).toBeLessThanOrEqual(6);
+  });
+
+  test("all quantized MIDI values in [0, 127]", () => {
+    const r = quantizeToScale([0, 64, 127], "C", "blues");
+    for (const n of r.notes) {
+      expect(n.quantized).toBeGreaterThanOrEqual(0);
+      expect(n.quantized).toBeLessThanOrEqual(127);
+    }
+  });
+
+  test("empty input returns zero notes and movedCount = 0", () => {
+    const r = quantizeToScale([], "D", "major");
+    expect(r.notes).toHaveLength(0);
+    expect(r.movedCount).toBe(0);
+    expect(r.maxShift).toBe(0);
+  });
+
+  test("root and scale are reflected in output", () => {
+    const r = quantizeToScale([60], "Bb", "dorian");
+    expect(r.root).toBe("Bb");
+    expect(r.scale).toBe("dorian");
+  });
+
+  test("minor_pentatonic produces only 5 distinct pitch classes", () => {
+    const r = quantizeToScale(Array.from({ length: 48 }, (_, i) => 48 + i), "A", "minor_pentatonic");
+    const pcs = new Set(r.notes.map((n) => n.quantized % 12));
+    expect(pcs.size).toBe(5);
+  });
+
+  test("output is deterministic", () => {
+    const a = quantizeToScale([61, 63, 66, 68, 70], "G", "natural_minor");
+    const b = quantizeToScale([61, 63, 66, 68, 70], "G", "natural_minor");
+    expect(a.notes).toEqual(b.notes);
+  });
+
+  test("works for all 8 scale names without throwing", () => {
+    const scales = Object.keys(SCALE_INTERVALS) as import("../types").ScaleName[];
+    for (const s of scales) {
+      expect(() => quantizeToScale([60, 62, 64, 65, 67], "C", s)).not.toThrow();
     }
   });
 });

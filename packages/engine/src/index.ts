@@ -55,6 +55,7 @@ export type {
   EqBandType, EqBand, StemEq, EqSpec,
   ChopEvent, VocalChopPattern,
   WidthPoint, WidthAutomation,
+  ScaleName, QuantizedNote, ScaleQuantizeResult,
 }                                                     from "./types";
 
 export {
@@ -155,6 +156,9 @@ export { generateEqSpec }                             from "./mix/eq_generator";
 // ── Vocal chop scheduler ──────────────────────────────────────────────────────
 export { scheduleVocalChops }                         from "./intelligence/vocal_chop_scheduler";
 export type { ChopOptions }                           from "./intelligence/vocal_chop_scheduler";
+
+// ── Scale quantizer ───────────────────────────────────────────────────────────
+export { quantizeToScale, SCALE_INTERVALS }           from "./intelligence/scale_quantizer";
 
 // ── Sample recommendation ─────────────────────────────────────────────────────
 export { recommendSamples }                           from "./intelligence/sample_recommender";

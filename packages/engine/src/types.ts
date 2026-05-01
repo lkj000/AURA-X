@@ -447,6 +447,26 @@ export interface ReverbSpec {
   params:     ReverbParams[];   // one per stem, ordered sub_bass → air
 }
 
+// ─── Scale quantizer ──────────────────────────────────────────────────────────
+
+export type ScaleName =
+  | "major" | "natural_minor" | "dorian" | "phrygian"
+  | "mixolydian" | "minor_pentatonic" | "major_pentatonic" | "blues";
+
+export interface QuantizedNote {
+  original:       number;   // original MIDI note [0, 127]
+  quantized:      number;   // quantized MIDI note [0, 127]
+  shiftSemitones: number;   // signed shortest-path shift (−6 … +6)
+}
+
+export interface ScaleQuantizeResult {
+  root:       string;            // root note name e.g. "A", "Bb"
+  scale:      ScaleName;
+  notes:      QuantizedNote[];
+  movedCount: number;            // notes that were shifted (shift ≠ 0)
+  maxShift:   number;            // largest |shift| applied
+}
+
 // ─── Stereo width automation ──────────────────────────────────────────────────
 
 export interface WidthPoint {
