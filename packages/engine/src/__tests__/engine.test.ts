@@ -64,6 +64,7 @@ import { quantizeNotes }        from "../daw_export/note_quantizer";
 import { generateChordStab }      from "../groove/chord_stab_generator";
 import { computeEnergyProfile }      from "../intelligence/energy_profile";
 import { generateTransitionFill }    from "../arrangement/transition_fill_generator";
+import { generatePitchBend }         from "../intelligence/pitch_bend_generator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -5183,5 +5184,86 @@ describe("63. Section transition fill generator", () => {
       const r = generateTransitionFill(lane, "drop_to_outro");
       expect(r.density).toBeLessThanOrEqual(0.5);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 64. Pitch bend curve generator
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("64. Pitch bend curve generator", () => {
+  test("points count equals resolution", () => {
+    expect(generatePitchBend({ resolution: 16 }).points).toHaveLength(16);
+    expect(generatePitchBend({ resolution: 32 }).points).toHaveLength(32);
+  });
+
+  test("first point tick equals startTick", () => {
+    const r = generatePitchBend({ startTick: 240, durationTicks: 480 });
+    expect(r.points[0].tick).toBe(240);
+  });
+
+  test("last point tick equals endTick", () => {
+    const r = generatePitchBend({ startTick: 0, durationTicks: 480 });
+    expect(r.points[r.points.length - 1].tick).toBe(r.endTick);
+  });
+
+  test("endTick = startTick + durationTicks", () => {
+    const r = generatePitchBend({ startTick: 120, durationTicks: 960 });
+    expect(r.endTick).toBe(1080);
+  });
+
+  test("all values are in [-1, 1]", () => {
+    for (const shape of ["glide_up", "glide_down", "wobble", "vibrato"] as const) {
+      const r = generatePitchBend({ shape });
+      for (const p of r.points) {
+        expect(p.value).toBeGreaterThanOrEqual(-1 - 1e-9);
+        expect(p.value).toBeLessThanOrEqual(1 + 1e-9);
+      }
+    }
+  });
+
+  test("glide_up: first value ≈ -1, last value ≈ 0", () => {
+    const r = generatePitchBend({ shape: "glide_up", resolution: 16 });
+    expect(r.points[0].value).toBeCloseTo(-1, 6);
+    expect(r.points[r.points.length - 1].value).toBeCloseTo(0, 6);
+  });
+
+  test("glide_down: first value ≈ 0, last value ≈ -1", () => {
+    const r = generatePitchBend({ shape: "glide_down", resolution: 16 });
+    expect(r.points[0].value).toBeCloseTo(0, 6);
+    expect(r.points[r.points.length - 1].value).toBeCloseTo(-1, 6);
+  });
+
+  test("wobble: values oscillate — not monotone", () => {
+    const r = generatePitchBend({ shape: "wobble", resolution: 16 });
+    const vals = r.points.map((p) => p.value);
+    const allIncreasing = vals.every((v, i) => i === 0 || v >= vals[i - 1]);
+    expect(allIncreasing).toBe(false);
+  });
+
+  test("vibrato: more sign changes than wobble (faster oscillation)", () => {
+    const count = (shape: "wobble" | "vibrato") => {
+      const vals = generatePitchBend({ shape, resolution: 32 }).points.map((p) => p.value);
+      return vals.filter((v, i) => i > 0 && Math.sign(v) !== Math.sign(vals[i - 1]) && v !== 0).length;
+    };
+    expect(count("vibrato")).toBeGreaterThan(count("wobble"));
+  });
+
+  test("shape and peakSemitones are reflected in output", () => {
+    const r = generatePitchBend({ shape: "glide_up", peakSemitones: 3.5 });
+    expect(r.shape).toBe("glide_up");
+    expect(r.peakSemitones).toBe(3.5);
+  });
+
+  test("tick positions are monotonically non-decreasing", () => {
+    const r = generatePitchBend({ resolution: 16 });
+    for (let i = 1; i < r.points.length; i++) {
+      expect(r.points[i].tick).toBeGreaterThanOrEqual(r.points[i - 1].tick);
+    }
+  });
+
+  test("output is deterministic", () => {
+    const opts = { shape: "wobble" as const, resolution: 16, startTick: 0 };
+    expect(generatePitchBend(opts)).toEqual(generatePitchBend(opts));
   });
 });

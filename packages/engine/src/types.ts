@@ -464,6 +464,23 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Pitch bend curve ─────────────────────────────────────────────────────────
+
+export interface PitchBendPoint {
+  tick:  number;   // absolute tick position
+  value: number;   // normalised bend [-1, 1]; multiply by peakSemitones for actual
+}
+
+export type PitchBendShape = "glide_up" | "glide_down" | "wobble" | "vibrato";
+
+export interface PitchBendCurve {
+  points:        PitchBendPoint[];
+  startTick:     number;
+  endTick:       number;
+  peakSemitones: number;   // semitone range of the bend
+  shape:         PitchBendShape;
+}
+
 // ─── Section transition fill ──────────────────────────────────────────────────
 
 export type TransitionType =

@@ -73,6 +73,7 @@ export type {
   StabPattern,
   EnergyLayer, EnergyProfile,
   TransitionType, TransitionFill,
+  PitchBendPoint, PitchBendShape, PitchBendCurve,
 }                                                     from "./types";
 
 export {
@@ -261,6 +262,10 @@ export { computeEnergyProfile }                       from "./intelligence/energ
 // ── Section transition fill generator ────────────────────────────────────────
 export { generateTransitionFill }                     from "./arrangement/transition_fill_generator";
 export type { FillOptions }                           from "./arrangement/transition_fill_generator";
+
+// ── Pitch bend curve generator ────────────────────────────────────────────────
+export { generatePitchBend }                          from "./intelligence/pitch_bend_generator";
+export type { PitchBendOptions }                      from "./intelligence/pitch_bend_generator";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";
