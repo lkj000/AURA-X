@@ -410,6 +410,23 @@ export interface PatternSimilarity {
   isMatch:      boolean;    // overallSim >= 0.75
 }
 
+// ─── Lane similarity ──────────────────────────────────────────────────────────
+
+export interface LanePair {
+  laneA:      Lane;
+  laneB:      Lane;
+  similarity: number;   // [0, 1] — cosine similarity in normalized feature space
+  distance:   number;   // 1 − similarity
+}
+
+export interface LaneSimilarityMatrix {
+  matrix:    Record<Lane, Record<Lane, number>>;  // matrix[laneA][laneB]
+  pairs:     LanePair[];                          // all 28 unique pairs, sorted by similarity desc
+  closest:   LanePair[];                          // top 3 most similar pairs
+  farthest:  LanePair[];                          // top 3 most dissimilar pairs
+  neighbors: Record<Lane, Lane>;                  // nearest neighbor for each lane
+}
+
 // ─── Session drift ────────────────────────────────────────────────────────────
 
 export type DriftTrend = "improving" | "stable" | "degrading" | "volatile";

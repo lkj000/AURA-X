@@ -44,6 +44,7 @@ export type {
   ProductionReportSummary, ProductionReport,
   ChordFunction, ChordVoicing, ChordProgression,
   DriftTrend, SignalTrace, DriftReport,
+  LanePair, LaneSimilarityMatrix,
 }                                                     from "./types";
 
 export {
@@ -56,6 +57,7 @@ export { extractAudioFeatures }                       from "./audio_intelligence
 export { scoreAuthenticityLanes }                     from "./audio_intelligence/authenticity_scoring";
 export { scoreLaneQuality }                           from "./audio_intelligence/lane_quality";
 export { extractGroove }                              from "./audio_intelligence/groove_extraction";
+export { computeLaneSimilarityMatrix }                from "./audio_intelligence/lane_similarity";
 
 // ── Intelligence modules ──────────────────────────────────────────────────────
 export { extractLogDrumFingerprint }                  from "./intelligence/log_drum";

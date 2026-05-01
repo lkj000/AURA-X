@@ -35,6 +35,7 @@ import { buildChordProgression } from "../intelligence/chord_voicing";
 import { detectDrift } from "../pipeline/drift_detector";
 import { exportChordProgressionToMidi } from "../daw_export/chord_midi_export";
 import { runFullSession } from "../pipeline/full_session";
+import { computeLaneSimilarityMatrix } from "../audio_intelligence/lane_similarity";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -2585,7 +2586,106 @@ describe("full_session", () => {
   });
 });
 
-// ── 34. Lane grammar constants ────────────────────────────────────────────────
+// ── 34. Lane similarity matrix ────────────────────────────────────────────────
+
+describe("lane_similarity", () => {
+  let lsm: ReturnType<typeof computeLaneSimilarityMatrix>;
+  beforeAll(() => { lsm = computeLaneSimilarityMatrix(); });
+
+  test("returns a LaneSimilarityMatrix", () => {
+    expect(lsm).toBeDefined();
+    expect(lsm.matrix).toBeDefined();
+    expect(lsm.pairs).toBeDefined();
+  });
+
+  test("matrix covers all 8×8 lane pairs", () => {
+    for (const lA of LANES) {
+      for (const lB of LANES) {
+        expect(lsm.matrix[lA][lB]).toBeDefined();
+      }
+    }
+  });
+
+  test("self-similarity is exactly 1.0 for all lanes", () => {
+    for (const lane of LANES) {
+      expect(lsm.matrix[lane][lane]).toBeCloseTo(1.0, 9);
+    }
+  });
+
+  test("matrix is symmetric", () => {
+    for (const lA of LANES) {
+      for (const lB of LANES) {
+        expect(lsm.matrix[lA][lB]).toBeCloseTo(lsm.matrix[lB][lA], 9);
+      }
+    }
+  });
+
+  test("all similarity values in [0, 1]", () => {
+    for (const lA of LANES) {
+      for (const lB of LANES) {
+        expect(lsm.matrix[lA][lB]).toBeGreaterThanOrEqual(0);
+        expect(lsm.matrix[lA][lB]).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  test("pairs has exactly 28 unique pairs (C(8,2))", () => {
+    expect(lsm.pairs).toHaveLength(28);
+  });
+
+  test("pairs are sorted descending by similarity", () => {
+    for (let i = 1; i < lsm.pairs.length; i++) {
+      expect(lsm.pairs[i].similarity).toBeLessThanOrEqual(lsm.pairs[i - 1].similarity);
+    }
+  });
+
+  test("each pair has distance = 1 - similarity", () => {
+    for (const p of lsm.pairs) {
+      expect(p.distance).toBeCloseTo(1 - p.similarity, 9);
+    }
+  });
+
+  test("closest has 3 entries", () => {
+    expect(lsm.closest).toHaveLength(3);
+  });
+
+  test("farthest has 3 entries", () => {
+    expect(lsm.farthest).toHaveLength(3);
+  });
+
+  test("closest similarity >= farthest similarity", () => {
+    for (const c of lsm.closest) {
+      for (const f of lsm.farthest) {
+        expect(c.similarity).toBeGreaterThanOrEqual(f.similarity);
+      }
+    }
+  });
+
+  test("neighbors covers all 8 lanes", () => {
+    for (const lane of LANES) {
+      expect(lsm.neighbors[lane]).toBeDefined();
+      expect(LANES).toContain(lsm.neighbors[lane]);
+    }
+  });
+
+  test("neighbor is never the lane itself", () => {
+    for (const lane of LANES) {
+      expect(lsm.neighbors[lane]).not.toBe(lane);
+    }
+  });
+
+  test("closest pair has higher similarity than median pair", () => {
+    const median = lsm.pairs[Math.floor(lsm.pairs.length / 2)].similarity;
+    expect(lsm.closest[0].similarity).toBeGreaterThan(median);
+  });
+
+  test("is deterministic — identical result on second call", () => {
+    const lsm2 = computeLaneSimilarityMatrix();
+    expect(JSON.stringify(lsm.matrix)).toBe(JSON.stringify(lsm2.matrix));
+  });
+});
+
+// ── 35. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;
