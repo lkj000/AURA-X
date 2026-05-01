@@ -50,6 +50,7 @@ app.get("/health", (_req, res) => {
     service: "aura-x-api",
     version: "4.0.0",
     mode: process.env.NODE_ENV ?? "development",
+    phase: "P4-COMPLETE",
   });
 });
 
