@@ -33,6 +33,7 @@ import { interpolateGrooves } from "../groove/groove_interpolator";
 import { generateProductionReport } from "../pipeline/production_report";
 import { buildChordProgression } from "../intelligence/chord_voicing";
 import { detectDrift } from "../pipeline/drift_detector";
+import { exportChordProgressionToMidi } from "../daw_export/chord_midi_export";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -2404,7 +2405,89 @@ describe("drift_detector", () => {
   });
 });
 
-// ── 32. Lane grammar constants ────────────────────────────────────────────────
+// ── 32. Chord-to-MIDI exporter ────────────────────────────────────────────────
+
+describe("chord_midi_export", () => {
+  const prog   = buildChordProgression({ lane: "private_school" });
+  const result = exportChordProgressionToMidi(prog, { bpm: 112 });
+
+  test("returns a ChordMidiResult", () => {
+    expect(result).toBeDefined();
+    expect(result.buffer).toBeDefined();
+  });
+
+  test("buffer has valid MIDI header magic bytes (MThd)", () => {
+    expect(result.buffer[0]).toBe(0x4d);  // M
+    expect(result.buffer[1]).toBe(0x54);  // T
+    expect(result.buffer[2]).toBe(0x68);  // h
+    expect(result.buffer[3]).toBe(0x64);  // d
+  });
+
+  test("buffer is format 0 (single track)", () => {
+    const format = (result.buffer[8] << 8) | result.buffer[9];
+    const tracks = (result.buffer[10] << 8) | result.buffer[11];
+    expect(format).toBe(0);
+    expect(tracks).toBe(1);
+  });
+
+  test("TPQ is 480", () => {
+    const tpq = (result.buffer[12] << 8) | result.buffer[13];
+    expect(tpq).toBe(480);
+  });
+
+  test("MTrk chunk marker present after MThd", () => {
+    expect(result.buffer[14]).toBe(0x4d);  // M
+    expect(result.buffer[15]).toBe(0x54);  // T
+    expect(result.buffer[16]).toBe(0x72);  // r
+    expect(result.buffer[17]).toBe(0x6b);  // k
+  });
+
+  test("chordCount = voicings × repeat (default repeat=2)", () => {
+    expect(result.chordCount).toBe(prog.voicings.length * 2);
+  });
+
+  test("beatsPerChord defaults to 4", () => {
+    expect(result.beatsPerChord).toBe(4);
+  });
+
+  test("totalBars = chordCount × beatsPerChord / 4", () => {
+    expect(result.totalBars).toBe((result.chordCount * result.beatsPerChord) / 4);
+  });
+
+  test("lane matches input progression lane", () => {
+    expect(result.lane).toBe("private_school");
+  });
+
+  test("bpm matches input", () => {
+    expect(result.bpm).toBe(112);
+  });
+
+  test("custom beatsPerChord is respected", () => {
+    const r2 = exportChordProgressionToMidi(prog, { bpm: 114, beatsPerChord: 8 });
+    expect(r2.beatsPerChord).toBe(8);
+    expect(r2.totalBars).toBe((r2.chordCount * 8) / 4);
+  });
+
+  test("custom repeat is respected", () => {
+    const r4 = exportChordProgressionToMidi(prog, { bpm: 114, repeat: 4 });
+    expect(r4.chordCount).toBe(prog.voicings.length * 4);
+  });
+
+  test("buffer is larger with more repeats", () => {
+    const r2 = exportChordProgressionToMidi(prog, { bpm: 114, repeat: 2 });
+    const r4 = exportChordProgressionToMidi(prog, { bpm: 114, repeat: 4 });
+    expect(r4.buffer.length).toBeGreaterThan(r2.buffer.length);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      const p = buildChordProgression({ lane });
+      expect(() => exportChordProgressionToMidi(p, { bpm: 114 })).not.toThrow();
+    }
+  });
+});
+
+// ── 33. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;

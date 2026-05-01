@@ -92,6 +92,8 @@ export {
 // ── DAW export ────────────────────────────────────────────────────────────────
 export { exportGrooveToMidi, groovePlanToMidi }       from "./daw_export/midi_export";
 export type { MidiExportResult }                      from "./daw_export/midi_export";
+export { exportChordProgressionToMidi }               from "./daw_export/chord_midi_export";
+export type { ChordMidiOptions, ChordMidiResult }     from "./daw_export/chord_midi_export";
 
 // ── High-level convenience API ────────────────────────────────────────────────
 export { evaluateBuffer, buildEnhancement }           from "./pipeline/evaluation";
