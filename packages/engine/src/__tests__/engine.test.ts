@@ -37,6 +37,7 @@ import { exportChordProgressionToMidi } from "../daw_export/chord_midi_export";
 import { runFullSession } from "../pipeline/full_session";
 import { computeLaneSimilarityMatrix } from "../audio_intelligence/lane_similarity";
 import { scoreGrooveComplexity } from "../groove/complexity_scorer";
+import { transposeProgression } from "../intelligence/key_transposer";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -2791,7 +2792,103 @@ describe("groove_complexity", () => {
   });
 });
 
-// ── 36. Lane grammar constants ────────────────────────────────────────────────
+// ── 36. Key transposer ────────────────────────────────────────────────────────
+
+describe("key_transposer", () => {
+  const amProg = buildChordProgression({ lane: "private_school" }); // key "Am"
+
+  test("returns a TransposeResult", () => {
+    const r = transposeProgression(amProg, "Cm");
+    expect(r).toBeDefined();
+    expect(r.progression).toBeDefined();
+    expect(r.semitones).toBeDefined();
+  });
+
+  test("same-key transpose returns semitones = 0", () => {
+    const r = transposeProgression(amProg, "Am");
+    expect(r.semitones).toBe(0);
+  });
+
+  test("same-key transpose returns identical progression reference", () => {
+    const r = transposeProgression(amProg, "Am");
+    expect(r.progression).toBe(amProg);
+  });
+
+  test("Am → Cm = +3 semitones (shortest path up)", () => {
+    const r = transposeProgression(amProg, "Cm");
+    expect(r.semitones).toBe(3);
+  });
+
+  test("Am → Gm = −2 semitones (shortest path down)", () => {
+    const r = transposeProgression(amProg, "Gm");
+    expect(r.semitones).toBe(-2);
+  });
+
+  test("|semitones| <= 6 for all target keys (shortest path)", () => {
+    const targets = ["Am", "Bbm", "Bm", "Cm", "Dbm", "Dm", "Ebm", "Em", "Fm", "Gbm", "Gm", "Abm"];
+    for (const t of targets) {
+      const r = transposeProgression(amProg, t);
+      expect(Math.abs(r.semitones)).toBeLessThanOrEqual(6);
+    }
+  });
+
+  test("all MIDI notes shift by exactly semitones", () => {
+    const r = transposeProgression(amProg, "Cm");  // +3
+    amProg.voicings.forEach((orig, i) => {
+      const trans = r.progression.voicings[i];
+      for (let n = 0; n < orig.notes.length; n++) {
+        expect(trans.notes[n]).toBe(orig.notes[n] + 3);
+      }
+    });
+  });
+
+  test("rootMidi shifts by semitones", () => {
+    const r = transposeProgression(amProg, "Cm");
+    amProg.voicings.forEach((orig, i) => {
+      expect(r.progression.voicings[i].rootMidi).toBe(orig.rootMidi + 3);
+    });
+  });
+
+  test("transposed chord symbols contain new root names", () => {
+    const r = transposeProgression(amProg, "Bm");  // +2 (Am → Bm)
+    const symbols = r.progression.voicings.map((v) => v.chordSymbol);
+    expect(symbols[0]).toMatch(/^B/);  // Am9 → Bm9
+  });
+
+  test("transposed key field matches target root", () => {
+    const r = transposeProgression(amProg, "Dm");
+    expect(r.progression.key).toMatch(/^D/);
+  });
+
+  test("originalKey is preserved", () => {
+    const r = transposeProgression(amProg, "Fm");
+    expect(r.originalKey).toBe("Am");
+  });
+
+  test("voicing count preserved after transposition", () => {
+    const r = transposeProgression(amProg, "Ebm");
+    expect(r.progression.voicings).toHaveLength(amProg.voicings.length);
+  });
+
+  test("double transposition returns to original root notes", () => {
+    const r1 = transposeProgression(amProg, "Cm");   // +3
+    const r2 = transposeProgression(r1.progression, "Am");  // −3
+    amProg.voicings.forEach((orig, i) => {
+      for (let n = 0; n < orig.notes.length; n++) {
+        expect(r2.progression.voicings[i].notes[n]).toBe(orig.notes[n]);
+      }
+    });
+  });
+
+  test("works for all 8 lane progressions without throwing", () => {
+    for (const lane of LANES) {
+      const p = buildChordProgression({ lane });
+      expect(() => transposeProgression(p, "Dm")).not.toThrow();
+    }
+  });
+});
+
+// ── 37. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;

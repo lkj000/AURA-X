@@ -46,6 +46,7 @@ export type {
   DriftTrend, SignalTrace, DriftReport,
   LanePair, LaneSimilarityMatrix,
   ComplexityTier, VoiceComplexity, GrooveComplexityScore,
+  TransposeResult,
 }                                                     from "./types";
 
 export {
@@ -132,6 +133,9 @@ export type { RecommenderOptions }                    from "./intelligence/sampl
 // ── Chord voicing ─────────────────────────────────────────────────────────────
 export { buildChordProgression }                      from "./intelligence/chord_voicing";
 export type { VoicingOptions }                        from "./intelligence/chord_voicing";
+
+// ── Key transposer ────────────────────────────────────────────────────────────
+export { transposeProgression }                       from "./intelligence/key_transposer";
 
 // ── Tempo humanizer ───────────────────────────────────────────────────────────
 export { humanizePattern }                            from "./groove/tempo_humanizer";

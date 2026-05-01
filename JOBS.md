@@ -1,0 +1,1735 @@
+AURA X — JOB REGISTRY
+═══════════════════════════════════════════════════════════
+All jobs documented with Problem Definition, Solution, and
+Success Criteria. New jobs: copy JOB_TEMPLATE.md, fill in,
+append here, commit.
+═══════════════════════════════════════════════════════════
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 01 — FOUNDATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+JOB 01 — MONOREPO SCAFFOLD
+─────────────────────────────────────────
+Phase:  Phase 01 — Foundation
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → No project structure exists. Two services (API, audio) share
+    packages but have no common home — every developer sets up
+    their own layout.
+Who experiences this problem?
+  → Every engineer on the project from day one.
+What happens today without this solution?
+  → Dependency versions diverge, port assignments drift, and
+    there is no single install command — the project can't be
+    reliably reproduced.
+
+SOLUTION
+What are we building?
+  → A pnpm monorepo with apps/api (TypeScript/Express, port 3002),
+    apps/audio (Python/FastAPI, port 8000), and a packages/ directory
+    for shared modules.
+How does it solve the problem?
+  → Single root pnpm install resolves all dependencies. Port
+    assignments are locked in config. All services start from one
+    place.
+Why this approach and not another?
+  → pnpm workspaces enforce internal package linking without
+    publishing; faster than npm on Windows and native to the
+    Node ecosystem we're building in.
+
+SUCCESS CRITERIA
+  [x] pnpm install from root completes without error
+  [x] apps/api responds 200 on GET /health at port 3002
+  [x] apps/audio responds 200 on GET /health at port 8000
+
+
+─────────────────────────────────────────
+
+
+JOB 02 — CTL_V1 SCHEMA
+─────────────────────────────────────────
+Phase:  Phase 01 — Foundation
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → No shared language exists between agents, services, and
+    planners. Every service would invent its own track
+    representation.
+Who experiences this problem?
+  → Every agent and service that needs to describe or pass a
+    track — all of them.
+What happens today without this solution?
+  → Impossible to validate, mutate, or safely pass track data
+    between the API, audio service, and generation agents.
+    Integration is manual guesswork.
+
+SOLUTION
+What are we building?
+  → CTL_v1 (Creative Track Language) — a Zod schema with 13 blocks
+    covering all musical and production dimensions of a track.
+How does it solve the problem?
+  → Single source of truth every agent reads and writes. Zod
+    gives runtime validation and TypeScript type inference from
+    the same definition. All other jobs depend on it.
+Why this approach and not another?
+  → Zod over JSON Schema: runtime validation + inferred types in
+    one step. 13 blocks over a flat struct: compositional — each
+    planner only touches its own block.
+
+SUCCESS CRITERIA
+  [x] Schema exports cleanly from packages/ctl
+  [x] All 13 blocks validate correct input and reject invalid input
+  [x] 12 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 03 — SUPABASE SCHEMA
+─────────────────────────────────────────
+Phase:  Phase 01 — Foundation
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → No persistence layer. Audio files, track metadata, generation
+    results, and evaluations have nowhere to live.
+Who experiences this problem?
+  → Every job after Job 01 — nothing can be stored or retrieved.
+What happens today without this solution?
+  → Downstream jobs each invent their own tables, producing
+    conflicting schemas and broken foreign key relationships.
+
+SOLUTION
+What are we building?
+  → 6 Supabase tables (tracks, generations, evaluations,
+    dataset_records, queue_jobs, agent_logs) and a storage bucket
+    in eu-west-2.
+How does it solve the problem?
+  → Structured schema up front means every downstream job writes
+    to known tables with enforced foreign key integrity.
+Why this approach and not another?
+  → Supabase over raw Postgres: managed hosting, built-in storage,
+    and row-level security without ops overhead. eu-west-2 for
+    GDPR proximity to our primary users.
+
+SUCCESS CRITERIA
+  [x] All 6 tables exist with correct columns and types
+  [x] Storage bucket created and accessible
+  [x] Migrations run clean with no constraint errors
+
+
+─────────────────────────────────────────
+
+
+JOB 04 — MODE 1 SUNO EXPORTER
+─────────────────────────────────────────
+Phase:  Phase 01 — Foundation
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → CTL blocks are machine-readable structs. Suno requires a
+    specific style tag and lyric prompt format. No translation
+    exists.
+Who experiences this problem?
+  → The generation pipeline — Mode 1 can't start without it.
+What happens today without this solution?
+  → CTL is generated but can't be consumed by Suno. Mode 1
+    is dead.
+
+SOLUTION
+What are we building?
+  → An AC-AMI translator that converts CTL_v1 → Suno-compatible
+    style string and lyric prompt bundle.
+How does it solve the problem?
+  → Producer can take the exported bundle and paste it directly
+    into Suno. Mode 1 generation lifecycle begins.
+Why this approach and not another?
+  → Mode 1 first because it requires no GPU, no Replicate account,
+    and no additional infrastructure — fastest path to hearing
+    generated audio.
+
+SUCCESS CRITERIA
+  [x] Given a valid CTL, exporter returns a Suno-ready bundle
+  [x] Style string reflects subgenre, BPM, key, and energy correctly
+  [x] 16 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 05 — AUDIO INGESTION
+─────────────────────────────────────────
+Phase:  Phase 01 — Foundation
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → No way to get audio files into the system. Producers generate
+    audio externally and have no return path.
+Who experiences this problem?
+  → Producers using Mode 1, and every downstream processing job
+    that needs stored audio.
+What happens today without this solution?
+  → Audio exists on the producer's machine but nowhere the pipeline
+    can reach. No processing, no analysis, no evaluation can run.
+
+SOLUTION
+What are we building?
+  → An upload endpoint that accepts audio files, stores them in
+    Supabase Storage, and returns signed URLs.
+How does it solve the problem?
+  → Audio is now accessible to every downstream service via a
+    durable signed URL. Foundation for all audio processing jobs.
+Why this approach and not another?
+  → Signed URLs over public URLs: they expire and don't expose
+    the storage bucket — necessary for any future rights management.
+
+SUCCESS CRITERIA
+  [x] Upload endpoint accepts audio file and stores it
+  [x] Signed URL returned and file retrievable via that URL
+  [x] 10 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 06 — BULLMQ QUEUE
+─────────────────────────────────────────
+Phase:  Phase 01 — Foundation
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Audio processing and generation are long-running tasks. Running
+    them inside HTTP request handlers causes timeouts and blocks
+    the API.
+Who experiences this problem?
+  → API consumers — every request that triggers audio work hangs
+    until the work completes.
+What happens today without this solution?
+  → Long-running jobs timeout or block. No retries. No visibility
+    into job state. No way to handle failures gracefully.
+
+SOLUTION
+What are we building?
+  → BullMQ with two queues: audio-processing and generation.
+    Workers execute jobs independently of the request lifecycle.
+How does it solve the problem?
+  → API enqueues a job and returns immediately. Worker picks it up
+    asynchronously. Status is queryable. Failures retry
+    automatically.
+Why this approach and not another?
+  → BullMQ over raw queues: Redis-backed durability, built-in
+    retry with backoff, dead-letter queues, and a UI — no custom
+    queue infrastructure to maintain.
+
+SUCCESS CRITERIA
+  [x] Jobs enqueue from API endpoints and return job ID immediately
+  [x] Workers pick up and process jobs independently
+  [x] Failed jobs retry and land in dead-letter queue after max attempts
+  [x] 8 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 07 — CI/CD
+─────────────────────────────────────────
+Phase:  Phase 01 — Foundation
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → No automated pipeline validates changes before they ship.
+    Every commit is a manual, untested integration risk.
+Who experiences this problem?
+  → Every developer — regressions are discovered in production,
+    not at the PR gate.
+What happens today without this solution?
+  → Broken code merges freely. Docker builds are manual and
+    untested. Deploys happen without knowing if tests pass.
+
+SOLUTION
+What are we building?
+  → GitHub Actions 3-job pipeline (lint → test → build) and a
+    Railway Dockerfile for production deployment.
+How does it solve the problem?
+  → Every push runs the pipeline. Failing tests block the merge.
+    Docker image is built and validated before any deploy.
+Why this approach and not another?
+  → GitHub Actions: zero additional infrastructure, native to the
+    repo. Railway: single Dockerfile deploy, no Kubernetes overhead
+    for a monorepo at this stage.
+
+SUCCESS CRITERIA
+  [x] Pipeline runs green on push to main
+  [x] Failing test blocks merge
+  [x] Docker image builds and Railway deploy succeeds
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 02 — AC-AMI CORE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+JOB 08 — CTL PRESET LIBRARY
+─────────────────────────────────────────
+Phase:  Phase 02 — AC-AMI Core
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Generating CTL from scratch requires deep musical expertise.
+    Planners have nothing to start from.
+Who experiences this problem?
+  → The AC-AMI planners (Jobs 09–11) — they can't run without
+    a seeded CTL.
+What happens today without this solution?
+  → Every generation starts from an empty schema. Planners
+    produce generic output with no subgenre identity.
+
+SOLUTION
+What are we building?
+  → A preset library with 8 subgenre presets (Piano Ballad,
+    Soulful, Log Drum Heavy, etc.) that seed valid CTL instances.
+How does it solve the problem?
+  → Presets establish the genre envelope. Planners extend them
+    rather than inventing from nothing. Each preset encodes a
+    distinct sonic fingerprint.
+Why this approach and not another?
+  → Presets over procedural generation: deterministic, auditable,
+    and fast. A human expert encoded each subgenre once — the
+    system reuses that knowledge forever.
+
+SUCCESS CRITERIA
+  [x] All 8 presets load and validate against CTL_v1 schema
+  [x] No two presets produce identical CTL output
+  [x] 27 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 09 — HARMONY PLANNER
+─────────────────────────────────────────
+Phase:  Phase 02 — AC-AMI Core
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → CTL harmony fields are empty after preset load. No system
+    decides key, mode, or chord progression.
+Who experiences this problem?
+  → The generation agent — it can't produce harmonically coherent
+    tracks without a populated harmony block.
+What happens today without this solution?
+  → Child tracks generated without lineage awareness clash
+    harmonically with parent tracks. DJ mixing between related
+    tracks produces dissonance.
+
+SOLUTION
+What are we building?
+  → A lineage-aware harmony planner that selects key and mode,
+    plans chord progressions, and respects harmonic distance
+    from parent tracks.
+How does it solve the problem?
+  → Harmony block is fully populated before generation. Lineage
+    constraint ensures child tracks stay within a defined harmonic
+    distance of their parent.
+Why this approach and not another?
+  → Lineage awareness over random key selection: Amapiano sets
+    are built in harmonic families. Making the agent respect this
+    produces DJ-ready output from the start.
+
+SUCCESS CRITERIA
+  [x] Harmony block fully populated after planner runs
+  [x] Lineage constraint honoured when parent CTL is provided
+  [x] 18 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 10 — GROOVE PLANNER
+─────────────────────────────────────────
+Phase:  Phase 02 — AC-AMI Core
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → CTL rhythm fields are static after preset load. No system
+    assigns groove patterns or microtiming offsets.
+Who experiences this problem?
+  → The mixing and render pipeline — without microtiming data,
+    audio sounds quantised and lifeless.
+What happens today without this solution?
+  → Generated tracks have the right BPM but none of Amapiano's
+    groove feel. They pass a BPM test but fail the ear test.
+
+SOLUTION
+What are we building?
+  → A groove planner with 13 Amapiano-specific patterns and
+    per-pattern microtiming offset tables.
+How does it solve the problem?
+  → Assigns a groove template to CTL and populates microtiming
+    deltas. Downstream audio processing reads these to inject
+    the actual groove feel into the audio.
+Why this approach and not another?
+  → 13 discrete patterns over continuous parameters: each pattern
+    is a named, auditioned groove template — not a random offset.
+    Musical knowledge encoded once, reused by the machine.
+
+SUCCESS CRITERIA
+  [x] Groove block populated with pattern name, BPM, and microtiming values
+  [x] All 13 patterns selectable and produce distinct microtiming profiles
+  [x] 20 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 11 — INSTRUMENTATION PLANNER
+─────────────────────────────────────────
+Phase:  Phase 02 — AC-AMI Core
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → CTL instrumentation fields are empty after preset load. No
+    system decides which instruments or patch classes to use.
+Who experiences this problem?
+  → The generation agent — without instrumentation, Mode 2 prompts
+    are generic and Mode 1 style strings are incomplete.
+What happens today without this solution?
+  → Generated tracks have no subgenre-appropriate sonic palette.
+    A Log Drum Heavy track sounds the same as a Soulful piano track.
+
+SOLUTION
+What are we building?
+  → An instrumentation planner that assigns patch classes (log drum,
+    piano, bass, pads, percussion) based on subgenre and energy
+    profile from CTL.
+How does it solve the problem?
+  → Instrumentation block is fully populated with subgenre-
+    appropriate patch class assignments before generation runs.
+Why this approach and not another?
+  → Abstract patch classes over specific synth patches: classes
+    are portable across Mode 1 (Suno tags) and Mode 2 (MusicGen
+    prompts) without requiring mode-specific logic.
+
+SUCCESS CRITERIA
+  [x] Instrumentation block populated with patch class assignments
+  [x] Assignments are subgenre-appropriate and vary meaningfully between presets
+  [x] 18 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 12 — VALIDATOR SUITE
+─────────────────────────────────────────
+Phase:  Phase 02 — AC-AMI Core
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Planners can produce internally inconsistent CTL — a key that
+    violates lineage, instrumentation that contradicts the style
+    block, or a groove that mismatches the BPM.
+Who experiences this problem?
+  → The generation agent and the revision loop — invalid CTL
+    produces incorrect prompts and wasted generation calls.
+What happens today without this solution?
+  → Invalid CTL reaches the generation backend silently. Bad
+    generations have no clear cause. Debugging requires tracing
+    back through every planner manually.
+
+SOLUTION
+What are we building?
+  → A validator suite covering four dimensions: lineage consistency,
+    style coherence, instrumentation rules, and harmony validity.
+How does it solve the problem?
+  → Returns a scored validation report that identifies exactly which
+    dimensions are failing — not just that something is wrong.
+    Gates generation behind a clean validation pass.
+Why this approach and not another?
+  → Scored report over binary pass/fail: the revision loop needs
+    to know *which* dimension failed to apply the right mutation.
+    Binary feedback forces blind retries.
+
+SUCCESS CRITERIA
+  [x] Invalid CTLs caught with specific error codes per dimension
+  [x] Valid CTLs pass with zero false positives
+  [x] 22 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 13 — MUTATION ENGINE
+─────────────────────────────────────────
+Phase:  Phase 02 — AC-AMI Core
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → When validation fails, there is no automated repair path.
+    Manual CTL correction breaks the autonomous loop.
+Who experiences this problem?
+  → The revision loop (Job 33) — it can't self-correct without
+    a targeted mutation system.
+What happens today without this solution?
+  → A failed validation stops the agent. A human must inspect
+    the CTL, identify the violation, and fix it manually before
+    the loop can continue.
+
+SOLUTION
+What are we building?
+  → A mutation engine with 9 targeted repair operations and a
+    repairCTL loop that iterates until valid or exhausts attempts.
+How does it solve the problem?
+  → Each repair operation targets a specific validation failure
+    type. The loop runs repair → validate → repeat until the
+    CTL passes or max attempts is reached.
+Why this approach and not another?
+  → Constraint-directed repair over random mutation: random
+    mutation may fix one violation and introduce three others.
+    Targeted repairs converge faster and are auditable.
+
+SUCCESS CRITERIA
+  [x] Given an invalid CTL, repairCTL produces a valid CTL
+  [x] All 9 repair types execute correctly on their target constraint
+  [x] Loop terminates — no infinite loops possible
+  [x] 18 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 14 — PHASE 02 INTEGRATION TEST
+─────────────────────────────────────────
+Phase:  Phase 02 — AC-AMI Core
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Each AC-AMI planner was tested in isolation. Planner
+    interactions — where the output of one conflicts with the
+    input constraints of another — are untested.
+Who experiences this problem?
+  → The generation agent in production, where integration failures
+    surface as unexplained bad generations.
+What happens today without this solution?
+  → Integration bugs between planners go undetected until
+    generation time. Root cause is hard to find.
+
+SOLUTION
+What are we building?
+  → An integration test that runs the full chain — preset →
+    harmony → groove → instrumentation → validate → mutate —
+    for all 8 subgenres.
+How does it solve the problem?
+  → Catches planner-interaction bugs that unit tests miss. Confirms
+    the complete AC-AMI chain produces valid CTL for every
+    subgenre before Phase 03 starts.
+Why this approach and not another?
+  → Integration test as a gate job: runs last in Phase 02 so any
+    individual planner fix is caught here before it causes a
+    Phase 03 regression.
+
+SUCCESS CRITERIA
+  [x] All 8 subgenres produce valid, fully-planned CTL through the complete chain
+  [x] No planner-to-planner conflicts on any subgenre
+  [x] 16 tests pass
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 03 — GENERATION PIPELINE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+JOB 15 — REPLICATE CLIENT
+─────────────────────────────────────────
+Phase:  Phase 03 — Generation Pipeline
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → No client exists to submit generation jobs to Replicate's
+    MusicGen API. Mode 2 generation can't start.
+Who experiences this problem?
+  → The generation agent — it has no way to call MusicGen.
+What happens today without this solution?
+  → Mode 2 is a dead path. Async predictions submitted to
+    Replicate have no polling mechanism, so they complete
+    remotely but results are never retrieved.
+
+SOLUTION
+What are we building?
+  → A typed Replicate client with prediction submission, status
+    polling, exponential backoff retry, and error classification.
+How does it solve the problem?
+  → Client submits a prediction, polls until complete, and returns
+    the audio URL. Retry logic handles Replicate's occasional
+    transient errors without crashing.
+Why this approach and not another?
+  → Polling over webhooks: webhooks require a public endpoint —
+    not available in local dev or CI. Polling works everywhere
+    and is simpler to test.
+
+SUCCESS CRITERIA
+  [x] Client submits prediction and returns a prediction ID
+  [x] Polling detects completion and returns audio URL
+  [x] Retry logic handles transient errors without crashing
+  [x] 12 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 16 — MODE 2 CTL→MUSICGEN CONDITIONING
+─────────────────────────────────────────
+Phase:  Phase 03 — Generation Pipeline
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → MusicGen accepts text prompts, not CTL objects. No translation
+    layer exists for Mode 2.
+Who experiences this problem?
+  → The generation agent running in Mode 2 — it holds a CTL
+    but can't produce a MusicGen-compatible input.
+What happens today without this solution?
+  → Mode 2 submissions to MusicGen carry no Amapiano-specific
+    context. Output is generic, unconditioned music.
+
+SOLUTION
+What are we building?
+  → A CTL→MusicGen conditioning translator that converts CTL
+    blocks into a structured text prompt tuned for MusicGen's
+    conditioning mechanism.
+How does it solve the problem?
+  → Conditioning encodes BPM, key, groove feel, instrumentation,
+    and energy from CTL into a prompt MusicGen understands.
+Why this approach and not another?
+  → Structured prompt over free-text description: structured
+    templates produce consistent, testable outputs. Free-text
+    prompts vary unpredictably and are hard to validate.
+
+SUCCESS CRITERIA
+  [x] Given a valid CTL, conditioning returns a MusicGen-ready prompt string
+  [x] Prompt accurately reflects BPM, key, groove, and instrumentation
+  [x] 14 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 17 — GENERATION AGENT
+─────────────────────────────────────────
+Phase:  Phase 03 — Generation Pipeline
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → All generation backends exist independently but nothing
+    routes CTL to the right one based on config.
+Who experiences this problem?
+  → Every caller above the generation layer — the revision loop,
+    the autonomous agent — they'd each need to implement routing.
+What happens today without this solution?
+  → Callers must know which mode is active and call the right
+    backend directly. Switching modes requires code changes
+    in multiple places.
+
+SOLUTION
+What are we building?
+  → A generation agent that reads generation_mode from config
+    and routes to Mode 1 (Suno), Mode 2 (Replicate/MusicGen),
+    or Mode 3 (reserved stub).
+How does it solve the problem?
+  → Single entry point. The revision loop and autonomous agent
+    above it call one function regardless of which backend
+    is active.
+Why this approach and not another?
+  → Config-driven routing over code switches: changing mode
+    requires zero code change — just a config value. This was
+    a design requirement from the start.
+
+SUCCESS CRITERIA
+  [x] Mode 1 routes to Suno exporter and returns bundle
+  [x] Mode 2 routes to Replicate client and returns prediction ID
+  [x] Mode 3 returns reserved status without error
+  [x] 12 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 18 — MODE 2 COMPLETION WORKER
+─────────────────────────────────────────
+Phase:  Phase 03 — Generation Pipeline
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → MusicGen predictions complete asynchronously on Replicate.
+    No worker monitors completion or retrieves results.
+Who experiences this problem?
+  → The generation pipeline — predictions finish on Replicate
+    but audio never lands in Supabase.
+What happens today without this solution?
+  → Mode 2 predictions are submitted and forgotten. No audio
+    is stored, no generation record is updated, no analysis
+    is queued.
+
+SOLUTION
+What are we building?
+  → A BullMQ worker that polls Replicate prediction status,
+    downloads audio on completion, stores to Supabase Storage,
+    and marks the generation record complete.
+How does it solve the problem?
+  → Worker runs continuously, picks up pending predictions,
+    and closes the Mode 2 lifecycle end-to-end without
+    human intervention.
+Why this approach and not another?
+  → BullMQ worker over a cron job: workers scale horizontally,
+    run only when there is work, and have built-in retry —
+    cron jobs run on a fixed schedule regardless of queue depth.
+
+SUCCESS CRITERIA
+  [x] Worker detects prediction completion
+  [x] Audio downloaded and stored in Supabase Storage
+  [x] Generation record updated to complete status
+  [x] 10 tests pass
+
+
+─────────────────────────────────────────
+
+
+JOB 19 — SUNO UPLOAD INGESTOR
+─────────────────────────────────────────
+Phase:  Phase 03 — Generation Pipeline
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Mode 1 generates audio externally on Suno. No return path
+    exists to bring that audio back into the system.
+Who experiences this problem?
+  → Producers using Mode 1 — they generate audio but can't
+    close the loop back to the platform.
+What happens today without this solution?
+  → The Mode 1 lifecycle is permanently open. CTL leaves the
+    system as a Suno bundle but audio never returns. No analysis,
+    no evaluation, no dataset record.
+
+SOLUTION
+What are we building?
+  → An upload ingestor endpoint that accepts producer-uploaded
+    Suno audio, links it to the originating generation record,
+    and queues it for analysis.
+How does it solve the problem?
+  → Closes the Mode 1 loop: CTL out → producer generates →
+    audio in → analysis queued. The full lifecycle completes
+    without human coordination of individual API calls.
+Why this approach and not another?
+  → Upload endpoint over webhook integration: Suno doesn't have
+    a webhook API. Producer-initiated upload is the only
+    available return path.
+
+SUCCESS CRITERIA
+  [x] Upload accepted and stored in Supabase Storage
+  [x] Generation record linked to the uploaded audio file
+  [x] Analysis job queued automatically on ingest
+  [x] 8 tests pass
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 04 — AUDIO PRODUCTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+JOB 20 — DEMUCS STEM SEPARATION
+─────────────────────────────────────────
+Phase:  Phase 04 — Audio Production
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Mixing, log drum extraction, and analysis all need individual
+    stems. Mixed-down audio can't be processed at the stem level.
+Who experiences this problem?
+  → The mixing engine, log drum extractor, and analysis pipeline
+    — all of Phase 04 is blocked.
+What happens today without this solution?
+  → Audio arrives as a stereo mix. Every downstream processor
+    that needs to touch a specific instrument is stuck.
+
+SOLUTION
+What are we building?
+  → Demucs htdemucs integration that separates audio into 4
+    stems: drums, bass, vocals, other.
+How does it solve the problem?
+  → Each stem is independently accessible for processing, mixing,
+    and analysis. The log drum extractor, mixing engine, and
+    harmonic anchor all operate on the right stems.
+Why this approach and not another?
+  → htdemucs over older Demucs models: current best open-source
+    separator for music. Significant quality improvement over v2/v3
+    without requiring a different API.
+
+SUCCESS CRITERIA
+  [x] Stems endpoint returns 4 audio files (drums, bass, vocals, other)
+  [x] htdemucs model runs without error
+  [x] Output files are valid, playable audio
+
+
+─────────────────────────────────────────
+
+
+JOB 21 — LOG DRUM EXTRACTOR
+─────────────────────────────────────────
+Phase:  Phase 04 — Audio Production
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → The log drum is the defining element of Amapiano but it
+    can't be isolated by stem separation — it lives inside
+    the drum stem alongside all other percussion.
+Who experiences this problem?
+  → The DJ engine, the Amapianorize pipeline, and any producer
+    who needs the log drum isolated for remixing.
+What happens today without this solution?
+  → The log drum can't be independently controlled, analysed,
+    or synced at transitions. The DJ engine can't do log drum
+    sync without it.
+
+SOLUTION
+What are we building?
+  → A log drum extractor using FFT bandpass filter (60–300 Hz)
+    and onset gate applied to the drum stem.
+How does it solve the problem?
+  → Bandpass targets the sub-bass frequency range where the log
+    drum lives. Onset gate removes sustained bleed from other
+    percussion in that range.
+Why this approach and not another?
+  → FFT bandpass over ML-based source separation: the log drum
+    is spectrally distinct enough in the sub-bass range that
+    frequency-domain filtering reliably isolates it without
+    the overhead of a separate model.
+
+SUCCESS CRITERIA
+  [x] Extractor returns a log drum audio file from any drum stem input
+  [x] FFT bandpass correctly isolates the 60–300 Hz range
+  [x] Onset gate removes bleed without clipping log drum transients
+
+
+─────────────────────────────────────────
+
+
+JOB 22 — MIXING ENGINE
+─────────────────────────────────────────
+Phase:  Phase 04 — Audio Production
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Individual stems need processing before recombination. Raw
+    stem layering sounds unbalanced and unfinished.
+Who experiences this problem?
+  → The render pipeline — it can't produce a listenable mix
+    without per-stem processing.
+What happens today without this solution?
+  → Stems are either left separate or naively summed. Neither
+    produces broadcast-quality output.
+
+SOLUTION
+What are we building?
+  → A mixing engine using pedalboard that applies per-stem EQ,
+    compression, and level drawn from AC-AMI channel strip
+    settings in CTL.
+How does it solve the problem?
+  → Each stem is processed according to CTL before recombination.
+    The same schema that generated the track informs how it
+    gets mixed — the loop closes.
+Why this approach and not another?
+  → CTL-driven channel strips over fixed processing: the mix
+    reflects the musical intent encoded at generation time,
+    not a one-size-fits-all preset.
+
+SUCCESS CRITERIA
+  [x] Mix endpoint returns a stereo mixdown from stem inputs
+  [x] Channel strip settings from CTL applied to each stem
+  [x] Output is audibly balanced — no single stem dominates
+
+
+─────────────────────────────────────────
+
+
+JOB 23 — MASTER CHAIN
+─────────────────────────────────────────
+Phase:  Phase 04 — Audio Production
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Mixed audio is unmastered — wrong loudness, narrow stereo
+    image, uneven tonal balance. It won't compete on streaming
+    platforms.
+Who experiences this problem?
+  → Any listener who plays the output alongside commercial tracks
+    — it sounds quiet and thin.
+What happens today without this solution?
+  → Output fails the loudness normalisation of every major
+    streaming platform and sounds amateur next to commercial
+    Amapiano releases.
+
+SOLUTION
+What are we building?
+  → A master chain with stereo widening, multi-band EQ, and
+    LUFS loudness limiter targeting −14 LUFS.
+How does it solve the problem?
+  → LUFS-compliant output survives streaming platform
+    normalisation at the right perceived loudness. Stereo
+    widening and EQ give competitive presence.
+Why this approach and not another?
+  → −14 LUFS target: Spotify, Apple Music, and YouTube all
+    normalise to −14 LUFS. Tracks mastered hotter get turned
+    down; tracks mastered quieter get turned up but lose
+    the mix's dynamics.
+
+SUCCESS CRITERIA
+  [x] Master endpoint returns LUFS-compliant audio (−14 LUFS ±1)
+  [x] Stereo width measurably increased relative to input
+  [x] No clipping or inter-sample peaks above 0 dBFS
+
+
+─────────────────────────────────────────
+
+
+JOB 24 — RENDER PIPELINE
+─────────────────────────────────────────
+Phase:  Phase 04 — Audio Production
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Stem separation, log drum extraction, mixing, and mastering
+    exist as separate steps. No orchestrated path runs the full
+    chain from raw audio to finished master.
+Who experiences this problem?
+  → Every caller who needs a finished track — they must manually
+    chain four separate API calls and handle intermediate state.
+What happens today without this solution?
+  → Getting from raw audio to a master requires four manual steps,
+    error handling at each, and correct passing of intermediate
+    files between them.
+
+SOLUTION
+What are we building?
+  → A full render pipeline that chains: raw → stems → log drum
+    → mix → master in a single API call.
+How does it solve the problem?
+  → One endpoint, one call, one master file returned. Intermediate
+    files produced as side-effects. Pipeline fails fast on any
+    step error — no partial output.
+Why this approach and not another?
+  → Fail-fast pipeline over partial-success: partial output
+    (e.g. a mix but no master) is worse than no output — it
+    creates ambiguous state that's harder to recover from than
+    a clean failure.
+
+SUCCESS CRITERIA
+  [x] POST /api/audio/render/full returns a finished master audio file
+  [x] All intermediate files produced as side-effects
+  [x] Any step failure stops the pipeline and returns a specific error
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 05 — DJ ENGINE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+JOB 25 — AUDIO ANALYSIS (BPM + KEY)
+─────────────────────────────────────────
+Phase:  Phase 05 — DJ Engine
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → The DJ engine needs accurate BPM and key for every track
+    to plan compatible transitions. Neither is known for any
+    stored track.
+Who experiences this problem?
+  → The DJ set planner — it can't sequence tracks or check
+    harmonic compatibility without BPM and key.
+What happens today without this solution?
+  → Track library records have no musical metadata. The DJ
+    engine is blind to tempo and tonality.
+
+SOLUTION
+What are we building?
+  → BPM detection and key detection using the Krumhansl-
+    Schmuckler algorithm. Results written to the track record
+    in Supabase.
+How does it solve the problem?
+  → Every track in the library gets analysed on ingest and
+    carries its BPM and key. The DJ planner has the data it
+    needs to sequence and transition correctly.
+Why this approach and not another?
+  → Krumhansl-Schmuckler over ML-based key detection: it is
+    the most musically grounded algorithm available without
+    model inference overhead — fast, deterministic, auditable.
+
+SUCCESS CRITERIA
+  [x] BPM detection accurate to ±2 BPM on test tracks
+  [x] Key detection returns correct key on test tracks
+  [x] Results written to Supabase track record
+
+
+─────────────────────────────────────────
+
+
+JOB 26 — CAMELOT WHEEL + HARMONIC COMPATIBILITY
+─────────────────────────────────────────
+Phase:  Phase 05 — DJ Engine
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Transitions between harmonically incompatible keys sound
+    clashing. No system maps keys to Camelot positions or
+    checks compatibility.
+Who experiences this problem?
+  → The DJ set planner — without compatibility logic, it can't
+    ensure smooth harmonic transitions.
+What happens today without this solution?
+  → Track sequencing is harmonically blind. Sets may cycle
+    through incompatible keys, producing clashing transitions
+    that break the mix.
+
+SOLUTION
+What are we building?
+  → The full Camelot wheel (24 positions, inner/outer ring),
+    a queryable track library indexed by position, and
+    compatibility check functions.
+How does it solve the problem?
+  → Every key maps to a Camelot position. Compatibility checks
+    return valid adjacent transitions (±1 position, inner↔outer).
+    The DJ planner only sequences compatible transitions.
+Why this approach and not another?
+  → Camelot wheel over raw interval theory: it is the industry
+    standard for DJ harmonic mixing. Producers and DJs already
+    use it — the system speaks their language.
+
+SUCCESS CRITERIA
+  [x] All 24 Camelot positions map correctly to musical keys
+  [x] Compatibility check returns valid adjacent transitions only
+  [x] Track library queryable by Camelot position and BPM range
+
+
+─────────────────────────────────────────
+
+
+JOB 27 — DJ SET PLANNER
+─────────────────────────────────────────
+Phase:  Phase 05 — DJ Engine
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Track ordering for a DJ set is manual. No system plans
+    the energy arc that defines a great Amapiano set.
+Who experiences this problem?
+  → The set renderer — it needs an ordered, arc-shaped sequence
+    to produce a coherent set, not just a list.
+What happens today without this solution?
+  → Sets are random sequences with no build, peak, or release.
+    They don't follow Amapiano's structural conventions and
+    won't hold a crowd.
+
+SOLUTION
+What are we building?
+  → A DJ set planner that sequences tracks across 5 Amapiano
+    energy phases: warm-up → build → peak → sustain → cool-down.
+How does it solve the problem?
+  → Energy arc is encoded as target levels per phase. Planner
+    selects tracks whose energy and Camelot position match each
+    phase, producing a musically intentional sequence.
+Why this approach and not another?
+  → 5-phase arc over continuous energy curve: discrete phases
+    are easier to fill, validate, and explain. Amapiano sets
+    have recognisable phase boundaries — this encodes that
+    domain knowledge directly.
+
+SUCCESS CRITERIA
+  [x] Planner returns an ordered track list covering all 5 energy phases
+  [x] All Camelot transitions valid throughout the set
+  [x] Energy levels follow the correct arc — not random
+
+
+─────────────────────────────────────────
+
+
+JOB 28 — SET RENDERER
+─────────────────────────────────────────
+Phase:  Phase 05 — DJ Engine
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → A planned track sequence is just a list — it doesn't produce
+    audio. No renderer stitches tracks together with transitions.
+Who experiences this problem?
+  → Anyone expecting the DJ engine to output a continuous mix,
+    not a playlist.
+What happens today without this solution?
+  → The DJ engine plans a set but produces no audio. The output
+    is academically correct but practically useless.
+
+SOLUTION
+What are we building?
+  → A set renderer with three transition modes: crossfade
+    (gradual blend), log drum sync (align kick hits at the
+    transition point), and hard cut.
+How does it solve the problem?
+  → Stitches the planned sequence into a continuous audio file.
+    Log drum sync is the Amapiano-specific mode — matching the
+    log drum hit at transitions is the hallmark of skilled
+    Amapiano DJing.
+Why this approach and not another?
+  → Three modes over one: different transitions serve different
+    energy moments in the set. Hard cuts work at peak energy;
+    crossfades work at warm-up and cool-down.
+
+SUCCESS CRITERIA
+  [x] POST /api/audio/dj/render returns a continuous audio file
+  [x] Crossfade transitions audibly smooth
+  [x] Log drum sync aligns kick hits at transition boundaries
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 06 — AMAPIANORIZE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+JOB 29 — SOURCE ANALYZER
+─────────────────────────────────────────
+Phase:  Phase 06 — Amapianorize
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → The Amapianorize pipeline applies transformations blindly.
+    Without knowing what the source audio is, it can't calibrate
+    how aggressive each transformation needs to be.
+Who experiences this problem?
+  → The rhythm transplant and harmonic anchor steps — they receive
+    audio with no context about its origin.
+What happens today without this solution?
+  → A 180 BPM drum and bass track and an 85 BPM hip-hop track
+    receive the same transformation parameters. One ends up
+    correct; the other is mangled.
+
+SOLUTION
+What are we building?
+  → A source analyzer that produces a SourceProfile: BPM, key,
+    energy level, spectral character, and genre classification.
+How does it solve the problem?
+  → Every subsequent step reads the SourceProfile and calibrates
+    accordingly — the right BPM stretch ratio, the right harmonic
+    shift distance.
+Why this approach and not another?
+  → SourceProfile as a typed struct over passing raw analysis
+    values: every downstream step gets a consistent, validated
+    object. No step makes assumptions about what it was handed.
+
+SUCCESS CRITERIA
+  [x] Analyzer returns a complete SourceProfile for any audio input
+  [x] Genre classification matches expected labels on test tracks
+  [x] BPM and key values match ground truth on test tracks
+
+
+─────────────────────────────────────────
+
+
+JOB 30 — RHYTHM TRANSPLANT
+─────────────────────────────────────────
+Phase:  Phase 06 — Amapianorize
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Non-Amapiano audio has foreign rhythmic DNA. Tempo-stretching
+    to Amapiano BPM produces audio at the right tempo but with
+    no Amapiano groove feel.
+Who experiences this problem?
+  → Anyone using the Amapianorize pipeline — they expect output
+    that *feels* like Amapiano, not just runs at the right BPM.
+What happens today without this solution?
+  → Transformed tracks pass a BPM test but fail the ear test.
+    They sound like the source material sped up or slowed down,
+    not Amapianorized.
+
+SOLUTION
+What are we building?
+  → A rhythm transplant module that time-stretches audio to the
+    target Amapiano BPM, then injects Amapiano groove microtiming
+    offsets from a selected groove template.
+How does it solve the problem?
+  → Two-step: stretch first (preserves pitch), then inject
+    microtiming (changes rhythmic feel without changing pitch
+    again). The groove template encodes real Amapiano feel.
+Why this approach and not another?
+  → Two-step over simultaneous stretch+groove: doing both at
+    once produces compounding artefacts. Sequential steps are
+    independently tunable and auditable.
+
+SUCCESS CRITERIA
+  [x] Output audio matches target BPM
+  [x] Groove injection audibly shifts the rhythmic feel toward Amapiano
+  [x] No pitch artefacts from time-stretching
+
+
+─────────────────────────────────────────
+
+
+JOB 31 — HARMONIC ANCHOR + FULL PIPELINE
+─────────────────────────────────────────
+Phase:  Phase 06 — Amapianorize
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → After rhythm transplant, the audio may be in a key that
+    clashes with Amapiano harmonic conventions. And the full
+    transform pipeline has no single entry point.
+Who experiences this problem?
+  → API consumers who want to Amapianorize a track — they'd need
+    to chain 5 separate calls and manage intermediate state.
+What happens today without this solution?
+  → Harmonically mismatched output even after correct rhythm
+    transplant. And no complete pipeline means manual orchestration
+    for every transformation.
+
+SOLUTION
+What are we building?
+  → A harmonic anchor that pitch-shifts audio to the nearest
+    Amapiano-compatible key via Camelot wheel proximity, then
+    a full pipeline endpoint: analyze → separate → rhythm
+    transplant → harmonic anchor → mix → master.
+How does it solve the problem?
+  → Harmonic anchor ensures the output is in a key that works
+    in Amapiano contexts. Single endpoint eliminates manual
+    orchestration entirely.
+Why this approach and not another?
+  → Camelot-proximity over fixed target key: the nearest
+    compatible key minimises the pitch shift distance, preserving
+    more of the source character.
+
+SUCCESS CRITERIA
+  [x] POST /amapianorize/transform completes the full pipeline end-to-end
+  [x] Output is in a valid Amapiano-compatible key
+  [x] No manual steps required between pipeline stages
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 07 — AGENT LOOP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+JOB 32 — EVALUATION API
+─────────────────────────────────────────
+Phase:  Phase 07 — Agent Loop
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → No system evaluates generated tracks against their source
+    CTL. The agent generates but never knows if it succeeded.
+Who experiences this problem?
+  → The revision loop — it has no feedback signal to decide
+    whether to retry or accept.
+What happens today without this solution?
+  → Every generation is accepted regardless of quality. The
+    revision loop (Job 33) has nothing to measure and nothing
+    to improve against.
+
+SOLUTION
+What are we building?
+  → An evaluation API that scores a generation against its
+    source CTL across multiple dimensions: groove fit, harmonic
+    accuracy, instrumentation match, energy alignment.
+How does it solve the problem?
+  → Returns a composite score and per-dimension breakdown. The
+    revision loop knows whether to accept and, if not, which
+    dimension to target with mutations.
+Why this approach and not another?
+  → Per-dimension scoring over single composite: the mutation
+    engine needs to know *what* failed to apply the right repair.
+    A single score tells it a generation is bad but not why.
+
+SUCCESS CRITERIA
+  [x] Evaluation returns a composite score (0–100) for any generation
+  [x] Per-dimension scores returned alongside composite
+  [x] Results written to evaluations table in Supabase
+
+
+─────────────────────────────────────────
+
+
+JOB 33 — REVISION LOOP
+─────────────────────────────────────────
+Phase:  Phase 07 — Agent Loop
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → A single generation attempt rarely hits all CTL targets.
+    The agent accepts the first result regardless of quality.
+Who experiences this problem?
+  → The autonomous agent — it produces output but has no
+    mechanism for self-improvement within a single run.
+What happens today without this solution?
+  → Low-scoring generations are returned as final output.
+    Quality is inconsistent and uncontrolled.
+
+SOLUTION
+What are we building?
+  → A revision loop: evaluate → if score below threshold →
+    mutate CTL → regenerate. Max 3 iterations.
+How does it solve the problem?
+  → The agent improves its output within a single run without
+    human intervention. CTL mutations target the specific
+    dimensions that failed.
+Why this approach and not another?
+  → Max 3 iterations over unlimited: most CTL issues resolve
+    within 2 iterations. Unlimited retry is unbounded cost.
+    Three is the practical ceiling before diminishing returns.
+
+SUCCESS CRITERIA
+  [x] Loop terminates on pass (above threshold) or max 3 iterations
+  [x] Each iteration produces a new generation with a targeted CTL mutation
+  [x] Final score higher than first-attempt score in >50% of runs
+
+
+─────────────────────────────────────────
+
+
+JOB 34 — RESULTS STORE
+─────────────────────────────────────────
+Phase:  Phase 07 — Agent Loop
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Evaluation results and revision history are ephemeral —
+    they live in memory during a run and are lost when it ends.
+Who experiences this problem?
+  → The weight tuner (Job 35) and dataset builder (Job 36) —
+    both require historical evaluation data that doesn't exist.
+What happens today without this solution?
+  → No way to analyse what the agent tried, scored, and why
+    across runs. Every run starts from scratch with no learning.
+
+SOLUTION
+What are we building?
+  → A results store that persists evaluation scores, CTL mutation
+    diffs, and iteration count per track in Supabase.
+How does it solve the problem?
+  → All evaluation rounds are queryable by track ID. Mutation
+    diffs stored as structured JSON — the delta between each
+    iteration is inspectable and analysable.
+Why this approach and not another?
+  → Structured diffs over snapshots: storing the full CTL at
+    each iteration is expensive and redundant. Diffs are compact,
+    show exactly what changed, and are faster to query.
+
+SUCCESS CRITERIA
+  [x] All evaluation rounds queryable by track ID
+  [x] Mutation diffs stored as structured, human-readable JSON
+  [x] Iteration count accurate per track
+
+
+─────────────────────────────────────────
+
+
+JOB 35 — WEIGHT TUNER
+─────────────────────────────────────────
+Phase:  Phase 07 — Agent Loop
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Evaluation scoring weights are hardcoded. The system applies
+    the same formula regardless of what it has learned.
+Who experiences this problem?
+  → The evaluation API — its composite score may not reflect
+    what actually correlates with quality in Amapiano.
+What happens today without this solution?
+  → The agent optimises for a fixed formula that may be wrong.
+    Accumulated evaluation history has no path to improving
+    the scoring model.
+
+SOLUTION
+What are we building?
+  → A weight tuner that analyses evaluation history and adjusts
+    scoring weights toward dimensions that best predict quality
+    outcomes in the dataset.
+How does it solve the problem?
+  → Updated weight vector is fed back into the evaluation API.
+    The agent gets smarter over time — not by changing its
+    architecture, but by improving what it measures.
+Why this approach and not another?
+  → Data-driven weight adjustment over manual tuning: manual
+    weight selection is guesswork. The data reveals which
+    dimensions actually matter for Amapiano quality.
+
+SUCCESS CRITERIA
+  [x] Weight tuner runs on dataset and produces an updated weight vector
+  [x] Updated weights improve composite score correlation on held-out set
+  [x] POST /api/agent/tune completes without error
+
+
+─────────────────────────────────────────
+
+
+JOB 36 — DATASET BUILDER
+─────────────────────────────────────────
+Phase:  Phase 07 — Agent Loop
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → ML training requires a clean, labelled dataset of CTL +
+    audio reference + scores. No pipeline constructs this
+    automatically from evaluation history.
+Who experiences this problem?
+  → Phase 08 — the entire ML layer is blocked without a dataset.
+What happens today without this solution?
+  → Evaluation history exists in Supabase but is unsplit,
+    unlabelled, and not in the format ML training expects.
+    Phase 08 cannot start.
+
+SOLUTION
+What are we building?
+  → A dataset builder that assembles dataset_records from
+    evaluation history with deterministic 80/10/10
+    train/val/test splits.
+How does it solve the problem?
+  → Each record includes CTL, audio reference, and composite
+    score — exactly what the fine-tuning job needs. Hash-based
+    split assignment prevents data leakage.
+Why this approach and not another?
+  → Deterministic hash-based splits over random: the same record
+    always lands in the same split across runs. Random splits
+    risk the same track appearing in both train and val.
+
+SUCCESS CRITERIA
+  [x] GET /api/agent/dataset returns record counts by split
+  [x] Each record includes CTL, audio reference, and composite score
+  [x] Split ratios correct at 80/10/10 ±1%
+
+
+─────────────────────────────────────────
+
+
+JOB 37 — FULL AUTONOMOUS AGENT
+─────────────────────────────────────────
+Phase:  Phase 07 — Agent Loop
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → All subsystems exist independently but no single entry point
+    runs the full end-to-end loop autonomously.
+Who experiences this problem?
+  → Any consumer of the platform — getting a generated, evaluated
+    track requires manually chaining 7 separate API calls.
+What happens today without this solution?
+  → The platform is a collection of parts, not a product.
+    Phases 01–06 built powerful subsystems that no one can
+    use without deep knowledge of the internal API surface.
+
+SOLUTION
+What are we building?
+  → POST /api/agent/run — orchestrates the full pipeline:
+    create track → select preset → run planners → revision loop
+    → generate → store → return evaluated result.
+How does it solve the problem?
+  → One call in, one evaluated result out. The entire platform
+    collapses to a single API surface. This is the payoff job.
+Why this approach and not another?
+  → Single endpoint over SDK/workflow: the agent is a product,
+    not a library. A single HTTP call is the right abstraction
+    for a system that should be autonomous.
+
+SUCCESS CRITERIA
+  [x] Single API call returns { status, track_id, ctl, validation_passed,
+      composite_score, iterations_run, agent_log }
+  [x] Agent completes without manual intervention at any step
+  [x] All 7 pipeline stages execute in the correct sequence
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 08 — ML LAYER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+JOB 38 — AUDIO FEATURE BRIDGE
+─────────────────────────────────────────
+Phase:  Phase 08 — ML Layer
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → dataset_records held placeholder BPM and key values — the
+    fields existed but contained dummy data injected at record
+    creation time.
+Who experiences this problem?
+  → The ML training pipeline — it trains on fake features and
+    learns noise instead of signal.
+What happens today without this solution?
+  → Any model trained on this dataset produces unreliable output.
+    The 389 existing records are worthless for training until
+    corrected.
+
+SOLUTION
+What are we building?
+  → An audio feature bridge that runs real analysis on every
+    stored audio file and writes actual BPM, key, and composite
+    score to dataset_records after every audio.analyze job.
+    Includes a backfill script for all existing records.
+How does it solve the problem?
+  → Real features replace placeholders. Every record in the
+    dataset now carries ground-truth musical data. New records
+    are populated automatically on ingest.
+Why this approach and not another?
+  → Idempotent backfill script over a migration: a migration
+    runs once and can't be safely re-run. An idempotent script
+    can be re-run to verify or correct without risk.
+
+SUCCESS CRITERIA
+  [x] 389/389 existing records updated with real BPM, key, and score
+  [x] Zero placeholder values remaining in dataset_records
+  [x] Every new audio.analyze job writes real features automatically
+  [x] Backfill script is idempotent — safe to re-run
+
+
+─────────────────────────────────────────
+
+
+JOB 39 — TEMPORAL SCAFFOLD
+─────────────────────────────────────────
+Phase:  Phase 08 — ML Layer
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Dataset ingestion is a multi-step, long-running process
+    with no durable orchestration. Steps fail silently and
+    leave records in partially-ingested states.
+Who experiences this problem?
+  → The dataset pipeline — there is no way to know which
+    ingestion step failed, what was completed, or how to retry
+    safely.
+What happens today without this solution?
+  → A crashed worker mid-ingestion leaves the dataset in
+    unknown state. Recovery requires manual inspection and
+    re-ingestion, risking duplicates.
+
+SOLUTION
+What are we building?
+  → A DatasetIngestionWorkflow using Temporal that provides
+    durable execution, automatic retry, and observable state
+    for each ingestion activity.
+How does it solve the problem?
+  → Temporal persists workflow state to a database. If a worker
+    crashes mid-ingestion, the workflow resumes from the last
+    successful activity — no data is lost and no step is
+    repeated.
+Why this approach and not another?
+  → Temporal over BullMQ for this workflow: BullMQ retries
+    individual jobs but has no concept of multi-step workflow
+    state. Temporal was designed for exactly this pattern.
+
+SUCCESS CRITERIA
+  [x] DatasetIngestionWorkflow starts and executes activities in order
+  [x] Failed activities retry automatically without manual intervention
+  [x] Workflow state visible in Temporal UI
+
+
+─────────────────────────────────────────
+
+
+JOB 40 — DATASET PIPELINE
+─────────────────────────────────────────
+Phase:  Phase 08 — ML Layer
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Dataset splits computed on-demand can drift as new records
+    arrive. A record can move between train and val across runs,
+    causing silent data leakage.
+Who experiences this problem?
+  → The ML training job — leakage between train and val produces
+    inflated validation metrics and an overfit model.
+What happens today without this solution?
+  → Split assignment is non-deterministic. The same track can
+    appear in both train and val on different runs. Model
+    evaluation is unreliable.
+
+SOLUTION
+What are we building?
+  → A dataset pipeline that assigns records to splits
+    deterministically at ingestion time using hash-based
+    assignment, maintaining 80/10/10 integrity as the dataset grows.
+How does it solve the problem?
+  → Hash-based assignment guarantees the same record ID always
+    maps to the same split. Leakage is structurally impossible.
+Why this approach and not another?
+  → Hash-based over sequential assignment: sequential splits
+    break when records are deleted or re-ingested. Hash-based
+    is robust to any order of operations.
+
+SUCCESS CRITERIA
+  [x] Split counts match 80/10/10 ratio on the full dataset
+  [x] Same record ID maps to the same split on every run
+  [x] New records assigned correctly without touching existing splits
+
+
+─────────────────────────────────────────
+
+
+JOB 41 — MUSICGEN FINE-TUNING ON MODAL
+─────────────────────────────────────────
+Phase:  Phase 08 — ML Layer
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → MusicGen's base model has no Amapiano-specific training.
+    Generated audio lacks the log drum feel, piano stab patterns,
+    and groove characteristics that define the genre.
+Who experiences this problem?
+  → Mode 2 generation — it produces generic music, not Amapiano.
+What happens today without this solution?
+  → Heavy prompt engineering achieves mediocre on-genre results.
+    The AC-AMI conditioning helps but the base model has no
+    Amapiano priors to activate.
+
+SOLUTION
+What are we building?
+  → Fine-tuning of MusicGen on the Amapiano dataset using
+    AudioCraft on Modal's A10G GPU, triggered by modal run.
+How does it solve the problem?
+  → The fine-tuned model has Amapiano priors baked in. CTL
+    conditioning now activates a model that already understands
+    the genre rather than fighting a generic one.
+Why this approach and not another?
+  → Modal over self-managed GPU: A10G on Modal costs ~$1/hr
+    billed per second. No infra to manage, no idle cost, no
+    minimum commitment — right for a research-phase training run.
+
+SUCCESS CRITERIA
+  [x] Fine-tuned model checkpoint saved to Modal volume
+  [x] Training loss converges over the training run
+  [x] Sample generations from fine-tuned model audibly more
+      Amapiano-like than base model baseline
+
+
+─────────────────────────────────────────
+
+
+JOB 42 — ABLATION STUDY
+─────────────────────────────────────────
+Phase:  Phase 08 — ML Layer
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → No empirical evidence that the full AC-AMI stack improves
+    generation quality over simpler approaches.
+Who experiences this problem?
+  → The research claim — without an ablation, AC-AMI's value
+    is an assertion, not a finding. The PhD evidence is absent.
+What happens today without this solution?
+  → The system produces good output but can't prove *why*.
+    Any reviewer can dismiss the contribution as unverified.
+
+SOLUTION
+What are we building?
+  → A 3-condition ablation: prompt_only (text prompt, no CTL),
+    ctl_no_lineage (CTL conditioning without lineage), and
+    full_stack (complete AC-AMI pipeline). Composite scores
+    measured across conditions.
+How does it solve the problem?
+  → Isolates the contribution of each system layer. ac_ami_lift
+    field quantifies the % improvement of full_stack over
+    prompt_only — a citable, reproducible result.
+Why this approach and not another?
+  → 3 conditions over pairwise: three conditions test both the
+    value of CTL conditioning and the specific value of lineage
+    — the two claims that need defending.
+
+SUCCESS CRITERIA
+  [x] POST /api/agent/ablation returns scores for all 3 conditions
+  [x] full_stack outperforms prompt_only on composite score
+  [x] ac_ami_lift field populated with % improvement
+
+
+─────────────────────────────────────────
+
+
+JOB 43 — VITS2 ISIZULU VOCAL SYNTHESIS
+─────────────────────────────────────────
+Phase:  Phase 08 — ML Layer
+Status: [x] Complete
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → No system generates isiZulu vocals for Amapiano tracks.
+    Standard TTS systems don't support isiZulu. Phonetics must
+    be correct for the language to be intelligible.
+Who experiences this problem?
+  → Producers who need isiZulu vocal lines — currently impossible
+    without a human vocalist. AURA X produces instrumentals only.
+What happens today without this solution?
+  → Vocal synthesis is unavailable. The platform can't participate
+    in the full Amapiano production workflow, which is vocal-led.
+
+SOLUTION
+What are we building?
+  → A VITS2 vocal synthesis scaffold with an IPA phonetics
+    pipeline for isiZulu. Input: text. Output: vocal audio.
+    Pipeline: text → isiZulu IPA transcription → VITS2 synthesis.
+How does it solve the problem?
+  → Correct IPA transcription ensures isiZulu phonemes are
+    rendered intelligibly. VITS2 produces natural prosody from
+    IPA without needing a massive training corpus.
+Why this approach and not another?
+  → VITS2 over standard TTS: VITS2 accepts IPA directly, which
+    is essential for a low-resource language like isiZulu where
+    no pre-trained TTS models exist. IPA is the bridge.
+
+SUCCESS CRITERIA
+  [x] POST /api/agent/synthesize returns vocal audio for isiZulu text input
+  [x] IPA transcription correct for test phrases
+  [x] VITS2 model runs on Modal without error
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+NEW JOBS — append below this line
+Copy JOB_TEMPLATE.md, fill in all sections, commit.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

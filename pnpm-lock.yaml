@@ -258,6 +258,10 @@ importers:
         version: 5.9.3
 
   packages/engine:
+    dependencies:
+      '@aura-x/ctl':
+        specifier: workspace:*
+        version: link:../ctl
     devDependencies:
       '@types/jest':
         specifier: ^29.5.14

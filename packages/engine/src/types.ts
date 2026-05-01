@@ -410,6 +410,15 @@ export interface PatternSimilarity {
   isMatch:      boolean;    // overallSim >= 0.75
 }
 
+// ─── Key transposition ────────────────────────────────────────────────────────
+
+export interface TransposeResult {
+  progression: ChordProgression;  // transposed copy
+  originalKey: string;
+  targetKey:   string;
+  semitones:   number;            // signed shortest-path offset (−6 … +6)
+}
+
 // ─── Groove complexity ────────────────────────────────────────────────────────
 
 export type ComplexityTier = "minimal" | "sparse" | "moderate" | "complex" | "dense";
