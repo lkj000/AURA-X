@@ -15,6 +15,7 @@ import { evaluateRender } from "../high_end_engine/render_evaluator";
 import { emptyPolicy, updatePolicy, computeActionScore, laneLeaderboard } from "../ml_engine/adaptive_action_learning";
 import { exportGrooveToMidi, groovePlanToMidi } from "../daw_export/midi_export";
 import { applyPerceptionModel, computeBEff, computePerceptualDensity, barkScale } from "../perception/perception_model";
+import { decomposeStems } from "../perception/stem_decomposer";
 import { evaluateBuffer, buildEnhancement } from "../index";
 import { LANE_GRAMMARS, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
@@ -908,7 +909,118 @@ describe("perception_model", () => {
   });
 });
 
-// ── 16. Lane grammar constants ────────────────────────────────────────────────
+// ── 16. Virtual stem decomposition ───────────────────────────────────────────
+
+describe("stem_decomposer", () => {
+  // 110 Hz sine with beat-envelope decay — most energy in log_drum band (60–200 Hz)
+  const wav = buildWav(4);
+  const { samples, sampleRate } = (() => {
+    const { parseWavMono: p } = require("../_audio_io");
+    return p(wav) as { samples: number[]; sampleRate: number };
+  })();
+
+  let decomp: ReturnType<typeof decomposeStems>;
+  beforeAll(() => { decomp = decomposeStems(samples, sampleRate); });
+
+  test("returns exactly 5 stems", () => {
+    expect(decomp.stems).toHaveLength(5);
+  });
+
+  test("stem names in order: sub_bass, log_drum, chord_pad, percussion, air", () => {
+    const names = decomp.stems.map((s) => s.name);
+    expect(names).toEqual(["sub_bass", "log_drum", "chord_pad", "percussion", "air"]);
+  });
+
+  test("all stem energies in [0, 1]", () => {
+    for (const s of decomp.stems) {
+      expect(s.energy).toBeGreaterThanOrEqual(0);
+      expect(s.energy).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("all presenceScores in [0, 1]", () => {
+    for (const s of decomp.stems) {
+      expect(s.presenceScore).toBeGreaterThanOrEqual(0);
+      expect(s.presenceScore).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("all tonality in [0, 1]", () => {
+    for (const s of decomp.stems) {
+      expect(s.tonality).toBeGreaterThanOrEqual(0);
+      expect(s.tonality).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("all transience in [0, 1]", () => {
+    for (const s of decomp.stems) {
+      expect(s.transience).toBeGreaterThanOrEqual(0);
+      expect(s.transience).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("log_drum stem has highest energy for 110 Hz signal", () => {
+    const logDrum = decomp.stemMap["log_drum"];
+    for (const s of decomp.stems) {
+      if (s.name !== "log_drum") expect(logDrum.energy).toBeGreaterThan(s.energy);
+    }
+  });
+
+  test("dominantStem is log_drum for 110 Hz signal", () => {
+    expect(decomp.dominantStem).toBe("log_drum");
+  });
+
+  test("stemMap has all 5 stem names as keys", () => {
+    const keys = Object.keys(decomp.stemMap);
+    expect(keys).toContain("sub_bass");
+    expect(keys).toContain("log_drum");
+    expect(keys).toContain("chord_pad");
+    expect(keys).toContain("percussion");
+    expect(keys).toContain("air");
+  });
+
+  test("stemMap entries match stems array", () => {
+    for (const s of decomp.stems) {
+      expect(decomp.stemMap[s.name]).toBe(s);
+    }
+  });
+
+  test("amapianoBalance in [0, 1]", () => {
+    expect(decomp.amapianoBalance).toBeGreaterThanOrEqual(0);
+    expect(decomp.amapianoBalance).toBeLessThanOrEqual(1);
+  });
+
+  test("balanceIssues is array of strings", () => {
+    expect(Array.isArray(decomp.balanceIssues)).toBe(true);
+    for (const issue of decomp.balanceIssues) expect(typeof issue).toBe("string");
+  });
+
+  test("totalEnergy matches sum of stem energies", () => {
+    const sum = decomp.stems.reduce((s, st) => s + st.energy, 0);
+    expect(decomp.totalEnergy).toBeCloseTo(sum, 10);
+  });
+
+  test("evaluateBuffer — result includes stems field", () => {
+    const result = evaluateBuffer(buildWav(4));
+    expect(result.stems).toBeDefined();
+    expect(result.stems.stems).toHaveLength(5);
+    expect(typeof result.stems.amapianoBalance).toBe("number");
+    expect(Array.isArray(result.stems.balanceIssues)).toBe(true);
+  });
+
+  test("stem bandHz ranges are correct", () => {
+    const expected: Record<string, [number, number]> = {
+      sub_bass: [20, 60], log_drum: [60, 200], chord_pad: [200, 2000],
+      percussion: [2000, 8000], air: [8000, 20000],
+    };
+    for (const s of decomp.stems) {
+      expect(s.bandHz[0]).toBe(expected[s.name][0]);
+      expect(s.bandHz[1]).toBe(expected[s.name][1]);
+    }
+  });
+});
+
+// ── 17. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;

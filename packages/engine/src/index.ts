@@ -27,6 +27,7 @@ export type {
   RenderEvaluation,
   ActionPolicy, ActionUtility, ConvergenceState,
   PerceptualAnchor, PerceptualAnchorType, PerceptionReport, DensityLabel,
+  StemName, VirtualStem, StemDecomposition,
   AmapianEvaluation, Enhancement,
   MidiNote, BlendStrategy, ArrangementStrategy, RefinementAction,
 }                                                     from "./types";
@@ -59,6 +60,7 @@ export type { RefinementPlan }                        from "./high_end_engine/re
 export {
   applyPerceptionModel, computeBEff, computePerceptualDensity, barkScale,
 }                                                     from "./perception/perception_model";
+export { decomposeStems }                             from "./perception/stem_decomposer";
 
 // ── ML engine ─────────────────────────────────────────────────────────────────
 export {
@@ -79,6 +81,7 @@ import { extractGroovePattern }        from "./intelligence/groove_pattern";
 import { AMAPIANO_THRESHOLD, LANE_GRAMMARS, LANE_TARGETS } from "./types";
 import type { AmapianEvaluation, Enhancement, GroovePlan } from "./types";
 import { applyPerceptionModel } from "./perception/perception_model";
+import { decomposeStems }        from "./perception/stem_decomposer";
 
 export function evaluateBuffer(buffer: Buffer): AmapianEvaluation {
   const wav        = parseWavMono(buffer);
@@ -88,6 +91,7 @@ export function evaluateBuffer(buffer: Buffer): AmapianEvaluation {
   const groove     = extractGroovePattern(wav.samples, wav.sampleRate, features.bpm, features.groove.swingRatio);
 
   const perception = applyPerceptionModel(features);
+  const stems      = decomposeStems(wav.samples, wav.sampleRate, features);
 
   const issues: string[] = [];
   if (!features.logDrum?.isLogDrum)
@@ -100,6 +104,8 @@ export function evaluateBuffer(buffer: Buffer): AmapianEvaluation {
     issues.push(`Low lane authenticity (${laneScores.overallAuthenticity.toFixed(3)} < ${AMAPIANO_THRESHOLD})`);
   for (const v of perception.violations)
     issues.push(`[O.211] ${v}`);
+  for (const b of stems.balanceIssues)
+    issues.push(`[stem] ${b}`);
 
   return {
     features,
@@ -109,6 +115,7 @@ export function evaluateBuffer(buffer: Buffer): AmapianEvaluation {
     logDrum:         features.logDrum,
     harmonic:        features.harmonic,
     perception,
+    stems,
     passesThreshold: laneScores.overallAuthenticity >= AMAPIANO_THRESHOLD,
     threshold:       AMAPIANO_THRESHOLD,
     issues,

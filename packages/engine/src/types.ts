@@ -279,6 +279,29 @@ export interface MidiNote {
   duration: number;    // in ticks
 }
 
+// ─── Virtual stem decomposition ──────────────────────────────────────────────
+
+export type StemName = "sub_bass" | "log_drum" | "chord_pad" | "percussion" | "air";
+
+export interface VirtualStem {
+  name:          StemName;
+  bandHz:        readonly [number, number];  // Hz range
+  energy:        number;    // [0, 1] fraction of total FFT energy in this band
+  tonality:      number;    // [0, 1] — 1 = pure tone, 0 = broadband noise
+  transience:    number;    // [0, 1] — block-energy coefficient of variation
+  presenceScore: number;    // [0, 1] — weighted presence in mix
+  isActive:      boolean;   // presenceScore >= per-stem activity threshold
+}
+
+export interface StemDecomposition {
+  stems:           VirtualStem[];
+  stemMap:         Record<StemName, VirtualStem>;
+  totalEnergy:     number;               // sum of all stem energy fractions
+  dominantStem:    StemName;
+  amapianoBalance: number;               // [0, 1] — stems within target range / 5
+  balanceIssues:   string[];
+}
+
 // ─── O.211 Perception Model ───────────────────────────────────────────────────
 
 export type PerceptualAnchorType = "log_drum" | "harmonic" | "groove";
@@ -313,6 +336,7 @@ export interface AmapianEvaluation {
   logDrum:           LogDrumFingerprint | null;
   harmonic:          HarmonicProfile | null;
   perception:        PerceptionReport;
+  stems:             StemDecomposition;
   passesThreshold:   boolean;
   threshold:         number;
   issues:            string[];
