@@ -447,6 +447,22 @@ export interface ReverbSpec {
   params:     ReverbParams[];   // one per stem, ordered sub_bass → air
 }
 
+// ─── Vocal chop scheduler ─────────────────────────────────────────────────────
+
+export interface ChopEvent {
+  step:           number;   // 16th-note grid position [0, 15]
+  durationSteps:  number;   // chop length in 16th steps [1, 4]
+  pitchSemitones: number;   // pitch-shift from original sample [-12, +12]
+  velocity:       number;   // MIDI velocity [40, 127]
+}
+
+export interface VocalChopPattern {
+  lane:    Lane;
+  bpm:     number;
+  events:  ChopEvent[];
+  density: "sparse" | "medium" | "dense";
+}
+
 // ─── EQ spec ──────────────────────────────────────────────────────────────────
 
 export type EqBandType = "lowcut" | "lowshelf" | "peak" | "highshelf" | "highcut";

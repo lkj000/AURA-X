@@ -44,6 +44,7 @@ import { generateFilterAutomation } from "../arrangement/filter_automator";
 import { calculateReverb } from "../mix/reverb_calculator";
 import { generateCompressorSpec } from "../mix/compressor_generator";
 import { generateEqSpec } from "../mix/eq_generator";
+import { scheduleVocalChops } from "../intelligence/vocal_chop_scheduler";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -3448,6 +3449,89 @@ describe("eq_generator", () => {
     for (const lane of LANES) {
       for (const mp of profiles) {
         expect(() => generateEqSpec(lane, mp)).not.toThrow();
+      }
+    }
+  });
+});
+
+// ── 44. Vocal chop scheduler ──────────────────────────────────────────────────
+
+describe("vocal_chop_scheduler", () => {
+  const pat = scheduleVocalChops("private_school", { bpm: 114, density: "medium" });
+
+  test("returns correct density label", () => {
+    expect(pat.density).toBe("medium");
+  });
+
+  test("medium density produces 5 events", () => {
+    expect(pat.events).toHaveLength(5);
+  });
+
+  test("sparse density produces 3 events", () => {
+    const sp = scheduleVocalChops("private_school", { bpm: 114, density: "sparse" });
+    expect(sp.events).toHaveLength(3);
+  });
+
+  test("dense density produces 8 events", () => {
+    const de = scheduleVocalChops("private_school", { bpm: 114, density: "dense" });
+    expect(de.events).toHaveLength(8);
+  });
+
+  test("all step values in [0, 15]", () => {
+    for (const e of pat.events) {
+      expect(e.step).toBeGreaterThanOrEqual(0);
+      expect(e.step).toBeLessThanOrEqual(15);
+    }
+  });
+
+  test("no duplicate step positions", () => {
+    const steps = pat.events.map((e) => e.step);
+    expect(new Set(steps).size).toBe(steps.length);
+  });
+
+  test("events are in ascending step order", () => {
+    for (let i = 1; i < pat.events.length; i++) {
+      expect(pat.events[i].step).toBeGreaterThan(pat.events[i - 1].step);
+    }
+  });
+
+  test("all durationSteps in [1, 4]", () => {
+    for (const e of pat.events) {
+      expect(e.durationSteps).toBeGreaterThanOrEqual(1);
+      expect(e.durationSteps).toBeLessThanOrEqual(4);
+    }
+  });
+
+  test("all velocity in [40, 127]", () => {
+    for (const e of pat.events) {
+      expect(e.velocity).toBeGreaterThanOrEqual(40);
+      expect(e.velocity).toBeLessThanOrEqual(127);
+    }
+  });
+
+  test("pitchSemitones drawn from pentatonic-flavoured set [-7,-5,-3,0,2,4,7]", () => {
+    const allowed = new Set([-7, -5, -3, 0, 2, 4, 7]);
+    for (const e of pat.events) {
+      expect(allowed.has(e.pitchSemitones)).toBe(true);
+    }
+  });
+
+  test("output is deterministic — same args yield same events", () => {
+    const a = scheduleVocalChops("sgija", { bpm: 116, density: "dense" });
+    const b = scheduleVocalChops("sgija", { bpm: 116, density: "dense" });
+    expect(a.events).toEqual(b.events);
+  });
+
+  test("high BPM limits max chop duration to 2 steps", () => {
+    const fast = scheduleVocalChops("private_school", { bpm: 140, density: "dense" });
+    for (const e of fast.events) expect(e.durationSteps).toBeLessThanOrEqual(2);
+  });
+
+  test("works for all 8 lanes and all densities without throwing", () => {
+    const densities = ["sparse", "medium", "dense"] as const;
+    for (const lane of LANES) {
+      for (const d of densities) {
+        expect(() => scheduleVocalChops(lane, { density: d, bpm: 114 })).not.toThrow();
       }
     }
   });

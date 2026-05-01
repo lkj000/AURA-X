@@ -53,6 +53,7 @@ export type {
   ReverbParams, ReverbSpec,
   CompressorParams, CompressorSpec,
   EqBandType, EqBand, StemEq, EqSpec,
+  ChopEvent, VocalChopPattern,
 }                                                     from "./types";
 
 export {
@@ -146,6 +147,10 @@ export { generateCompressorSpec }                     from "./mix/compressor_gen
 
 // ── EQ curve generator ────────────────────────────────────────────────────────
 export { generateEqSpec }                             from "./mix/eq_generator";
+
+// ── Vocal chop scheduler ──────────────────────────────────────────────────────
+export { scheduleVocalChops }                         from "./intelligence/vocal_chop_scheduler";
+export type { ChopOptions }                           from "./intelligence/vocal_chop_scheduler";
 
 // ── Sample recommendation ─────────────────────────────────────────────────────
 export { recommendSamples }                           from "./intelligence/sample_recommender";
