@@ -410,6 +410,30 @@ export interface PatternSimilarity {
   isMatch:      boolean;    // overallSim >= 0.75
 }
 
+// ─── Arrangement arc ──────────────────────────────────────────────────────────
+
+export type SectionName =
+  "intro" | "build1" | "drop1" | "breakdown" | "build2" | "drop2" | "outro" | "outro_fade";
+
+export interface ArrangementSection {
+  name:       SectionName;
+  startBar:   number;
+  endBar:     number;             // exclusive
+  bars:       number;
+  grooveType: GrooveVariationType;
+  intensity:  number;             // [0, 1] — automation/mix guidance
+  filterHz:   number;             // suggested LP filter cutoff in Hz
+}
+
+export interface ArrangementArc {
+  lane:          Lane;
+  bpm:           number;
+  totalBars:     number;
+  sections:      ArrangementSection[];
+  dropBar:       number;          // first bar of drop1
+  peakIntensity: number;          // max intensity across all sections
+}
+
 // ─── Groove variations ────────────────────────────────────────────────────────
 
 export type GrooveVariationType = "main" | "variation" | "fill" | "breakdown" | "build";

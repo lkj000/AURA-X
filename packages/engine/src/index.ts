@@ -35,6 +35,7 @@ export type {
   MidiNote, BlendStrategy, ArrangementStrategy, RefinementAction,
   DimensionDelta, ComparisonReport,
   PatternFingerprint, PatternSimilarity,
+  SectionName, ArrangementSection, ArrangementArc,
 }                                                     from "./types";
 
 export {
@@ -100,3 +101,7 @@ export { compareEvaluations, compareBuffers }         from "./evaluation/compari
 
 // ── Pattern fingerprinting ────────────────────────────────────────────────────
 export { fingerprintGroovePlan, comparePatterns }     from "./groove/pattern_fingerprint";
+
+// ── Arrangement arc ───────────────────────────────────────────────────────────
+export { planArrangementArc }                         from "./arrangement/arc_planner";
+export type { ArcOptions }                            from "./arrangement/arc_planner";

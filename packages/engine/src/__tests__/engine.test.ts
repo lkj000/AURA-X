@@ -24,6 +24,7 @@ import { evaluateBuffer, buildEnhancement } from "../pipeline/evaluation";
 import { generateGrooveVariations } from "../groove/variation_engine";
 import { compareEvaluations } from "../evaluation/comparison";
 import { fingerprintGroovePlan, comparePatterns } from "../groove/pattern_fingerprint";
+import { planArrangementArc } from "../arrangement/arc_planner";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -1558,7 +1559,100 @@ describe("pattern_fingerprint", () => {
   });
 });
 
-// ── 23. Lane grammar constants ────────────────────────────────────────────────
+// ── 23. Arrangement arc planner ───────────────────────────────────────────────
+
+describe("arc_planner", () => {
+  const arc = planArrangementArc("sgija");
+
+  test("returns an ArrangementArc", () => {
+    expect(arc).toBeDefined();
+    expect(arc.sections).toHaveLength(8);
+  });
+
+  test("sections cover exactly 8 named sections in order", () => {
+    const names = arc.sections.map((s) => s.name);
+    expect(names).toEqual(["intro", "build1", "drop1", "breakdown", "build2", "drop2", "outro", "outro_fade"]);
+  });
+
+  test("sections are contiguous (no gaps)", () => {
+    for (let i = 1; i < arc.sections.length; i++) {
+      expect(arc.sections[i].startBar).toBe(arc.sections[i - 1].endBar);
+    }
+  });
+
+  test("first section starts at bar 0", () => {
+    expect(arc.sections[0].startBar).toBe(0);
+  });
+
+  test("last section ends at totalBars", () => {
+    const last = arc.sections[arc.sections.length - 1];
+    expect(last.endBar).toBe(arc.totalBars);
+  });
+
+  test("all bars >= 1", () => {
+    for (const s of arc.sections) expect(s.bars).toBeGreaterThanOrEqual(1);
+  });
+
+  test("all intensity values in [0, 1]", () => {
+    for (const s of arc.sections) {
+      expect(s.intensity).toBeGreaterThanOrEqual(0);
+      expect(s.intensity).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("all filterHz values > 0", () => {
+    for (const s of arc.sections) expect(s.filterHz).toBeGreaterThan(0);
+  });
+
+  test("drop1 has highest intensity (1.0)", () => {
+    const drop = arc.sections.find((s) => s.name === "drop1")!;
+    expect(drop.intensity).toBeCloseTo(1.0);
+  });
+
+  test("outro_fade has lowest intensity", () => {
+    const fade  = arc.sections.find((s) => s.name === "outro_fade")!;
+    const intro = arc.sections.find((s) => s.name === "intro")!;
+    expect(fade.intensity).toBeLessThan(intro.intensity);
+  });
+
+  test("dropBar matches drop1 startBar", () => {
+    const drop = arc.sections.find((s) => s.name === "drop1")!;
+    expect(arc.dropBar).toBe(drop.startBar);
+  });
+
+  test("peakIntensity is 1.0 (drop1 intensity)", () => {
+    expect(arc.peakIntensity).toBeCloseTo(1.0);
+  });
+
+  test("custom totalBars is respected", () => {
+    const a64 = planArrangementArc("bacardi", { totalBars: 64 });
+    expect(a64.totalBars).toBe(64);
+    expect(a64.sections[a64.sections.length - 1].endBar).toBe(64);
+  });
+
+  test("custom bpm overrides lane default", () => {
+    const custom = planArrangementArc("private_school", { bpm: 110 });
+    expect(custom.bpm).toBe(110);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      expect(() => planArrangementArc(lane)).not.toThrow();
+    }
+  });
+
+  test("groove types assigned match expected pattern", () => {
+    const types = arc.sections.map((s) => s.grooveType);
+    expect(types[0]).toBe("breakdown");  // intro
+    expect(types[1]).toBe("build");      // build1
+    expect(types[2]).toBe("main");       // drop1
+    expect(types[3]).toBe("breakdown");  // breakdown
+    expect(types[5]).toBe("variation");  // drop2
+    expect(types[6]).toBe("fill");       // outro
+  });
+});
+
+// ── 24. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;
