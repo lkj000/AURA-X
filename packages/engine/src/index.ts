@@ -59,6 +59,7 @@ export type {
   TensionLabel, ChordTension, TensionArc,
   StructureRule, StructureValidation,
   CallAndResponse,
+  MidiNoteEvent, DeduplicateResult,
 }                                                     from "./types";
 
 export {
@@ -110,6 +111,8 @@ export { exportGrooveToMidi, groovePlanToMidi }       from "./daw_export/midi_ex
 export type { MidiExportResult }                      from "./daw_export/midi_export";
 export { exportChordProgressionToMidi }               from "./daw_export/chord_midi_export";
 export type { ChordMidiOptions, ChordMidiResult }     from "./daw_export/chord_midi_export";
+export { deduplicateMidi }                            from "./daw_export/midi_deduplicator";
+export type { DeduplicateOptions }                    from "./daw_export/midi_deduplicator";
 
 // ── High-level convenience API ────────────────────────────────────────────────
 export { evaluateBuffer, buildEnhancement }           from "./pipeline/evaluation";

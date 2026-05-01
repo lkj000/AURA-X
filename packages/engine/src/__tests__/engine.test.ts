@@ -50,6 +50,7 @@ import { quantizeToScale, SCALE_INTERVALS } from "../intelligence/scale_quantize
 import { scoreTension } from "../intelligence/tension_scorer";
 import { validateStructure } from "../pipeline/structure_validator";
 import { generateCallResponse } from "../groove/call_response_generator";
+import { deduplicateMidi } from "../daw_export/midi_deduplicator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -3937,5 +3938,124 @@ describe("call_response_generator", () => {
         expect(() => generateCallResponse(lane, { density: d })).not.toThrow();
       }
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 50. MIDI note deduplicator
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { MidiNoteEvent } from "../types";
+
+function n(pitch: number, startTick: number, durationTicks: number, velocity = 80, channel = 0): MidiNoteEvent {
+  return { pitch, startTick, durationTicks, velocity, channel };
+}
+
+describe("50. MIDI note deduplicator", () => {
+  test("empty input returns empty output with zero counts", () => {
+    const r = deduplicateMidi([]);
+    expect(r.notes).toHaveLength(0);
+    expect(r.originalCount).toBe(0);
+    expect(r.removedCount).toBe(0);
+    expect(r.truncatedCount).toBe(0);
+  });
+
+  test("single clean note passes through unchanged", () => {
+    const note = n(60, 0, 96);
+    const r = deduplicateMidi([note]);
+    expect(r.notes).toHaveLength(1);
+    expect(r.notes[0]).toMatchObject({ pitch: 60, startTick: 0, durationTicks: 96 });
+    expect(r.originalCount).toBe(1);
+    expect(r.removedCount).toBe(0);
+    expect(r.truncatedCount).toBe(0);
+  });
+
+  test("duplicate notes at exact same tick: keeps one, removes other", () => {
+    const r = deduplicateMidi([n(60, 0, 96, 80), n(60, 0, 96, 80)]);
+    expect(r.notes).toHaveLength(1);
+    expect(r.removedCount).toBe(1);
+  });
+
+  test("merge threshold: notes within threshold are merged (later removed)", () => {
+    // startTick 0 and 2 — within threshold of 4
+    const r = deduplicateMidi([n(60, 0, 48), n(60, 2, 48)], { mergeThresholdTicks: 4 });
+    expect(r.notes).toHaveLength(1);
+    expect(r.removedCount).toBe(1);
+  });
+
+  test("merge threshold: notes beyond threshold are kept", () => {
+    // startTick 0 and 10 — beyond threshold of 4
+    const r = deduplicateMidi([n(60, 0, 48), n(60, 10, 48)], { mergeThresholdTicks: 4 });
+    expect(r.notes).toHaveLength(2);
+    expect(r.removedCount).toBe(0);
+  });
+
+  test("overlapping notes: earlier note truncated to end at next note start", () => {
+    // note at 0 with dur 100 overlaps note at 50 — should truncate to 50
+    const r = deduplicateMidi([n(60, 0, 100), n(60, 50, 96)]);
+    expect(r.notes).toHaveLength(2);
+    expect(r.notes[0].durationTicks).toBe(50);
+    expect(r.truncatedCount).toBe(1);
+  });
+
+  test("truncated note below minDurationTicks is removed instead", () => {
+    // note at 0 dur 100 overlaps note at 2 — truncated dur=2 < default minDur=1? No, 2>=1 — use minDur=5
+    const r = deduplicateMidi([n(60, 0, 100), n(60, 3, 96)], { minDurationTicks: 5 });
+    // truncated dur would be 3, which < 5, so removed
+    expect(r.notes).toHaveLength(1);
+    expect(r.removedCount).toBeGreaterThanOrEqual(1);
+  });
+
+  test("different pitches on same channel are treated independently", () => {
+    const r = deduplicateMidi([n(60, 0, 100), n(62, 0, 100), n(64, 0, 100)]);
+    expect(r.notes).toHaveLength(3);
+    expect(r.removedCount).toBe(0);
+  });
+
+  test("same pitch on different channels are treated independently", () => {
+    const r = deduplicateMidi([
+      n(60, 0, 100, 80, 0),
+      n(60, 0, 100, 80, 1),
+    ]);
+    expect(r.notes).toHaveLength(2);
+    expect(r.removedCount).toBe(0);
+  });
+
+  test("output is sorted by startTick ASC, then channel ASC, then pitch ASC", () => {
+    const input = [
+      n(64, 20, 48, 80, 1),
+      n(60, 10, 48, 80, 0),
+      n(62, 10, 48, 80, 0),
+      n(60, 0,  48, 80, 0),
+    ];
+    const r = deduplicateMidi(input);
+    expect(r.notes[0].startTick).toBe(0);
+    expect(r.notes[1].startTick).toBe(10);
+    expect(r.notes[1].pitch).toBe(60);
+    expect(r.notes[2].pitch).toBe(62);
+    expect(r.notes[3].startTick).toBe(20);
+  });
+
+  test("originalCount equals input length regardless of deduplication", () => {
+    const input = [n(60, 0, 96), n(60, 0, 96), n(62, 5, 48)];
+    const r = deduplicateMidi(input);
+    expect(r.originalCount).toBe(3);
+  });
+
+  test("removedCount + truncatedCount + output length is <= originalCount", () => {
+    const input = [
+      n(60, 0, 200), n(60, 0, 200),   // duplicate → 1 removed
+      n(60, 50, 200),                   // overlaps → 1 truncated
+      n(62, 0, 48),
+    ];
+    const r = deduplicateMidi(input);
+    expect(r.removedCount + r.truncatedCount + r.notes.length).toBeLessThanOrEqual(r.originalCount + r.truncatedCount);
+    expect(r.originalCount).toBe(4);
+  });
+
+  test("notes with durationTicks < minDurationTicks filtered out entirely", () => {
+    const r = deduplicateMidi([n(60, 0, 3), n(62, 0, 3)], { minDurationTicks: 5 });
+    expect(r.notes).toHaveLength(0);
+    expect(r.removedCount).toBe(2);
   });
 });

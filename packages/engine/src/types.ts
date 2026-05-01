@@ -447,6 +447,23 @@ export interface ReverbSpec {
   params:     ReverbParams[];   // one per stem, ordered sub_bass → air
 }
 
+// ─── MIDI note deduplication ──────────────────────────────────────────────────
+
+export interface MidiNoteEvent {
+  pitch:         number;   // MIDI note number [0, 127]
+  startTick:     number;   // absolute start position in ticks (≥ 0)
+  durationTicks: number;   // note length in ticks (> 0)
+  velocity:      number;   // MIDI velocity [1, 127]
+  channel:       number;   // MIDI channel [0, 15]
+}
+
+export interface DeduplicateResult {
+  notes:          MidiNoteEvent[];   // cleaned, sorted output
+  originalCount:  number;            // input note count
+  removedCount:   number;            // notes removed entirely
+  truncatedCount: number;            // notes shortened but kept
+}
+
 // ─── Call-and-response ────────────────────────────────────────────────────────
 
 export interface CallAndResponse {
