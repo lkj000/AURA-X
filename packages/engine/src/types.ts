@@ -363,6 +363,28 @@ export interface PerceptionReport {
   violations:      string[];
 }
 
+// ─── Gate report ─────────────────────────────────────────────────────────────
+
+export interface GateReport {
+  authenticityGate: {
+    passes:    boolean;
+    score:     number;
+    threshold: number;
+  };
+  perceptionGate: {
+    passes:     boolean;
+    violations: string[];
+    bEff:       number;
+    density:    number;
+  };
+  culturalGate: {
+    passes:         boolean;
+    alignmentScore: number;
+    deviations:     string[];
+  };
+  allPass: boolean;
+}
+
 // ─── Full evaluation ──────────────────────────────────────────────────────────
 
 export interface AmapianEvaluation {

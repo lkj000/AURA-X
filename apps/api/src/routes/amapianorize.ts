@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import multer from "multer";
-import { evaluateBuffer, buildEnhancement } from "@aura-x/engine";
+import { analyzeAndPlan, buildEnhancement } from "@aura-x/engine";
 
 const router = Router();
 
@@ -29,9 +29,14 @@ router.post(
     }
 
     try {
-      const evaluation = evaluateBuffer(req.file.buffer);
-      const enhancement = buildEnhancement(evaluation);
-      res.json({ evaluation, enhancement });
+      const plan        = analyzeAndPlan(req.file.buffer, "audio analysis", "amapianorize");
+      const enhancement = buildEnhancement(plan.evaluation);
+      res.json({
+        evaluation:  plan.evaluation,
+        enhancement,
+        ctl:         plan.ctl,
+        gates:       plan.gateReport,
+      });
     } catch (e) {
       const msg = (e as Error).message;
       if (msg.includes("WAV") || msg.includes("RIFF") || msg.includes("valid")) {

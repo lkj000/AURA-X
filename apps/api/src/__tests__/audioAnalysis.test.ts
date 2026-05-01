@@ -300,4 +300,28 @@ describe("POST /api/amapianorize", () => {
       .attach("audio", wav, { filename: "track.wav", contentType: "application/octet-stream" });
     expect(res.status).toBe(200);
   });
+
+  it("31. response includes ctl with schema_version ctl_v1", async () => {
+    const wav = buildWav({ bpm: 112, durationSec: 12 });
+    const res = await request(app)
+      .post("/api/amapianorize")
+      .attach("audio", wav, { filename: "track.wav", contentType: "audio/wav" });
+    expect(res.status).toBe(200);
+    expect(res.body.ctl).toBeDefined();
+    expect(res.body.ctl.schema_version).toBe("ctl_v1");
+    expect(res.body.ctl.global.subgenre).toBeDefined();
+  });
+
+  it("32. response includes gates with allPass boolean", async () => {
+    const wav = buildWav({ bpm: 112, durationSec: 12 });
+    const res = await request(app)
+      .post("/api/amapianorize")
+      .attach("audio", wav, { filename: "track.wav", contentType: "audio/wav" });
+    expect(res.status).toBe(200);
+    expect(res.body.gates).toBeDefined();
+    expect(typeof res.body.gates.allPass).toBe("boolean");
+    expect(res.body.gates.authenticityGate).toBeDefined();
+    expect(res.body.gates.perceptionGate).toBeDefined();
+    expect(res.body.gates.culturalGate).toBeDefined();
+  });
 });

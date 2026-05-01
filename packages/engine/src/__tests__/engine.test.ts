@@ -19,7 +19,8 @@ import { decomposeStems } from "../perception/stem_decomposer";
 import { computeCulturalAlignment } from "../cultural/cultural_encoder";
 import { CULTURAL_PROFILES } from "../cultural/cultural_profiles";
 import { synthesizeCtl } from "../ctl_synthesis/ctl_synthesizer";
-import { evaluateBuffer, buildEnhancement } from "../index";
+import { analyzeAndPlan } from "../pipeline/analysis_pipeline";
+import { evaluateBuffer, buildEnhancement } from "../pipeline/evaluation";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -1203,7 +1204,65 @@ describe("ctl_synthesizer", () => {
   });
 });
 
-// ── 19. Lane grammar constants ────────────────────────────────────────────────
+// ── 19. Full analysis pipeline ────────────────────────────────────────────────
+
+describe("analyzeAndPlan", () => {
+  let plan: ReturnType<typeof analyzeAndPlan>;
+
+  beforeAll(() => { plan = analyzeAndPlan(buildWav(4), "Test Track", "test_user"); });
+
+  test("does not throw", () => {
+    expect(() => analyzeAndPlan(buildWav(3), "T", "u")).not.toThrow();
+  });
+
+  test("evaluation field is an AmapianEvaluation", () => {
+    expect(plan.evaluation).toBeDefined();
+    expect(typeof plan.evaluation.passesThreshold).toBe("boolean");
+    expect(plan.evaluation.laneScores).toBeDefined();
+  });
+
+  test("ctl field has schema_version ctl_v1", () => {
+    expect(plan.ctl.schema_version).toBe("ctl_v1");
+  });
+
+  test("ctl.global.subgenre matches evaluation bestFitLane", () => {
+    expect(plan.ctl.global.subgenre).toBe(plan.evaluation.laneScores.bestFitLane);
+  });
+
+  test("passesAllGates is boolean", () => {
+    expect(typeof plan.passesAllGates).toBe("boolean");
+  });
+
+  test("passesAllGates equals allPass in gateReport", () => {
+    expect(plan.passesAllGates).toBe(plan.gateReport.allPass);
+  });
+
+  test("gateReport has all three sub-gates", () => {
+    expect(plan.gateReport).toHaveProperty("authenticityGate");
+    expect(plan.gateReport).toHaveProperty("perceptionGate");
+    expect(plan.gateReport).toHaveProperty("culturalGate");
+    expect(typeof plan.gateReport.allPass).toBe("boolean");
+  });
+
+  test("gateReport.culturalGate.alignmentScore in [0, 1]", () => {
+    const score = plan.gateReport.culturalGate.alignmentScore;
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(1);
+  });
+
+  test("confidence in [0, 1]", () => {
+    expect(plan.confidence).toBeGreaterThanOrEqual(0);
+    expect(plan.confidence).toBeLessThanOrEqual(1);
+  });
+
+  test("recommendations is non-empty string array", () => {
+    expect(Array.isArray(plan.recommendations)).toBe(true);
+    expect(plan.recommendations.length).toBeGreaterThan(0);
+    for (const r of plan.recommendations) expect(typeof r).toBe("string");
+  });
+});
+
+// ── 21. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;
