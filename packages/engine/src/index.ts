@@ -51,6 +51,7 @@ export type {
   SidechainCurve,
   FilterPoint, FilterAutomation,
   ReverbParams, ReverbSpec,
+  CompressorParams, CompressorSpec,
 }                                                     from "./types";
 
 export {
@@ -138,6 +139,9 @@ export { generateMixSpec }                            from "./mix/mix_spec";
 
 // ── Reverb calculator ─────────────────────────────────────────────────────────
 export { calculateReverb }                            from "./mix/reverb_calculator";
+
+// ── Compressor generator ──────────────────────────────────────────────────────
+export { generateCompressorSpec }                     from "./mix/compressor_generator";
 
 // ── Sample recommendation ─────────────────────────────────────────────────────
 export { recommendSamples }                           from "./intelligence/sample_recommender";

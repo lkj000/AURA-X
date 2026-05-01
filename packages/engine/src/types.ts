@@ -447,6 +447,24 @@ export interface ReverbSpec {
   params:     ReverbParams[];   // one per stem, ordered sub_bass → air
 }
 
+// ─── Compressor spec ──────────────────────────────────────────────────────────
+
+export interface CompressorParams {
+  stem:        StemName;
+  thresholdDb: number;   // compressor threshold in dBFS [−60, 0]
+  ratio:       number;   // compression ratio ≥ 1 (e.g. 4.0 = 4:1)
+  attackMs:    number;   // attack time in ms [0.1, 200]
+  releaseMs:   number;   // release time in ms [10, 2000]
+  makeupDb:    number;   // makeup gain in dB [0, 24]
+  kneeDb:      number;   // soft-knee width in dB [0, 12]
+}
+
+export interface CompressorSpec {
+  bpm:        number;
+  mixProfile: MixProfile;
+  params:     CompressorParams[];   // one per stem, ordered sub_bass → air
+}
+
 // ─── Sidechain automation ─────────────────────────────────────────────────────
 
 export interface SidechainCurve {

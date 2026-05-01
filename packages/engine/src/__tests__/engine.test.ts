@@ -42,6 +42,7 @@ import { automateGains } from "../arrangement/stem_gain_automator";
 import { generateSidechain } from "../groove/sidechain_generator";
 import { generateFilterAutomation } from "../arrangement/filter_automator";
 import { calculateReverb } from "../mix/reverb_calculator";
+import { generateCompressorSpec } from "../mix/compressor_generator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -3254,6 +3255,104 @@ describe("reverb_calculator", () => {
     const profiles = ["luxury_noir", "raw_street", "bounce_club", "spiritual_organic", "dark_tribal", "crossover_rb"] as const;
     for (const mp of profiles) {
       expect(() => calculateReverb(114, mp)).not.toThrow();
+    }
+  });
+});
+
+// ── 42. Compressor settings generator ────────────────────────────────────────
+
+describe("compressor_generator", () => {
+  const spec = generateCompressorSpec(114, "bounce_club");
+
+  test("returns one CompressorParams per stem (5 total)", () => {
+    expect(spec.params).toHaveLength(5);
+  });
+
+  test("all 5 stems are present", () => {
+    const stems = spec.params.map((p) => p.stem);
+    expect(stems).toContain("sub_bass");
+    expect(stems).toContain("log_drum");
+    expect(stems).toContain("chord_pad");
+    expect(stems).toContain("percussion");
+    expect(stems).toContain("air");
+  });
+
+  test("thresholdDb is in [−60, 0] for all stems", () => {
+    for (const p of spec.params) {
+      expect(p.thresholdDb).toBeGreaterThanOrEqual(-60);
+      expect(p.thresholdDb).toBeLessThanOrEqual(0);
+    }
+  });
+
+  test("ratio >= 1 for all stems", () => {
+    for (const p of spec.params) expect(p.ratio).toBeGreaterThanOrEqual(1);
+  });
+
+  test("attackMs in [0.1, 200] for all stems", () => {
+    for (const p of spec.params) {
+      expect(p.attackMs).toBeGreaterThanOrEqual(0.1);
+      expect(p.attackMs).toBeLessThanOrEqual(200);
+    }
+  });
+
+  test("releaseMs in [10, 2000] for all stems", () => {
+    for (const p of spec.params) {
+      expect(p.releaseMs).toBeGreaterThanOrEqual(10);
+      expect(p.releaseMs).toBeLessThanOrEqual(2000);
+    }
+  });
+
+  test("makeupDb in [0, 24] for all stems", () => {
+    for (const p of spec.params) {
+      expect(p.makeupDb).toBeGreaterThanOrEqual(0);
+      expect(p.makeupDb).toBeLessThanOrEqual(24);
+    }
+  });
+
+  test("kneeDb in [0, 12] for all stems", () => {
+    for (const p of spec.params) {
+      expect(p.kneeDb).toBeGreaterThanOrEqual(0);
+      expect(p.kneeDb).toBeLessThanOrEqual(12);
+    }
+  });
+
+  test("percussion has the shortest attackMs (fastest transient response)", () => {
+    const attacks    = spec.params.map((p) => p.attackMs);
+    const percAttack = spec.params.find((p) => p.stem === "percussion")!.attackMs;
+    expect(percAttack).toBe(Math.min(...attacks));
+  });
+
+  test("log_drum ratio > chord_pad ratio (transient vs sustain)", () => {
+    const logRatio   = spec.params.find((p) => p.stem === "log_drum")!.ratio;
+    const chordRatio = spec.params.find((p) => p.stem === "chord_pad")!.ratio;
+    expect(logRatio).toBeGreaterThan(chordRatio);
+  });
+
+  test("raw_street produces higher log_drum ratio than luxury_noir", () => {
+    const raw  = generateCompressorSpec(114, "raw_street");
+    const lux  = generateCompressorSpec(114, "luxury_noir");
+    const rawR = raw.params.find((p) => p.stem === "log_drum")!.ratio;
+    const luxR = lux.params.find((p) => p.stem === "log_drum")!.ratio;
+    expect(rawR).toBeGreaterThan(luxR);
+  });
+
+  test("higher BPM yields shorter attackMs for log_drum", () => {
+    const slow = generateCompressorSpec(90,  "bounce_club");
+    const fast = generateCompressorSpec(140, "bounce_club");
+    const sAtk = slow.params.find((p) => p.stem === "log_drum")!.attackMs;
+    const fAtk = fast.params.find((p) => p.stem === "log_drum")!.attackMs;
+    expect(sAtk).toBeGreaterThan(fAtk);
+  });
+
+  test("bpm and mixProfile are reflected in the output", () => {
+    expect(spec.bpm).toBe(114);
+    expect(spec.mixProfile).toBe("bounce_club");
+  });
+
+  test("works for all 6 MixProfile values without throwing", () => {
+    const profiles = ["luxury_noir", "raw_street", "bounce_club", "spiritual_organic", "dark_tribal", "crossover_rb"] as const;
+    for (const mp of profiles) {
+      expect(() => generateCompressorSpec(114, mp)).not.toThrow();
     }
   });
 });
