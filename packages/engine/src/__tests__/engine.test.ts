@@ -28,6 +28,7 @@ import { planArrangementArc } from "../arrangement/arc_planner";
 import { generateMixSpec } from "../mix/mix_spec";
 import { recommendSamples } from "../intelligence/sample_recommender";
 import { humanizePattern } from "../groove/tempo_humanizer";
+import { runQualityGates } from "../pipeline/quality_gate";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -1939,7 +1940,98 @@ describe("tempo_humanizer", () => {
   });
 });
 
-// ── 27. Lane grammar constants ────────────────────────────────────────────────
+// ── 27. Quality gate pipeline ─────────────────────────────────────────────────
+
+describe("quality_gate", () => {
+  const wav = buildWav(4);
+  let report: ReturnType<typeof runQualityGates>;
+  beforeAll(() => { report = runQualityGates(evaluateBuffer(wav)); });
+
+  test("returns a QualityGateReport", () => {
+    expect(report).toBeDefined();
+    expect(report.gates).toHaveLength(5);
+  });
+
+  test("gates are named correctly in order", () => {
+    const names = report.gates.map((g) => g.name);
+    expect(names).toEqual(["authenticity", "perception", "cultural", "quality", "stem_balance"]);
+  });
+
+  test("all gate scores in [0, 1]", () => {
+    for (const g of report.gates) {
+      expect(g.score).toBeGreaterThanOrEqual(0);
+      expect(g.score).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("all gate weights sum to 1.0", () => {
+    const total = report.gates.reduce((s, g) => s + g.weight, 0);
+    expect(total).toBeCloseTo(1.0, 9);
+  });
+
+  test("overallScore in [0, 1]", () => {
+    expect(report.overallScore).toBeGreaterThanOrEqual(0);
+    expect(report.overallScore).toBeLessThanOrEqual(1);
+  });
+
+  test("grade is one of S, A, B, C, F", () => {
+    expect(["S", "A", "B", "C", "F"]).toContain(report.grade);
+  });
+
+  test("passCount matches number of passing gates", () => {
+    const count = report.gates.filter((g) => g.passes).length;
+    expect(report.passCount).toBe(count);
+  });
+
+  test("allPass matches all gates passing", () => {
+    const allPass = report.gates.every((g) => g.passes);
+    expect(report.allPass).toBe(allPass);
+  });
+
+  test("readyForRelease is false when allPass is false", () => {
+    if (!report.allPass) expect(report.readyForRelease).toBe(false);
+  });
+
+  test("each gate has at least one reason string", () => {
+    for (const g of report.gates) {
+      expect(Array.isArray(g.reasons)).toBe(true);
+      expect(g.reasons.length).toBeGreaterThan(0);
+      expect(typeof g.reasons[0]).toBe("string");
+    }
+  });
+
+  test("summary is a non-empty string", () => {
+    expect(typeof report.summary).toBe("string");
+    expect(report.summary.length).toBeGreaterThan(0);
+  });
+
+  test("summary contains grade letter", () => {
+    expect(report.summary).toContain(`Grade ${report.grade}`);
+  });
+
+  test("overallScore equals weighted sum of gate scores", () => {
+    const expected = report.gates.reduce((s, g) => s + g.score * g.weight, 0);
+    expect(report.overallScore).toBeCloseTo(Math.min(1, Math.max(0, expected)), 9);
+  });
+
+  test("grade F when overallScore < 0.60 or passCount < 3", () => {
+    // Construct a minimal fake evaluation that fails most gates
+    const ev = evaluateBuffer(buildWav(0.5));
+    const r  = runQualityGates(ev);
+    if (r.passCount < 3 || r.overallScore < 0.60) {
+      expect(r.grade).toBe("F");
+    }
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      const ev = evaluateBuffer(buildWav(4, 44100, 110, lane === "gqom_fusion" ? 120 : 114));
+      expect(() => runQualityGates(ev)).not.toThrow();
+    }
+  });
+});
+
+// ── 28. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;

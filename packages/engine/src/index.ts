@@ -39,6 +39,7 @@ export type {
   StemMixParams, MasterChain, MixSpec,
   SampleRole, SampleRecommendation, SamplePack,
   VoiceName, HumanizedHit, HumanizedPattern,
+  GradeLabel, GateResult, QualityGateReport,
 }                                                     from "./types";
 
 export {
@@ -119,3 +120,6 @@ export type { RecommenderOptions }                    from "./intelligence/sampl
 // ── Tempo humanizer ───────────────────────────────────────────────────────────
 export { humanizePattern }                            from "./groove/tempo_humanizer";
 export type { HumanizerOptions }                      from "./groove/tempo_humanizer";
+
+// ── Quality gate pipeline ─────────────────────────────────────────────────────
+export { runQualityGates }                            from "./pipeline/quality_gate";

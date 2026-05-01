@@ -410,6 +410,30 @@ export interface PatternSimilarity {
   isMatch:      boolean;    // overallSim >= 0.75
 }
 
+// ─── Quality gate pipeline ────────────────────────────────────────────────────
+
+export type GradeLabel = "S" | "A" | "B" | "C" | "F";
+
+export interface GateResult {
+  name:      string;
+  passes:    boolean;
+  score:     number;     // [0, 1] — measured signal
+  threshold: number;     // minimum required to pass
+  weight:    number;     // contribution to overallScore
+  reasons:   string[];   // why it passed or failed
+}
+
+export interface QualityGateReport {
+  lane:            Lane;
+  gates:           GateResult[];  // exactly 5
+  allPass:         boolean;
+  passCount:       number;
+  overallScore:    number;        // weighted ∈ [0, 1]
+  grade:           GradeLabel;    // S≥0.90, A≥0.80, B≥0.70, C≥0.60, F<0.60
+  readyForRelease: boolean;       // allPass && grade !== "F"
+  summary:         string;        // one-line verdict
+}
+
 // ─── Tempo humanizer ─────────────────────────────────────────────────────────
 
 export type VoiceName = "kick" | "hat" | "shaker" | "log";
