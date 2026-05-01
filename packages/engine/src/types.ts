@@ -464,6 +464,17 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Pattern combiner ─────────────────────────────────────────────────────────
+
+export type CombineMode = "or" | "and" | "xor" | "a_not_b" | "b_not_a" | "interleave";
+
+export interface CombineResult {
+  pattern:    number[];                        // 16-step binary combined output
+  mode:       CombineMode;
+  sourceMask: ("A" | "B" | "AB" | "none")[];  // per-step contribution source
+  density:    number;                          // fill ratio of combined pattern
+}
+
 // ─── Polyrhythm ───────────────────────────────────────────────────────────────
 
 export interface PolyrhythmLayer {

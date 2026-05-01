@@ -59,6 +59,7 @@ import { buildTickMap }          from "../daw_export/bar_tick_converter";
 import { retrogradePattern }     from "../groove/retrograde";
 import { generateEuclidean }     from "../groove/euclidean_rhythm";
 import { generatePolyrhythm }   from "../groove/polyrhythm_generator";
+import { combinePatterns }      from "../groove/pattern_combiner";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -4738,5 +4739,94 @@ describe("58. Polyrhythm layer generator", () => {
 
   test("output is deterministic", () => {
     expect(generatePolyrhythm()).toEqual(generatePolyrhythm());
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 59. Groove pattern combiner
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("59. Groove pattern combiner", () => {
+  const A = [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0];   // even steps
+  const B = [0,1,0,1, 0,1,0,1, 0,1,0,1, 0,1,0,1];   // odd steps
+  const X = [1,1,0,0, 1,1,0,0, 1,1,0,0, 1,1,0,0];   // steps 0,1,4,5,...
+  const allZ = new Array(16).fill(0);
+  const allO = new Array(16).fill(1);
+
+  test("OR: active if either A or B is active", () => {
+    const r = combinePatterns(A, B, { mode: "or" });
+    expect(r.pattern.every((v) => v === 1)).toBe(true);
+  });
+
+  test("AND: active only if both A and B active", () => {
+    const r = combinePatterns(A, X, { mode: "and" });
+    // A: even steps; X: steps 0,1,4,5,... → overlap at 0,4,8,12
+    expect(r.pattern[0]).toBe(1);
+    expect(r.pattern[1]).toBe(0);   // A=0, X=1 → no
+    expect(r.pattern[2]).toBe(0);   // A=1, X=0 → no
+  });
+
+  test("XOR: active if exactly one source active", () => {
+    const r = combinePatterns(A, B, { mode: "xor" });
+    expect(r.pattern.every((v) => v === 1)).toBe(true);   // A and B complement
+    const rSame = combinePatterns(A, A, { mode: "xor" });
+    expect(rSame.pattern.every((v) => v === 0)).toBe(true);
+  });
+
+  test("a_not_b: active in A but not B", () => {
+    const r = combinePatterns(A, X, { mode: "a_not_b" });
+    for (let i = 0; i < 16; i++) {
+      expect(r.pattern[i]).toBe(A[i] === 1 && X[i] === 0 ? 1 : 0);
+    }
+  });
+
+  test("b_not_a: active in B but not A", () => {
+    const r = combinePatterns(A, X, { mode: "b_not_a" });
+    for (let i = 0; i < 16; i++) {
+      expect(r.pattern[i]).toBe(X[i] === 1 && A[i] === 0 ? 1 : 0);
+    }
+  });
+
+  test("interleave: even steps from A, odd steps from B", () => {
+    const r = combinePatterns(A, B, { mode: "interleave" });
+    for (let i = 0; i < 16; i++) {
+      expect(r.pattern[i]).toBe(i % 2 === 0 ? A[i] : B[i]);
+    }
+  });
+
+  test("default mode is OR", () => {
+    expect(combinePatterns(A, B).mode).toBe("or");
+  });
+
+  test("sourceMask 'AB' when both sources contribute (OR)", () => {
+    const r = combinePatterns(allO, allO, { mode: "or" });
+    expect(r.sourceMask.every((m) => m === "AB")).toBe(true);
+  });
+
+  test("sourceMask 'none' for silent steps", () => {
+    const r = combinePatterns(allZ, allZ, { mode: "or" });
+    expect(r.sourceMask.every((m) => m === "none")).toBe(true);
+  });
+
+  test("density = active count / 16", () => {
+    const r = combinePatterns(A, B, { mode: "or" });
+    expect(r.density).toBeCloseTo(1.0, 6);
+    const r2 = combinePatterns(A, allZ, { mode: "or" });
+    expect(r2.density).toBeCloseTo(0.5, 6);
+  });
+
+  test("output pattern length is always 16", () => {
+    expect(combinePatterns([], [], { mode: "and" }).pattern).toHaveLength(16);
+    expect(combinePatterns(A, B).pattern).toHaveLength(16);
+  });
+
+  test("OR of all-ones and all-zeros = all-ones", () => {
+    const r = combinePatterns(allO, allZ, { mode: "or" });
+    expect(r.pattern.every((v) => v === 1)).toBe(true);
+  });
+
+  test("output is deterministic", () => {
+    expect(combinePatterns(A, B, { mode: "xor" }))
+      .toEqual(combinePatterns(A, B, { mode: "xor" }));
   });
 });

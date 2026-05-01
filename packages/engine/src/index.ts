@@ -68,6 +68,7 @@ export type {
   RetrogradResult,
   EuclideanResult,
   PolyrhythmLayer, PolyrhythmResult,
+  CombineMode, CombineResult,
 }                                                     from "./types";
 
 export {
@@ -237,6 +238,10 @@ export type { EuclideanOptions }                      from "./groove/euclidean_r
 // ── Polyrhythm layer generator ────────────────────────────────────────────────
 export { generatePolyrhythm }                         from "./groove/polyrhythm_generator";
 export type { PolyrhythmOptions }                     from "./groove/polyrhythm_generator";
+
+// ── Groove pattern combiner ───────────────────────────────────────────────────
+export { combinePatterns }                            from "./groove/pattern_combiner";
+export type { CombineOptions }                        from "./groove/pattern_combiner";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";
