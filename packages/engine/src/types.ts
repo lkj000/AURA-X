@@ -410,6 +410,32 @@ export interface PatternSimilarity {
   isMatch:      boolean;    // overallSim >= 0.75
 }
 
+// ─── Mix spec ─────────────────────────────────────────────────────────────────
+
+export interface StemMixParams {
+  stem:          StemName;
+  gainDb:        number;    // ∈ [-12, +6]
+  panLR:         number;    // ∈ [-1, 1] — negative = left
+  eqLowShelfDb:  number;    // boost/cut at 200 Hz
+  eqHighShelfDb: number;    // boost/cut at 8 kHz
+  compRatio:     number;    // ∈ [1, 8]
+  reverbWet:     number;    // ∈ [0, 1]
+}
+
+export interface MasterChain {
+  limitThresholdDb: number;   // ∈ [-6, -0.3] — brickwall ceiling
+  eqLowCutHz:       number;   // rumble removal below this freq
+  stereoWidth:      number;   // ∈ [0.8, 1.4] — M/S width multiplier
+  lufsTarget:       number;   // integrated loudness target ∈ [-14, -9]
+}
+
+export interface MixSpec {
+  lane:   Lane;
+  stems:  StemMixParams[];
+  master: MasterChain;
+  notes:  string[];           // human-readable mix guidance
+}
+
 // ─── Arrangement arc ──────────────────────────────────────────────────────────
 
 export type SectionName =

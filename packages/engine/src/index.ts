@@ -36,6 +36,7 @@ export type {
   DimensionDelta, ComparisonReport,
   PatternFingerprint, PatternSimilarity,
   SectionName, ArrangementSection, ArrangementArc,
+  StemMixParams, MasterChain, MixSpec,
 }                                                     from "./types";
 
 export {
@@ -105,3 +106,6 @@ export { fingerprintGroovePlan, comparePatterns }     from "./groove/pattern_fin
 // ── Arrangement arc ───────────────────────────────────────────────────────────
 export { planArrangementArc }                         from "./arrangement/arc_planner";
 export type { ArcOptions }                            from "./arrangement/arc_planner";
+
+// ── Mix spec ──────────────────────────────────────────────────────────────────
+export { generateMixSpec }                            from "./mix/mix_spec";

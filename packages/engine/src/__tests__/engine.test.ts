@@ -25,6 +25,7 @@ import { generateGrooveVariations } from "../groove/variation_engine";
 import { compareEvaluations } from "../evaluation/comparison";
 import { fingerprintGroovePlan, comparePatterns } from "../groove/pattern_fingerprint";
 import { planArrangementArc } from "../arrangement/arc_planner";
+import { generateMixSpec } from "../mix/mix_spec";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -1652,7 +1653,108 @@ describe("arc_planner", () => {
   });
 });
 
-// ── 24. Lane grammar constants ────────────────────────────────────────────────
+// ── 24. Mix spec generator ────────────────────────────────────────────────────
+
+describe("mix_spec", () => {
+  const wav = buildWav(4);
+  let spec: ReturnType<typeof generateMixSpec>;
+  beforeAll(() => { spec = generateMixSpec(evaluateBuffer(wav)); });
+
+  test("returns a MixSpec with stems and master", () => {
+    expect(spec).toBeDefined();
+    expect(spec.stems).toBeDefined();
+    expect(spec.master).toBeDefined();
+  });
+
+  test("stems array has exactly 5 entries", () => {
+    expect(spec.stems).toHaveLength(5);
+  });
+
+  test("stem names in order: sub_bass, log_drum, chord_pad, percussion, air", () => {
+    const names = spec.stems.map((s) => s.stem);
+    expect(names).toEqual(["sub_bass", "log_drum", "chord_pad", "percussion", "air"]);
+  });
+
+  test("all gainDb in [-12, +6]", () => {
+    for (const s of spec.stems) {
+      expect(s.gainDb).toBeGreaterThanOrEqual(-12);
+      expect(s.gainDb).toBeLessThanOrEqual(6);
+    }
+  });
+
+  test("all panLR in [-1, +1]", () => {
+    for (const s of spec.stems) {
+      expect(s.panLR).toBeGreaterThanOrEqual(-1);
+      expect(s.panLR).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("sub_bass and log_drum are center-panned (0)", () => {
+    const subBass = spec.stems.find((s) => s.stem === "sub_bass")!;
+    const logDrum = spec.stems.find((s) => s.stem === "log_drum")!;
+    expect(subBass.panLR).toBe(0);
+    expect(logDrum.panLR).toBe(0);
+  });
+
+  test("all compRatio in [1, 8]", () => {
+    for (const s of spec.stems) {
+      expect(s.compRatio).toBeGreaterThanOrEqual(1);
+      expect(s.compRatio).toBeLessThanOrEqual(8);
+    }
+  });
+
+  test("all reverbWet in [0, 1]", () => {
+    for (const s of spec.stems) {
+      expect(s.reverbWet).toBeGreaterThanOrEqual(0);
+      expect(s.reverbWet).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("sub_bass reverbWet is 0", () => {
+    const subBass = spec.stems.find((s) => s.stem === "sub_bass")!;
+    expect(subBass.reverbWet).toBe(0);
+  });
+
+  test("air has the highest reverbWet", () => {
+    const air = spec.stems.find((s) => s.stem === "air")!;
+    for (const s of spec.stems) {
+      if (s.stem !== "air") expect(air.reverbWet).toBeGreaterThanOrEqual(s.reverbWet);
+    }
+  });
+
+  test("master.lufsTarget in [-14, -9]", () => {
+    expect(spec.master.lufsTarget).toBeGreaterThanOrEqual(-14);
+    expect(spec.master.lufsTarget).toBeLessThanOrEqual(-9);
+  });
+
+  test("master.limitThresholdDb in [-6, -0.3]", () => {
+    expect(spec.master.limitThresholdDb).toBeGreaterThanOrEqual(-6);
+    expect(spec.master.limitThresholdDb).toBeLessThanOrEqual(-0.3);
+  });
+
+  test("master.stereoWidth in [0.8, 1.4]", () => {
+    expect(spec.master.stereoWidth).toBeGreaterThanOrEqual(0.8);
+    expect(spec.master.stereoWidth).toBeLessThanOrEqual(1.4);
+  });
+
+  test("master.eqLowCutHz is positive", () => {
+    expect(spec.master.eqLowCutHz).toBeGreaterThan(0);
+  });
+
+  test("notes is an array of strings", () => {
+    expect(Array.isArray(spec.notes)).toBe(true);
+    for (const n of spec.notes) expect(typeof n).toBe("string");
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      const ev = evaluateBuffer(buildWav(4, 44100, 110, lane === "gqom_fusion" ? 120 : 114));
+      expect(() => generateMixSpec(ev)).not.toThrow();
+    }
+  });
+});
+
+// ── 25. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;
