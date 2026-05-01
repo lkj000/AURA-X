@@ -464,6 +464,15 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Probabilistic step sequencer ────────────────────────────────────────────
+
+export interface ProbabilisticPattern {
+  pattern:       number[];   // resolved 16-step binary
+  probabilities: number[];   // per-step probability used [0, 1]
+  hitCount:      number;     // active step count
+  density:       number;     // hitCount / 16
+}
+
 // ─── BPM tap analysis ─────────────────────────────────────────────────────────
 
 export interface TapAnalysis {

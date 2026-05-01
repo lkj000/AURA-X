@@ -76,6 +76,7 @@ export type {
   PitchBendPoint, PitchBendShape, PitchBendCurve,
   CcPoint, CcShape, CcAutomation,
   TapAnalysis,
+  ProbabilisticPattern,
 }                                                     from "./types";
 
 export {
@@ -275,6 +276,10 @@ export type { CcAutomationOptions }                   from "./daw_export/cc_auto
 
 // ── BPM tap analyzer ──────────────────────────────────────────────────────────
 export { analyzeTaps }                                from "./intelligence/tap_analyzer";
+
+// ── Probabilistic step sequencer ──────────────────────────────────────────────
+export { resolveProb }                                from "./groove/prob_sequencer";
+export type { ProbSeqOptions }                        from "./groove/prob_sequencer";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";

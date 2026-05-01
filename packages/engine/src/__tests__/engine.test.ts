@@ -67,6 +67,7 @@ import { generateTransitionFill }    from "../arrangement/transition_fill_genera
 import { generatePitchBend }         from "../intelligence/pitch_bend_generator";
 import { generateCcAutomation }      from "../daw_export/cc_automation";
 import { analyzeTaps }               from "../intelligence/tap_analyzer";
+import { resolveProb }               from "../groove/prob_sequencer";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -5417,5 +5418,80 @@ describe("66. BPM tap analyzer", () => {
 
   test("output is deterministic", () => {
     expect(analyzeTaps(perfect114)).toEqual(analyzeTaps(perfect114));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 67. Probabilistic step sequencer
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("67. Probabilistic step sequencer", () => {
+  test("all probabilities = 1 → all steps active", () => {
+    const r = resolveProb({ probabilities: new Array(16).fill(1) });
+    expect(r.pattern.every((v) => v === 1)).toBe(true);
+    expect(r.hitCount).toBe(16);
+  });
+
+  test("all probabilities = 0 → no steps active", () => {
+    const r = resolveProb({ probabilities: new Array(16).fill(0) });
+    expect(r.pattern.every((v) => v === 0)).toBe(true);
+    expect(r.hitCount).toBe(0);
+  });
+
+  test("pattern length is always 16", () => {
+    expect(resolveProb().pattern).toHaveLength(16);
+    expect(resolveProb({ probabilities: [] }).pattern).toHaveLength(16);
+  });
+
+  test("pattern is binary — only 0s and 1s", () => {
+    const r = resolveProb({ baseProbability: 0.5 });
+    expect(r.pattern.every((v) => v === 0 || v === 1)).toBe(true);
+  });
+
+  test("hitCount = sum of pattern values", () => {
+    const r = resolveProb({ baseProbability: 0.5 });
+    expect(r.hitCount).toBe(r.pattern.reduce((s, v) => s + v, 0));
+  });
+
+  test("density = hitCount / 16", () => {
+    const r = resolveProb({ baseProbability: 0.5 });
+    expect(r.density).toBeCloseTo(r.hitCount / 16, 6);
+  });
+
+  test("probabilities array length is always 16", () => {
+    expect(resolveProb().probabilities).toHaveLength(16);
+    expect(resolveProb({ probabilities: [1, 0] }).probabilities).toHaveLength(16);
+  });
+
+  test("short probabilities array padded with baseProbability", () => {
+    const r = resolveProb({ probabilities: [1, 0], baseProbability: 1 });
+    // indices 2..15 should have probability 1
+    for (let i = 2; i < 16; i++) {
+      expect(r.probabilities[i]).toBe(1);
+    }
+  });
+
+  test("long probabilities array truncated to 16", () => {
+    const long = new Array(32).fill(1);
+    const r = resolveProb({ probabilities: long });
+    expect(r.probabilities).toHaveLength(16);
+  });
+
+  test("output is deterministic for same seed", () => {
+    const opts = { baseProbability: 0.5, seed: "test" };
+    expect(resolveProb(opts).pattern).toEqual(resolveProb(opts).pattern);
+  });
+
+  test("different seeds produce different patterns (p=0.5)", () => {
+    const r1 = resolveProb({ baseProbability: 0.5, seed: "alpha" });
+    const r2 = resolveProb({ baseProbability: 0.5, seed: "beta"  });
+    expect(r1.pattern).not.toEqual(r2.pattern);
+  });
+
+  test("mixed probabilities resolve correctly per-step", () => {
+    // Step 0: p=1 → always fires; step 1: p=0 → never fires
+    const r = resolveProb({ probabilities: [1, 0, ...new Array(14).fill(0.5)] });
+    expect(r.pattern[0]).toBe(1);
+    expect(r.pattern[1]).toBe(0);
   });
 });
