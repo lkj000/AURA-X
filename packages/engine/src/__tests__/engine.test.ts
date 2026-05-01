@@ -21,6 +21,7 @@ import { CULTURAL_PROFILES } from "../cultural/cultural_profiles";
 import { synthesizeCtl } from "../ctl_synthesis/ctl_synthesizer";
 import { analyzeAndPlan } from "../pipeline/analysis_pipeline";
 import { evaluateBuffer, buildEnhancement } from "../pipeline/evaluation";
+import { generateGrooveVariations } from "../groove/variation_engine";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -1259,6 +1260,94 @@ describe("analyzeAndPlan", () => {
     expect(Array.isArray(plan.recommendations)).toBe(true);
     expect(plan.recommendations.length).toBeGreaterThan(0);
     for (const r of plan.recommendations) expect(typeof r).toBe("string");
+  });
+});
+
+// ── 20. Groove variation engine ───────────────────────────────────────────────
+
+describe("generateGrooveVariations", () => {
+  const set = generateGrooveVariations("sgija");
+
+  test("returns all five variant types", () => {
+    expect(set.main).toBeDefined();
+    expect(set.variation).toBeDefined();
+    expect(set.fill).toBeDefined();
+    expect(set.breakdown).toBeDefined();
+    expect(set.build).toBeDefined();
+  });
+
+  test("lane and bpm are correct", () => {
+    expect(set.lane).toBe("sgija");
+    expect(set.bpm).toBeGreaterThan(0);
+  });
+
+  test("all five variants have 16 steps per pattern", () => {
+    for (const variant of [set.main, set.variation, set.fill, set.breakdown, set.build]) {
+      expect(variant.kickPattern).toHaveLength(16);
+      expect(variant.hatPattern).toHaveLength(16);
+      expect(variant.shakerPattern).toHaveLength(16);
+      expect(variant.logDrumPattern).toHaveLength(16);
+    }
+  });
+
+  test("all pattern values are 0 or 1", () => {
+    for (const variant of [set.main, set.variation, set.fill, set.breakdown, set.build]) {
+      for (const pat of [variant.kickPattern, variant.hatPattern, variant.shakerPattern, variant.logDrumPattern]) {
+        for (const v of pat) expect([0, 1]).toContain(v);
+      }
+    }
+  });
+
+  test("swing in [0.45, 0.60] for all variants", () => {
+    for (const variant of [set.main, set.variation, set.fill, set.breakdown, set.build]) {
+      expect(variant.swing).toBeGreaterThanOrEqual(0.45);
+      expect(variant.swing).toBeLessThanOrEqual(0.60);
+    }
+  });
+
+  test("fill has more log drum hits than main", () => {
+    const mainHits = Array.from(set.main.logDrumPattern).filter((v) => v === 1).length;
+    const fillHits = Array.from(set.fill.logDrumPattern).filter((v) => v === 1).length;
+    expect(fillHits).toBeGreaterThan(mainHits);
+  });
+
+  test("breakdown has no log drum hits", () => {
+    const hits = Array.from(set.breakdown.logDrumPattern).filter((v) => v === 1).length;
+    expect(hits).toBe(0);
+  });
+
+  test("breakdown densityProfile is sparse", () => {
+    expect(set.breakdown.densityProfile).toBe("sparse");
+  });
+
+  test("fill densityProfile is dense", () => {
+    expect(set.fill.densityProfile).toBe("dense");
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      expect(() => generateGrooveVariations(lane)).not.toThrow();
+    }
+  });
+
+  test("swingOverride option is respected", () => {
+    const custom = generateGrooveVariations("private_school", { swingOverride: 0.55 });
+    expect(custom.swing).toBeCloseTo(0.55, 5);
+    for (const variant of [custom.main, custom.variation, custom.fill]) {
+      expect(variant.swing).toBeCloseTo(0.55, 5);
+    }
+  });
+
+  test("bpm option overrides default", () => {
+    const custom = generateGrooveVariations("bacardi", { bpm: 120 });
+    expect(custom.bpm).toBe(120);
+  });
+
+  test("variation and main have same lane", () => {
+    expect(set.variation.lane).toBe(set.main.lane);
+    expect(set.fill.lane).toBe(set.main.lane);
+    expect(set.breakdown.lane).toBe(set.main.lane);
+    expect(set.build.lane).toBe(set.main.lane);
   });
 });
 

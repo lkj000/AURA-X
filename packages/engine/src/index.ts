@@ -30,6 +30,7 @@ export type {
   StemName, VirtualStem, StemDecomposition,
   CulturalProfile, CtlConditioning, CulturalAlignment, MixProfile,
   GateReport,
+  GrooveVariationType, GrooveVariationSet,
   AmapianEvaluation, Enhancement,
   MidiNote, BlendStrategy, ArrangementStrategy, RefinementAction,
 }                                                     from "./types";
@@ -87,3 +88,7 @@ export { evaluateBuffer, buildEnhancement }           from "./pipeline/evaluatio
 // ── Full analysis pipeline ────────────────────────────────────────────────────
 export { analyzeAndPlan }                             from "./pipeline/analysis_pipeline";
 export type { AnalysisPlan }                          from "./pipeline/analysis_pipeline";
+
+// ── Groove variations ─────────────────────────────────────────────────────────
+export { generateGrooveVariations }                   from "./groove/variation_engine";
+export type { VariationOptions }                      from "./groove/variation_engine";

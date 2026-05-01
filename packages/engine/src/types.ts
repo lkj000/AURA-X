@@ -363,6 +363,21 @@ export interface PerceptionReport {
   violations:      string[];
 }
 
+// ─── Groove variations ────────────────────────────────────────────────────────
+
+export type GrooveVariationType = "main" | "variation" | "fill" | "breakdown" | "build";
+
+export interface GrooveVariationSet {
+  lane:       Lane;
+  bpm:        number;
+  swing:      number;
+  main:       GroovePlan;   // canonical grammar — A-section
+  variation:  GroovePlan;   // syncopated B-section
+  fill:       GroovePlan;   // dense 1-bar transition fill
+  breakdown:  GroovePlan;   // stripped — kick + shaker, no log drum
+  build:      GroovePlan;   // sparse first 8, full second 8 (pre-drop)
+}
+
 // ─── Gate report ─────────────────────────────────────────────────────────────
 
 export interface GateReport {
