@@ -74,6 +74,7 @@ export type {
   EnergyLayer, EnergyProfile,
   TransitionType, TransitionFill,
   PitchBendPoint, PitchBendShape, PitchBendCurve,
+  CcPoint, CcShape, CcAutomation,
 }                                                     from "./types";
 
 export {
@@ -266,6 +267,10 @@ export type { FillOptions }                           from "./arrangement/transi
 // ── Pitch bend curve generator ────────────────────────────────────────────────
 export { generatePitchBend }                          from "./intelligence/pitch_bend_generator";
 export type { PitchBendOptions }                      from "./intelligence/pitch_bend_generator";
+
+// ── MIDI CC automation generator ──────────────────────────────────────────────
+export { generateCcAutomation }                       from "./daw_export/cc_automation";
+export type { CcAutomationOptions }                   from "./daw_export/cc_automation";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";

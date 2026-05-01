@@ -65,6 +65,7 @@ import { generateChordStab }      from "../groove/chord_stab_generator";
 import { computeEnergyProfile }      from "../intelligence/energy_profile";
 import { generateTransitionFill }    from "../arrangement/transition_fill_generator";
 import { generatePitchBend }         from "../intelligence/pitch_bend_generator";
+import { generateCcAutomation }      from "../daw_export/cc_automation";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -5265,5 +5266,87 @@ describe("64. Pitch bend curve generator", () => {
   test("output is deterministic", () => {
     const opts = { shape: "wobble" as const, resolution: 16, startTick: 0 };
     expect(generatePitchBend(opts)).toEqual(generatePitchBend(opts));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 65. MIDI CC automation generator
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("65. MIDI CC automation generator", () => {
+  test("points count equals resolution", () => {
+    expect(generateCcAutomation({ resolution: 16 }).points).toHaveLength(16);
+    expect(generateCcAutomation({ resolution: 8  }).points).toHaveLength(8);
+  });
+
+  test("first point tick = startTick, last point tick = endTick", () => {
+    const r = generateCcAutomation({ startTick: 480, durationTicks: 960 });
+    expect(r.points[0].tick).toBe(480);
+    expect(r.points[r.points.length - 1].tick).toBe(r.endTick);
+  });
+
+  test("endTick = startTick + durationTicks", () => {
+    const r = generateCcAutomation({ startTick: 0, durationTicks: 1920 });
+    expect(r.endTick).toBe(1920);
+  });
+
+  test("ramp_up: first value = minValue, last value = maxValue", () => {
+    const r = generateCcAutomation({ shape: "ramp_up", minValue: 10, maxValue: 100 });
+    expect(r.points[0].value).toBe(10);
+    expect(r.points[r.points.length - 1].value).toBe(100);
+  });
+
+  test("ramp_down: first value = maxValue, last value = minValue", () => {
+    const r = generateCcAutomation({ shape: "ramp_down", minValue: 10, maxValue: 100 });
+    expect(r.points[0].value).toBe(100);
+    expect(r.points[r.points.length - 1].value).toBe(10);
+  });
+
+  test("swell: starts near min, peaks near midpoint, ends near min", () => {
+    const r = generateCcAutomation({ shape: "swell", minValue: 0, maxValue: 127, resolution: 17 });
+    const mid = r.points[8].value;
+    expect(mid).toBeGreaterThan(r.points[0].value);
+    expect(mid).toBeGreaterThan(r.points[16].value);
+  });
+
+  test("dip: starts near max, troughs near midpoint, ends near max", () => {
+    const r = generateCcAutomation({ shape: "dip", minValue: 0, maxValue: 127, resolution: 17 });
+    const mid = r.points[8].value;
+    expect(mid).toBeLessThan(r.points[0].value);
+    expect(mid).toBeLessThan(r.points[16].value);
+  });
+
+  test("flat: all values equal maxValue", () => {
+    const r = generateCcAutomation({ shape: "flat", minValue: 0, maxValue: 100 });
+    expect(r.points.every((p) => p.value === 100)).toBe(true);
+  });
+
+  test("all values are in [minValue, maxValue]", () => {
+    for (const shape of ["ramp_up", "ramp_down", "swell", "dip", "flat"] as const) {
+      const r = generateCcAutomation({ shape, minValue: 20, maxValue: 80 });
+      for (const p of r.points) {
+        expect(p.value).toBeGreaterThanOrEqual(20);
+        expect(p.value).toBeLessThanOrEqual(80);
+      }
+    }
+  });
+
+  test("cc and channel are reflected in every point and on the result", () => {
+    const r = generateCcAutomation({ cc: 7, channel: 3 });
+    expect(r.cc).toBe(7);
+    expect(r.channel).toBe(3);
+    expect(r.points.every((p) => p.cc === 7 && p.channel === 3)).toBe(true);
+  });
+
+  test("tick positions are monotonically non-decreasing", () => {
+    const r = generateCcAutomation({ resolution: 16 });
+    for (let i = 1; i < r.points.length; i++) {
+      expect(r.points[i].tick).toBeGreaterThanOrEqual(r.points[i - 1].tick);
+    }
+  });
+
+  test("output is deterministic", () => {
+    const opts = { shape: "swell" as const, resolution: 16, cc: 11 };
+    expect(generateCcAutomation(opts)).toEqual(generateCcAutomation(opts));
   });
 });

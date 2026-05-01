@@ -464,6 +464,28 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── MIDI CC automation ───────────────────────────────────────────────────────
+
+export interface CcPoint {
+  tick:    number;   // absolute tick position
+  channel: number;   // MIDI channel [0, 15]
+  cc:      number;   // CC number [0, 127]
+  value:   number;   // CC value [0, 127]
+}
+
+export type CcShape = "ramp_up" | "ramp_down" | "swell" | "dip" | "flat";
+
+export interface CcAutomation {
+  points:    CcPoint[];
+  cc:        number;
+  channel:   number;
+  shape:     CcShape;
+  startTick: number;
+  endTick:   number;
+  minValue:  number;
+  maxValue:  number;
+}
+
 // ─── Pitch bend curve ─────────────────────────────────────────────────────────
 
 export interface PitchBendPoint {
