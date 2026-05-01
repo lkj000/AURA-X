@@ -52,6 +52,7 @@ import { validateStructure } from "../pipeline/structure_validator";
 import { generateCallResponse } from "../groove/call_response_generator";
 import { deduplicateMidi } from "../daw_export/midi_deduplicator";
 import { shapeVelocities } from "../groove/velocity_shaper";
+import { quantizeSwing }   from "../groove/swing_quantizer";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -4155,5 +4156,104 @@ describe("51. Pattern velocity shaper", () => {
     const rLow  = shapeVelocities(allActive, { baseVelocity: 40, seed: "b" });
     const rHigh = shapeVelocities(allActive, { baseVelocity: 100, seed: "b" });
     expect(rHigh.meanVelocity).toBeGreaterThan(rLow.meanVelocity);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 52. Groove swing quantizer
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("52. Groove swing quantizer", () => {
+  const ALL16 = Array.from({ length: 16 }, (_, i) => i);
+  const TPB   = 480;   // ticks per beat (PPQ)
+  const TPS   = 120;   // ticks per 16th note at PPQ 480
+
+  test("empty steps returns empty tickPositions", () => {
+    const r = quantizeSwing([]);
+    expect(r.tickPositions).toHaveLength(0);
+    expect(r.stepPositions).toHaveLength(0);
+  });
+
+  test("swingPercent=0 → straight grid (odd step at exact midpoint)", () => {
+    const r = quantizeSwing(ALL16, { swingPercent: 0 });
+    // Step 1 should be at TPS (= 0.5 × pairWidth = 0.5 × 240)
+    expect(r.tickPositions[1]).toBe(TPS);
+    // All steps at i × TPS
+    for (let i = 0; i < 16; i++) {
+      expect(r.tickPositions[i]).toBe(i * TPS);
+    }
+  });
+
+  test("step 0 tick is always 0", () => {
+    for (const pct of [0, 25, 50]) {
+      expect(quantizeSwing([0], { swingPercent: pct }).tickPositions[0]).toBe(0);
+    }
+  });
+
+  test("swingPercent=50 → 2:1 triplet: odd step at 0.75 × pairWidth", () => {
+    const r       = quantizeSwing([0, 1], { swingPercent: 50 });
+    const pairW   = 2 * TPS;
+    expect(r.tickPositions[0]).toBe(0);
+    expect(r.tickPositions[1]).toBe(Math.round(0.75 * pairW));
+  });
+
+  test("even steps are never moved by swing", () => {
+    const straight = quantizeSwing(ALL16, { swingPercent: 0 });
+    const swung    = quantizeSwing(ALL16, { swingPercent: 50 });
+    for (let i = 0; i < 16; i += 2) {
+      expect(swung.tickPositions[i]).toBe(straight.tickPositions[i]);
+    }
+  });
+
+  test("odd steps shift later with swing > 0 vs swing = 0", () => {
+    const straight = quantizeSwing(ALL16, { swingPercent: 0 });
+    const swung    = quantizeSwing(ALL16, { swingPercent: 30 });
+    for (let i = 1; i < 16; i += 2) {
+      expect(swung.tickPositions[i]).toBeGreaterThan(straight.tickPositions[i]);
+    }
+  });
+
+  test("tickPositions are monotonically non-decreasing for full 0..15 input", () => {
+    const r = quantizeSwing(ALL16, { swingPercent: 40 });
+    for (let i = 1; i < r.tickPositions.length; i++) {
+      expect(r.tickPositions[i]).toBeGreaterThanOrEqual(r.tickPositions[i - 1]);
+    }
+  });
+
+  test("swingRatio formula: 0.5 + (swingPercent/100) × 0.25", () => {
+    expect(quantizeSwing([], { swingPercent: 0  }).swingRatio).toBeCloseTo(0.50, 6);
+    expect(quantizeSwing([], { swingPercent: 50 }).swingRatio).toBeCloseTo(0.75, 6);
+    expect(quantizeSwing([], { swingPercent: 25 }).swingRatio).toBeCloseTo(0.625, 6);
+  });
+
+  test("ticksPerStep = ticksPerBeat / 4", () => {
+    expect(quantizeSwing([], { ticksPerBeat: 480 }).ticksPerStep).toBe(120);
+    expect(quantizeSwing([], { ticksPerBeat: 960 }).ticksPerStep).toBe(240);
+  });
+
+  test("custom ticksPerBeat scales all tick positions proportionally", () => {
+    const r480 = quantizeSwing(ALL16, { swingPercent: 25, ticksPerBeat: 480 });
+    const r960 = quantizeSwing(ALL16, { swingPercent: 25, ticksPerBeat: 960 });
+    for (let i = 0; i < 16; i++) {
+      expect(r960.tickPositions[i]).toBe(r480.tickPositions[i] * 2);
+    }
+  });
+
+  test("tickPositions length equals stepPositions length", () => {
+    const r = quantizeSwing([0, 3, 7, 12], { swingPercent: 20 });
+    expect(r.tickPositions).toHaveLength(r.stepPositions.length);
+  });
+
+  test("stepPositions is a copy of the input", () => {
+    const input = [0, 4, 8, 12];
+    const r = quantizeSwing(input);
+    input[0] = 99;
+    expect(r.stepPositions[0]).toBe(0);
+  });
+
+  test("output is deterministic for identical inputs", () => {
+    const r1 = quantizeSwing(ALL16, { swingPercent: 33, ticksPerBeat: 480 });
+    const r2 = quantizeSwing(ALL16, { swingPercent: 33, ticksPerBeat: 480 });
+    expect(r1.tickPositions).toEqual(r2.tickPositions);
   });
 });

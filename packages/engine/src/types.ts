@@ -464,6 +464,15 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Swing quantization ───────────────────────────────────────────────────────
+
+export interface SwingResult {
+  stepPositions: number[];   // input step indices (copy)
+  tickPositions: number[];   // tick offset for each step with swing applied
+  swingRatio:    number;     // effective ratio used: 0.5 (straight) → 0.75 (2:1 triplet)
+  ticksPerStep:  number;     // ticks per 16th-note on the straight grid
+}
+
 // ─── Velocity shape ───────────────────────────────────────────────────────────
 
 export interface VelocityShape {

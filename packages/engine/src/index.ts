@@ -61,6 +61,7 @@ export type {
   CallAndResponse,
   MidiNoteEvent, DeduplicateResult,
   VelocityShape,
+  SwingResult,
 }                                                     from "./types";
 
 export {
@@ -203,6 +204,10 @@ export type { InterpolateOptions }                    from "./groove/groove_inte
 // ── Pattern velocity shaper ───────────────────────────────────────────────────
 export { shapeVelocities }                            from "./groove/velocity_shaper";
 export type { VelocityShapeOptions }                  from "./groove/velocity_shaper";
+
+// ── Groove swing quantizer ────────────────────────────────────────────────────
+export { quantizeSwing }                              from "./groove/swing_quantizer";
+export type { SwingOptions }                          from "./groove/swing_quantizer";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";
