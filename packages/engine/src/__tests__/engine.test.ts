@@ -29,6 +29,7 @@ import { generateMixSpec } from "../mix/mix_spec";
 import { recommendSamples } from "../intelligence/sample_recommender";
 import { humanizePattern } from "../groove/tempo_humanizer";
 import { runQualityGates } from "../pipeline/quality_gate";
+import { interpolateGrooves } from "../groove/groove_interpolator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -2031,7 +2032,102 @@ describe("quality_gate", () => {
   });
 });
 
-// ── 28. Lane grammar constants ────────────────────────────────────────────────
+// ── 28. Groove interpolator ───────────────────────────────────────────────────
+
+describe("groove_interpolator", () => {
+  const setA = generateGrooveVariations("sgija");
+  const setB = generateGrooveVariations("bacardi");
+
+  test("returns a GrooveInterpolation", () => {
+    const gi = interpolateGrooves(setA.main, setB.main, { alpha: 0.5 });
+    expect(gi).toBeDefined();
+    expect(gi.plan).toBeDefined();
+    expect(gi.alpha).toBeCloseTo(0.5);
+  });
+
+  test("alpha=0 produces plan identical to planA", () => {
+    const gi = interpolateGrooves(setA.main, setB.main, { alpha: 0 });
+    expect(Array.from(gi.plan.kickPattern)).toEqual(Array.from(setA.main.kickPattern));
+    expect(Array.from(gi.plan.logDrumPattern)).toEqual(Array.from(setA.main.logDrumPattern));
+  });
+
+  test("alpha=1 produces plan identical to planB", () => {
+    const gi = interpolateGrooves(setA.main, setB.main, { alpha: 1 });
+    expect(Array.from(gi.plan.kickPattern)).toEqual(Array.from(setB.main.kickPattern));
+    expect(Array.from(gi.plan.logDrumPattern)).toEqual(Array.from(setB.main.logDrumPattern));
+  });
+
+  test("swing is linearly interpolated at alpha=0.5", () => {
+    const gi = interpolateGrooves(setA.main, setB.main, { alpha: 0.5 });
+    const expected = (setA.main.swing + setB.main.swing) / 2;
+    expect(gi.plan.swing).toBeCloseTo(expected, 9);
+  });
+
+  test("swing at alpha=0 equals planA swing", () => {
+    const gi = interpolateGrooves(setA.main, setB.main, { alpha: 0 });
+    expect(gi.plan.swing).toBeCloseTo(setA.main.swing, 9);
+  });
+
+  test("swing at alpha=1 equals planB swing", () => {
+    const gi = interpolateGrooves(setA.main, setB.main, { alpha: 1 });
+    expect(gi.plan.swing).toBeCloseTo(setB.main.swing, 9);
+  });
+
+  test("all pattern values are 0 or 1", () => {
+    const gi = interpolateGrooves(setA.main, setB.main, { alpha: 0.5 });
+    for (const p of [gi.plan.kickPattern, gi.plan.hatPattern, gi.plan.shakerPattern, gi.plan.logDrumPattern]) {
+      for (const v of p) expect([0, 1]).toContain(v);
+    }
+  });
+
+  test("all patterns have exactly 16 steps", () => {
+    const gi = interpolateGrooves(setA.main, setB.main, { alpha: 0.5 });
+    expect(gi.plan.kickPattern).toHaveLength(16);
+    expect(gi.plan.hatPattern).toHaveLength(16);
+    expect(gi.plan.shakerPattern).toHaveLength(16);
+    expect(gi.plan.logDrumPattern).toHaveLength(16);
+  });
+
+  test("hitsA and hitsB reflect actual hit counts", () => {
+    const gi = interpolateGrooves(setA.main, setB.main, { alpha: 0.5 });
+    const countPlan = (p: GroovePlan) => [p.kickPattern, p.hatPattern, p.shakerPattern, p.logDrumPattern]
+      .reduce((s, v) => s + Array.from(v).filter((x) => x === 1).length, 0);
+    expect(gi.hitsA).toBe(countPlan(setA.main));
+    expect(gi.hitsB).toBe(countPlan(setB.main));
+  });
+
+  test("laneA and laneB reflect input lanes", () => {
+    const gi = interpolateGrooves(setA.main, setB.main, { alpha: 0.5 });
+    expect(gi.laneA).toBe("sgija");
+    expect(gi.laneB).toBe("bacardi");
+  });
+
+  test("alpha clamped to [0, 1] — negative input treated as 0", () => {
+    const gi = interpolateGrooves(setA.main, setB.main, { alpha: -0.5 });
+    expect(gi.alpha).toBeCloseTo(0, 9);
+  });
+
+  test("self-interpolation at any alpha is identical to input", () => {
+    const gi = interpolateGrooves(setA.main, setA.main, { alpha: 0.7 });
+    expect(Array.from(gi.plan.kickPattern)).toEqual(Array.from(setA.main.kickPattern));
+    expect(Array.from(gi.plan.hatPattern)).toEqual(Array.from(setA.main.hatPattern));
+  });
+
+  test("densityProfile is sparse/medium/dense", () => {
+    const gi = interpolateGrooves(setA.main, setB.main, { alpha: 0.5 });
+    expect(["sparse", "medium", "dense"]).toContain(gi.plan.densityProfile);
+  });
+
+  test("works across all lane pairs without throwing", () => {
+    for (let i = 0; i < LANES.length - 1; i++) {
+      const sA = generateGrooveVariations(LANES[i]);
+      const sB = generateGrooveVariations(LANES[i + 1]);
+      expect(() => interpolateGrooves(sA.main, sB.main, { alpha: 0.5 })).not.toThrow();
+    }
+  });
+});
+
+// ── 29. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;

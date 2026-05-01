@@ -410,6 +410,18 @@ export interface PatternSimilarity {
   isMatch:      boolean;    // overallSim >= 0.75
 }
 
+// ─── Groove interpolation ─────────────────────────────────────────────────────
+
+export interface GrooveInterpolation {
+  plan:      GroovePlan;  // resulting interpolated plan
+  alpha:     number;      // mix factor used ∈ [0, 1]
+  laneA:     Lane;        // source lane
+  laneB:     Lane;        // target lane
+  hitsA:     number;      // total active hits in plan A
+  hitsB:     number;      // total active hits in plan B
+  hitsOut:   number;      // total active hits in interpolated plan
+}
+
 // ─── Quality gate pipeline ────────────────────────────────────────────────────
 
 export type GradeLabel = "S" | "A" | "B" | "C" | "F";

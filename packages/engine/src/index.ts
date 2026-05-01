@@ -40,6 +40,7 @@ export type {
   SampleRole, SampleRecommendation, SamplePack,
   VoiceName, HumanizedHit, HumanizedPattern,
   GradeLabel, GateResult, QualityGateReport,
+  GrooveInterpolation,
 }                                                     from "./types";
 
 export {
@@ -120,6 +121,10 @@ export type { RecommenderOptions }                    from "./intelligence/sampl
 // ── Tempo humanizer ───────────────────────────────────────────────────────────
 export { humanizePattern }                            from "./groove/tempo_humanizer";
 export type { HumanizerOptions }                      from "./groove/tempo_humanizer";
+
+// ── Groove interpolator ───────────────────────────────────────────────────────
+export { interpolateGrooves }                         from "./groove/groove_interpolator";
+export type { InterpolateOptions }                    from "./groove/groove_interpolator";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";
