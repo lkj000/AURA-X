@@ -45,6 +45,7 @@ import { calculateReverb } from "../mix/reverb_calculator";
 import { generateCompressorSpec } from "../mix/compressor_generator";
 import { generateEqSpec } from "../mix/eq_generator";
 import { scheduleVocalChops } from "../intelligence/vocal_chop_scheduler";
+import { generateWidthAutomation } from "../arrangement/width_automator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -3533,6 +3534,78 @@ describe("vocal_chop_scheduler", () => {
       for (const d of densities) {
         expect(() => scheduleVocalChops(lane, { density: d, bpm: 114 })).not.toThrow();
       }
+    }
+  });
+});
+
+// ── 45. Stereo width automator ────────────────────────────────────────────────
+
+describe("width_automator", () => {
+  const arc = planArrangementArc("private_school", { totalBars: 64 });
+  const wa  = generateWidthAutomation(arc);
+
+  test("totalBars matches arc", () => {
+    expect(wa.totalBars).toBe(arc.totalBars);
+  });
+
+  test("points are in strictly ascending bar order", () => {
+    for (let i = 1; i < wa.points.length; i++) {
+      expect(wa.points[i].bar).toBeGreaterThan(wa.points[i - 1].bar);
+    }
+  });
+
+  test("no duplicate bar values", () => {
+    const bars = wa.points.map((p) => p.bar);
+    expect(new Set(bars).size).toBe(bars.length);
+  });
+
+  test("all width values in [0.5, 1.8]", () => {
+    for (const p of wa.points) {
+      expect(p.width).toBeGreaterThanOrEqual(0.5);
+      expect(p.width).toBeLessThanOrEqual(1.8);
+    }
+  });
+
+  test("first point is at bar 0", () => {
+    expect(wa.points[0].bar).toBe(0);
+  });
+
+  test("first point width is INITIAL_WIDTH (0.75)", () => {
+    expect(wa.points[0].width).toBe(0.75);
+  });
+
+  test("drop1 section ends with width >= 1.4 (wide open)", () => {
+    const drop1 = arc.sections.find((s) => s.name === "drop1")!;
+    const pt    = wa.points.find((p) => p.bar === drop1.endBar);
+    expect(pt?.width).toBeGreaterThanOrEqual(1.4);
+  });
+
+  test("breakdown section ends with width < 0.8 (narrow)", () => {
+    const bd = arc.sections.find((s) => s.name === "breakdown")!;
+    const pt = wa.points.find((p) => p.bar === bd.endBar);
+    expect(pt?.width).toBeLessThan(0.8);
+  });
+
+  test("drop2 ends with the widest value of any section", () => {
+    const drop2 = arc.sections.find((s) => s.name === "drop2")!;
+    const drop2Pt = wa.points.find((p) => p.bar === drop2.endBar)!;
+    const maxW    = Math.max(...wa.points.map((p) => p.width));
+    expect(drop2Pt.width).toBe(maxW);
+  });
+
+  test("outro_fade ends at narrowest section width (0.60)", () => {
+    const last = wa.points[wa.points.length - 1];
+    expect(last.width).toBe(0.60);
+  });
+
+  test("has at least sections.length + 1 points", () => {
+    expect(wa.points.length).toBeGreaterThanOrEqual(arc.sections.length + 1);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      const a = planArrangementArc(lane, { totalBars: 32 });
+      expect(() => generateWidthAutomation(a)).not.toThrow();
     }
   });
 });

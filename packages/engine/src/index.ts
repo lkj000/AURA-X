@@ -54,6 +54,7 @@ export type {
   CompressorParams, CompressorSpec,
   EqBandType, EqBand, StemEq, EqSpec,
   ChopEvent, VocalChopPattern,
+  WidthPoint, WidthAutomation,
 }                                                     from "./types";
 
 export {
@@ -135,6 +136,9 @@ export { automateGains }                              from "./arrangement/stem_g
 
 // ── Filter automation ─────────────────────────────────────────────────────────
 export { generateFilterAutomation }                   from "./arrangement/filter_automator";
+
+// ── Stereo width automation ───────────────────────────────────────────────────
+export { generateWidthAutomation }                    from "./arrangement/width_automator";
 
 // ── Mix spec ──────────────────────────────────────────────────────────────────
 export { generateMixSpec }                            from "./mix/mix_spec";

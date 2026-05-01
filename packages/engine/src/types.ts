@@ -447,6 +447,18 @@ export interface ReverbSpec {
   params:     ReverbParams[];   // one per stem, ordered sub_bass → air
 }
 
+// ─── Stereo width automation ──────────────────────────────────────────────────
+
+export interface WidthPoint {
+  bar:   number;   // absolute bar index within the arrangement
+  width: number;   // M/S width multiplier [0.5, 1.8] — 1.0 = unity
+}
+
+export interface WidthAutomation {
+  totalBars: number;
+  points:    WidthPoint[];   // ascending by bar; interpolate linearly
+}
+
 // ─── Vocal chop scheduler ─────────────────────────────────────────────────────
 
 export interface ChopEvent {
