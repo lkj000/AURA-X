@@ -204,7 +204,12 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy AURA-X service
+      - name: Deploy AURA-X API service
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: railway up --service AURA-X --detach
+
+      - name: Deploy fearless-presence web service
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service fearless-presence --detach
