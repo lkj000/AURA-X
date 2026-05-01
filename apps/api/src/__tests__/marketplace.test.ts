@@ -80,9 +80,42 @@ function makeSplitInsertMock() {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
+// GET /api/marketplace calls "tracks" twice:
+//   call 1: .select("id").in().eq("suno_approved", true)  → Promise (suno gate)
+//   call 2: .select("id, title, ...").in().order().range() → Promise (listings)
+// Returns a factory: call it inside mockFrom so each mockFrom("tracks") call
+// gets the correct mock for that invocation.
+function makeTracksCallFactory(sunoIds: string[], listings: unknown[]) {
+  let callCount = 0;
+  return () => {
+    callCount++;
+    if (callCount === 1) {
+      // Suno gate — terminal call is .eq()
+      return {
+        select: jest.fn().mockReturnThis(),
+        in: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockResolvedValue({ data: sunoIds.map((id) => ({ id })), error: null }),
+      };
+    }
+    // Listings — terminal call is .range()
+    return {
+      select: jest.fn().mockReturnThis(),
+      in: jest.fn().mockReturnThis(),
+      order: jest.fn().mockReturnThis(),
+      range: jest.fn().mockResolvedValue({ data: listings, error: null }),
+    };
+  };
+}
+
 describe("GET /api/marketplace", () => {
+  const LISTINGS = [
+    { id: "track-mkt-001", title: "Amapiano Sunrise", subgenre: "log_drum", bpm: 112, key: "Am", created_by: "producer-001", created_at: "2026-05-01T10:00:00Z" },
+    { id: "track-mkt-002", title: "Deep Groove", subgenre: "afro_house", bpm: 108, key: "Dm", created_by: "producer-002", created_at: "2026-05-01T09:00:00Z" },
+  ];
+
   beforeEach(() => {
     jest.clearAllMocks();
+    const tracksFactory = makeTracksCallFactory(["track-mkt-001", "track-mkt-002"], LISTINGS);
     mockFrom.mockImplementation((table: string) => {
       if (table === "evaluations") {
         return {
@@ -99,20 +132,7 @@ describe("GET /api/marketplace", () => {
           eq: jest.fn().mockResolvedValue({ data: [], error: null }),
         };
       }
-      if (table === "tracks") {
-        return {
-          select: jest.fn().mockReturnThis(),
-          in: jest.fn().mockReturnThis(),
-          order: jest.fn().mockReturnThis(),
-          range: jest.fn().mockResolvedValue({
-            data: [
-              { id: "track-mkt-001", title: "Amapiano Sunrise", subgenre: "log_drum", bpm: 112, key: "Am", created_by: "producer-001", created_at: "2026-05-01T10:00:00Z" },
-              { id: "track-mkt-002", title: "Deep Groove", subgenre: "afro_house", bpm: 108, key: "Dm", created_by: "producer-002", created_at: "2026-05-01T09:00:00Z" },
-            ],
-            error: null,
-          }),
-        };
-      }
+      if (table === "tracks") return tracksFactory();
       return {};
     });
   });
@@ -148,7 +168,29 @@ describe("GET /api/marketplace", () => {
     expect(res.body.total).toBe(0);
   });
 
-  it("4. Excludes exclusively sold tracks", async () => {
+  it("4. Excludes tracks not Suno-approved (returns empty when none approved)", async () => {
+    const tracksFactory = makeTracksCallFactory([], []); // suno gate returns no approved IDs
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "evaluations") {
+        return {
+          select: jest.fn().mockReturnThis(),
+          eq: jest.fn().mockResolvedValue({
+            data: [{ track_id: "track-mkt-001" }],
+            error: null,
+          }),
+        };
+      }
+      if (table === "tracks") return tracksFactory();
+      return {};
+    });
+    const res = await request(app).get("/api/marketplace");
+    expect(res.status).toBe(200);
+    expect(res.body.listings).toEqual([]);
+  });
+
+  it("4b. Excludes exclusively sold tracks", async () => {
+    // Suno approves track-mkt-001, but it's exclusively licensed — should be filtered out
+    const tracksFactory = makeTracksCallFactory(["track-mkt-001"], []);
     mockFrom.mockImplementation((table: string) => {
       if (table === "evaluations") {
         return {
@@ -162,12 +204,10 @@ describe("GET /api/marketplace", () => {
       if (table === "track_licenses") {
         return {
           select: jest.fn().mockReturnThis(),
-          eq: jest.fn().mockResolvedValue({
-            data: [{ track_id: "track-mkt-001" }],
-            error: null,
-          }),
+          eq: jest.fn().mockResolvedValue({ data: [{ track_id: "track-mkt-001" }], error: null }),
         };
       }
+      if (table === "tracks") return tracksFactory();
       return {};
     });
     const res = await request(app).get("/api/marketplace");

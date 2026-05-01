@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { supabase } from "../lib/supabase";
+import { verifyToken } from "../middleware/auth";
 
 const router = Router();
 
@@ -110,6 +111,34 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     feedback_count,
     feedback_avg,
   });
+});
+
+// POST /api/tracks/:id/suno-result  (requires JWT)
+// Body: { approved: boolean, style_tag?: string }
+router.post("/:id/suno-result", verifyToken, async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const { approved, style_tag } = req.body as { approved: unknown; style_tag?: string };
+
+  if (typeof approved !== "boolean") {
+    res.status(400).json({ error: "approved must be a boolean" });
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("tracks")
+    .update({
+      suno_approved:      approved,
+      suno_classified_at: new Date().toISOString(),
+      suno_style_tag:     style_tag ?? null,
+    })
+    .eq("id", id)
+    .select("id, title, suno_approved, suno_classified_at, suno_style_tag")
+    .single();
+
+  if (error) { res.status(500).json({ error: error.message }); return; }
+  if (!data)  { res.status(404).json({ error: "Track not found" }); return; }
+
+  res.json(data);
 });
 
 export default router;

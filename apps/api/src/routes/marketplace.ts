@@ -54,6 +54,21 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  // Require Suno external classification approval
+  const { data: sunoApproved } = await supabase
+    .from("tracks")
+    .select("id")
+    .in("id", passedIds)
+    .eq("suno_approved", true);
+
+  const sunoApprovedIds = new Set((sunoApproved ?? []).map((t) => t.id as string));
+  const gatedIds = passedIds.filter((id) => sunoApprovedIds.has(id));
+
+  if (gatedIds.length === 0) {
+    res.json({ listings: [], total: 0, page: pageNum, limit: limitNum });
+    return;
+  }
+
   // Exclude exclusively sold tracks
   const { data: exclusive } = await supabase
     .from("track_licenses")
@@ -61,7 +76,7 @@ router.get("/", async (req: Request, res: Response): Promise<void> => {
     .eq("platform", "marketplace-exclusive");
 
   const exclusiveIds = new Set((exclusive ?? []).map((e) => e.track_id as string));
-  const availableIds = passedIds.filter((id) => !exclusiveIds.has(id));
+  const availableIds = gatedIds.filter((id) => !exclusiveIds.has(id));
 
   if (availableIds.length === 0) {
     res.json({ listings: [], total: 0, page: pageNum, limit: limitNum });

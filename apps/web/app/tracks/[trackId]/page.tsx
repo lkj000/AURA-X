@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { getTrack, getGenerationStatus, getSignedUrl, type TrackDetail } from "@/lib/api";
+import { getTrack, getGenerationStatus, getSignedUrl, recordSunoResult, type TrackDetail } from "@/lib/api";
 import { SUBGENRE_LABELS, fmt, scoreColor, cn } from "@/lib/utils";
 
 // ─── Copy link button ─────────────────────────────────────────────────────────
@@ -40,10 +40,14 @@ function Stars({ value }: { value: number }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function TrackDetailPage({ params }: { params: { trackId: string } }) {
-  const [track, setTrack]       = useState<TrackDetail | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState<string | null>(null);
+  const [track, setTrack]           = useState<TrackDetail | null>(null);
+  const [audioUrl, setAudioUrl]     = useState<string | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState<string | null>(null);
+  const [sunoToken, setSunoToken]   = useState("");
+  const [sunoTag, setSunoTag]       = useState("");
+  const [sunoSaving, setSunoSaving] = useState(false);
+  const [sunoError, setSunoError]   = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -153,16 +157,104 @@ export default function TrackDetailPage({ params }: { params: { trackId: string 
         </div>
       )}
 
-      {/* Audio player */}
+      {/* Audio player + download */}
       {audioUrl && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 space-y-2">
-          <p className="text-xs text-zinc-500">Audio</p>
-          <audio
-            src={audioUrl}
-            controls
-            className="w-full"
-            style={{ colorScheme: "dark" }}
-          />
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-zinc-500">Audio</p>
+            <a
+              href={audioUrl}
+              download={`${track.title}.mp3`}
+              className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 transition-colors"
+            >
+              Download
+            </a>
+          </div>
+          <audio src={audioUrl} controls className="w-full" style={{ colorScheme: "dark" }} />
+        </div>
+      )}
+
+      {/* Suno validation panel */}
+      {track.passed_gate && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-white">Suno validation</p>
+            <span className={cn(
+              "text-xs px-2 py-0.5 rounded-full border",
+              track.suno_approved === true  ? "bg-emerald-500/20 text-emerald-400 border-emerald-800" :
+              track.suno_approved === false ? "bg-red-500/20 text-red-400 border-red-800" :
+              "bg-zinc-700/50 text-zinc-400 border-zinc-700"
+            )}>
+              {track.suno_approved === true ? "✓ Suno approved" :
+               track.suno_approved === false ? "✗ Suno rejected" :
+               "Pending Suno classification"}
+            </span>
+          </div>
+
+          {track.suno_approved == null && (
+            <p className="text-xs text-zinc-500">
+              Download the track above, upload to Suno, and record the result. If Suno classifies it as Amapiano, mark approved — the track becomes marketplace-eligible.
+            </p>
+          )}
+
+          {track.suno_approved != null && track.suno_classified_at && (
+            <p className="text-xs text-zinc-600">
+              Classified {new Date(track.suno_classified_at).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}
+              {track.suno_style_tag ? ` · "${track.suno_style_tag}"` : ""}
+            </p>
+          )}
+
+          <div className="space-y-2">
+            <input
+              type="text"
+              placeholder="Your JWT"
+              value={sunoToken}
+              onChange={(e) => setSunoToken(e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-violet-500"
+            />
+            <input
+              type="text"
+              placeholder="Suno style tag (e.g. amapiano, log drum, sgija)"
+              value={sunoTag}
+              onChange={(e) => setSunoTag(e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+            />
+          </div>
+
+          {sunoError && (
+            <p className="text-xs text-red-400">{sunoError}</p>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              disabled={sunoSaving || !sunoToken.trim()}
+              onClick={async () => {
+                setSunoSaving(true); setSunoError(null);
+                try {
+                  const result = await recordSunoResult(track.id, true, sunoToken.trim(), sunoTag.trim() || undefined);
+                  setTrack((prev) => prev ? { ...prev, suno_approved: result.suno_approved, suno_classified_at: result.suno_classified_at, suno_style_tag: result.suno_style_tag } : prev);
+                } catch (e) { setSunoError(e instanceof Error ? e.message : "Failed"); }
+                finally { setSunoSaving(false); }
+              }}
+              className="flex-1 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white text-xs font-medium transition-colors"
+            >
+              Mark approved
+            </button>
+            <button
+              disabled={sunoSaving || !sunoToken.trim()}
+              onClick={async () => {
+                setSunoSaving(true); setSunoError(null);
+                try {
+                  const result = await recordSunoResult(track.id, false, sunoToken.trim(), sunoTag.trim() || undefined);
+                  setTrack((prev) => prev ? { ...prev, suno_approved: result.suno_approved, suno_classified_at: result.suno_classified_at, suno_style_tag: result.suno_style_tag } : prev);
+                } catch (e) { setSunoError(e instanceof Error ? e.message : "Failed"); }
+                finally { setSunoSaving(false); }
+              }}
+              className="flex-1 py-1.5 rounded-lg bg-red-900 hover:bg-red-800 disabled:opacity-40 text-white text-xs font-medium transition-colors"
+            >
+              Mark rejected
+            </button>
+          </div>
         </div>
       )}
 

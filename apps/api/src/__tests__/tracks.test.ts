@@ -21,6 +21,15 @@ jest.mock("../lib/supabase", () => ({
   supabase: { from: (...args: unknown[]) => mockFrom(...args) },
 }));
 
+// ─── Mock auth middleware ─────────────────────────────────────────────────────
+
+jest.mock("../middleware/auth", () => ({
+  verifyToken: (req: { artist: unknown }, _res: unknown, next: () => void) => {
+    req.artist = { artist_id: "test-artist-001", email: "test@aurax.test" };
+    next();
+  },
+}));
+
 // ─── Build app ───────────────────────────────────────────────────────────────
 
 import express from "express";
@@ -232,6 +241,84 @@ describe("GET /api/tracks/:id", () => {
     expect(res.body.generation).toBeDefined();
     expect(res.body.generation.id).toBe("gen-001");
     expect(res.body.generation.status).toBe("complete");
+  });
+
+});
+
+describe("POST /api/tracks/:id/suno-result", () => {
+
+  const SUNO_RESULT = {
+    id: "track-aaa-001",
+    title: "Johannesburg Rain",
+    suno_approved: true,
+    suno_classified_at: "2026-05-01T10:00:00Z",
+    suno_style_tag: "amapiano",
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFrom.mockImplementation(() => ({
+      update:  jest.fn().mockReturnThis(),
+      eq:      jest.fn().mockReturnThis(),
+      select:  jest.fn().mockReturnThis(),
+      single:  jest.fn().mockResolvedValue({ data: SUNO_RESULT, error: null }),
+    }));
+  });
+
+  it("11. POST approved:true → 200 with suno_approved true", async () => {
+    const res = await request(app)
+      .post("/api/tracks/track-aaa-001/suno-result")
+      .set("Authorization", "Bearer test-token")
+      .send({ approved: true, style_tag: "amapiano" });
+    expect(res.status).toBe(200);
+    expect(res.body.suno_approved).toBe(true);
+    expect(res.body.suno_style_tag).toBe("amapiano");
+  });
+
+  it("12. POST approved:false → 200 with suno_approved false", async () => {
+    mockFrom.mockImplementation(() => ({
+      update:  jest.fn().mockReturnThis(),
+      eq:      jest.fn().mockReturnThis(),
+      select:  jest.fn().mockReturnThis(),
+      single:  jest.fn().mockResolvedValue({ data: { ...SUNO_RESULT, suno_approved: false }, error: null }),
+    }));
+    const res = await request(app)
+      .post("/api/tracks/track-aaa-001/suno-result")
+      .set("Authorization", "Bearer test-token")
+      .send({ approved: false });
+    expect(res.status).toBe(200);
+    expect(res.body.suno_approved).toBe(false);
+  });
+
+  it("13. POST without approved → 400", async () => {
+    const res = await request(app)
+      .post("/api/tracks/track-aaa-001/suno-result")
+      .set("Authorization", "Bearer test-token")
+      .send({ style_tag: "amapiano" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/approved must be a boolean/i);
+  });
+
+  it("14. POST approved as string → 400", async () => {
+    const res = await request(app)
+      .post("/api/tracks/track-aaa-001/suno-result")
+      .set("Authorization", "Bearer test-token")
+      .send({ approved: "true" });
+    expect(res.status).toBe(400);
+  });
+
+  it("15. POST track not found → 404", async () => {
+    mockFrom.mockImplementation(() => ({
+      update:  jest.fn().mockReturnThis(),
+      eq:      jest.fn().mockReturnThis(),
+      select:  jest.fn().mockReturnThis(),
+      single:  jest.fn().mockResolvedValue({ data: null, error: null }),
+    }));
+    const res = await request(app)
+      .post("/api/tracks/does-not-exist/suno-result")
+      .set("Authorization", "Bearer test-token")
+      .send({ approved: true });
+    expect(res.status).toBe(404);
   });
 
 });

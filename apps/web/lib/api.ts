@@ -233,6 +233,9 @@ export interface TrackDetail extends TrackSummary {
   passed_gate: boolean | null;
   feedback_count: number;
   feedback_avg: number | null;
+  suno_approved: boolean | null;
+  suno_classified_at: string | null;
+  suno_style_tag: string | null;
 }
 
 export interface TracksListResult {
@@ -263,6 +266,21 @@ export const listTracks = (params?: {
 
 export const getTrack = (trackId: string) =>
   request<TrackDetail>(`/api/tracks/${trackId}`);
+
+export interface SunoResultResponse {
+  id: string;
+  title: string;
+  suno_approved: boolean;
+  suno_classified_at: string;
+  suno_style_tag: string | null;
+}
+
+export const recordSunoResult = (trackId: string, approved: boolean, token: string, style_tag?: string) =>
+  request<SunoResultResponse>(`/api/tracks/${trackId}/suno-result`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ approved, style_tag }),
+  });
 
 // ── Feedback ─────────────────────────────────────────────────────────────────
 
