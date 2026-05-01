@@ -71,7 +71,7 @@ function dummyFeatures(overrides: Partial<AudioFeatures> = {}): AudioFeatures {
   };
 }
 
-function dummyGroovePlan(lane: "private_school" | "sgija" | "bacardi" | "commercial" = "sgija"): GroovePlan {
+function dummyGroovePlan(lane: "private_school" | "sgija" | "bacardi" | "stixx_sgija" | "mbiraiano" | "three_step" | "gqom_fusion" | "hybrid_rnb_amapiano" = "sgija"): GroovePlan {
   const g = LANE_GRAMMARS[lane];
   return {
     grooveType: `${lane}_grammar`,
@@ -304,9 +304,9 @@ describe("parseWavMono", () => {
 // ── 4. Authenticity scoring ───────────────────────────────────────────────────
 
 describe("scoreAuthenticityLanes", () => {
-  test("returns 4 lane scores", () => {
+  test("returns 8 lane scores", () => {
     const result = scoreAuthenticityLanes(dummyFeatures());
-    expect(result.laneScores).toHaveLength(4);
+    expect(result.laneScores).toHaveLength(8);
   });
 
   test("laneConfidence in (0, 1)", () => {
@@ -345,7 +345,7 @@ describe("scoreLaneQuality", () => {
   });
 
   test("tier is one of elite/strong/developing", () => {
-    const qs = scoreLaneQuality(dummyFeatures(), "commercial");
+    const qs = scoreLaneQuality(dummyFeatures(), "hybrid_rnb_amapiano");
     expect(["elite", "strong", "developing"]).toContain(qs.tier);
   });
 
@@ -496,7 +496,7 @@ describe("buildRefinementPlan", () => {
   });
 
   test("actionScore in [0, 1]", () => {
-    const groove = dummyGroovePlan("commercial");
+    const groove = dummyGroovePlan("gqom_fusion");
     const plan = buildRefinementPlan(groove, 0.55);
     expect(plan.actionScore).toBeGreaterThanOrEqual(0);
     expect(plan.actionScore).toBeLessThanOrEqual(1.5); // composite can exceed 1
@@ -537,7 +537,7 @@ describe("transferGroove", () => {
 
   test("all patterns have length 16", () => {
     const quality: QualityScore = { producerScore: 0.60, tier: "strong", isElite: false, laneMetrics: {} };
-    const groove = transferGroove("bacardi", "commercial", quality, "single_lane");
+    const groove = transferGroove("bacardi", "three_step", quality, "single_lane");
     expect(groove.kickPattern).toHaveLength(16);
     expect(groove.hatPattern).toHaveLength(16);
     expect(groove.shakerPattern).toHaveLength(16);
@@ -546,7 +546,7 @@ describe("transferGroove", () => {
 
   test("pattern values are 0 or 1", () => {
     const quality: QualityScore = { producerScore: 0.80, tier: "strong", isElite: false, laneMetrics: {} };
-    const groove = transferGroove("commercial", "sgija", quality, "multi_lane_blend");
+    const groove = transferGroove("hybrid_rnb_amapiano", "sgija", quality, "multi_lane_blend");
     [...groove.kickPattern, ...groove.hatPattern, ...groove.shakerPattern, ...groove.logDrumPattern].forEach((v) => {
       expect([0, 1]).toContain(v);
     });
@@ -602,9 +602,9 @@ describe("evaluateRender", () => {
 // ── 12. EMA adaptive action learning ─────────────────────────────────────────
 
 describe("adaptive_action_learning", () => {
-  test("emptyPolicy — all actions present in all lanes", () => {
+  test("emptyPolicy — all actions present in all 8 lanes", () => {
     const policy = emptyPolicy();
-    for (const lane of ["private_school", "sgija", "bacardi", "commercial"] as const) {
+    for (const lane of ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const) {
       for (const action of REFINEMENT_ACTIONS) {
         expect(policy.lanes[lane]![action]).toBeDefined();
       }
@@ -648,7 +648,7 @@ describe("adaptive_action_learning", () => {
 
   test("laneLeaderboard — returns 13 actions", () => {
     const policy = emptyPolicy();
-    const board = laneLeaderboard(policy, "commercial");
+    const board = laneLeaderboard(policy, "mbiraiano");
     expect(board).toHaveLength(REFINEMENT_ACTIONS.length);
   });
 
@@ -700,8 +700,8 @@ describe("MIDI export", () => {
   });
 
   test("exportGrooveToMidi — buffer has MTrk chunk", () => {
-    const groove = dummyGroovePlan("commercial");
-    const { buffer } = exportGrooveToMidi(groove, 116, 2);
+    const groove = dummyGroovePlan("three_step");
+    const { buffer } = exportGrooveToMidi(groove, 113, 2);
     // MTrk starts at byte 14
     expect(buffer[14]).toBe(0x4d);
     expect(buffer[15]).toBe(0x54);
@@ -768,7 +768,7 @@ describe("evaluateBuffer", () => {
   });
 
   test("laneScores has bestFitLane", () => {
-    expect(["private_school", "sgija", "bacardi", "commercial"]).toContain(result.laneScores.bestFitLane);
+    expect(["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"]).toContain(result.laneScores.bestFitLane);
   });
 
   test("rejects invalid buffer", () => {
@@ -812,7 +812,7 @@ describe("buildEnhancement", () => {
 // ── 15. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
-  const lanes = ["private_school", "sgija", "bacardi", "commercial"] as const;
+  const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;
 
   for (const lane of lanes) {
     test(`${lane} — all step indices < 16`, () => {

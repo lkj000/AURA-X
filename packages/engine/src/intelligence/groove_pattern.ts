@@ -5,7 +5,11 @@ import { clamp, hammingDistance } from "../_utils";
 import { onsetEnvelope } from "../_dsp";
 import { LANE_GRAMMARS, type Lane, type GroovePattern } from "../types";
 
-const LANES: Lane[] = ["private_school", "sgija", "bacardi", "commercial"];
+const LANES: Lane[] = [
+  "private_school", "sgija", "bacardi",
+  "stixx_sgija", "mbiraiano", "three_step",
+  "gqom_fusion", "hybrid_rnb_amapiano",
+];
 
 function binaryPattern16(onsets: number[], framesPerStep: number): number[] {
   const pattern = new Array(16).fill(0);
@@ -51,10 +55,14 @@ function computePocketScore(pattern: number[], lane: Lane, swingRatio: number): 
 
   // Each lane has a preferred density range
   const densityTargets: Record<Lane, number> = {
-    private_school: 0.25,
-    sgija:          0.50,
-    bacardi:        0.65,
-    commercial:     0.40,
+    private_school:      0.25,
+    sgija:               0.50,
+    bacardi:             0.65,
+    stixx_sgija:         0.60,
+    mbiraiano:           0.28,
+    three_step:          0.38,
+    gqom_fusion:         0.62,
+    hybrid_rnb_amapiano: 0.38,
   };
   const densityScore = 1 - Math.abs(density - densityTargets[lane]);
 

@@ -1,8 +1,20 @@
 // ─── Amapiano sub-genre lanes ─────────────────────────────────────────────────
 
-export type Lane = "private_school" | "sgija" | "bacardi" | "commercial";
+export type Lane =
+  | "private_school"
+  | "sgija"
+  | "bacardi"
+  | "stixx_sgija"
+  | "mbiraiano"
+  | "three_step"
+  | "gqom_fusion"
+  | "hybrid_rnb_amapiano";
 
-export const LANES: Lane[] = ["private_school", "sgija", "bacardi", "commercial"];
+export const LANES: Lane[] = [
+  "private_school", "sgija", "bacardi",
+  "stixx_sgija", "mbiraiano", "three_step",
+  "gqom_fusion", "hybrid_rnb_amapiano",
+];
 
 // ─── DSP primitives ───────────────────────────────────────────────────────────
 
@@ -94,16 +106,13 @@ export interface LaneScore {
 }
 
 export interface LaneScores {
-  privateSchoolScore: number;
-  sgijaScore:         number;
-  bacardiScore:       number;
-  commercialScore:    number;
-  overallAuthenticity: number;    // max of four
-  bestFitLane:        Lane;
-  laneConfidence:     number;     // softmax prob of best lane
-  laneScores:         LaneScore[];
-  secondaryLane:      Lane;
-  hybridFlag:         boolean;    // top-2 gap < 0.10
+  scores:              Record<Lane, number>;  // raw score per lane
+  overallAuthenticity: number;               // max of all lanes
+  bestFitLane:         Lane;
+  laneConfidence:      number;               // softmax prob of best lane
+  laneScores:          LaneScore[];
+  secondaryLane:       Lane;
+  hybridFlag:          boolean;              // top-2 gap < 0.10
 }
 
 // ─── Quality ──────────────────────────────────────────────────────────────────
@@ -123,10 +132,26 @@ export interface LaneQualityMetrics {
   transientStrength?: number;
   percussiveDensity?: number;
   energyDrive?:       number;
-  // commercial
-  spectralClarity?:    number;
-  structureCoherence?: number;
-  mixBalance?:         number;
+  // stixx_sgija
+  aggressivePunch?:  number;
+  logDrumDensity?:   number;
+  rhythmicDrive?:    number;
+  // mbiraiano
+  melodicWarmth?:         number;
+  harmonicDepth?:         number;
+  culturalAuthenticity?:  number;
+  // three_step
+  stepCohesion?:     number;
+  tripletFeel?:      number;
+  groovePolyrhythm?: number;
+  // gqom_fusion
+  industrialHardness?: number;
+  darkEnergy?:         number;
+  urbanEdge?:          number;
+  // hybrid_rnb_amapiano
+  melodicSmoothness?:  number;
+  crossoverBalance?:   number;
+  hookAccessibility?:  number;
 }
 
 export interface QualityScore {
@@ -309,13 +334,45 @@ export const LANE_GRAMMARS: Record<Lane, {
     swing: 0.54,
     microtiming: "forward_shuffle",
   },
-  commercial: {
-    kick: [0, 4, 8, 12],
+  stixx_sgija: {
+    kick: [0, 3, 8, 11, 14],
     hat:  [2, 6, 10, 14],
     shaker: [1, 5, 9, 13],
-    log:  [7, 11, 15],
+    log:  [3, 6, 10, 13, 15],
+    swing: 0.53,
+    microtiming: "staccato_lock",
+  },
+  mbiraiano: {
+    kick: [0, 8, 12],
+    hat:  [4, 12],
+    shaker: [2, 6, 10, 14],
+    log:  [5, 11, 15],
+    swing: 0.51,
+    microtiming: "mbira_float",
+  },
+  three_step: {
+    kick: [0, 5, 10],
+    hat:  [0, 5, 10, 15],
+    shaker: [2, 7, 12],
+    log:  [4, 9, 14],
+    swing: 0.53,
+    microtiming: "triplet_lilt",
+  },
+  gqom_fusion: {
+    kick: [0, 4, 8, 10, 12],
+    hat:  [2, 6, 10, 14],
+    shaker: [3, 7, 11, 15],
+    log:  [2, 5, 10, 13, 15],
     swing: 0.50,
-    microtiming: "grid_tight",
+    microtiming: "machine_tight",
+  },
+  hybrid_rnb_amapiano: {
+    kick: [0, 6, 10, 14],
+    hat:  [4, 8, 12],
+    shaker: [2, 6, 10, 14],
+    log:  [7, 11, 15],
+    swing: 0.51,
+    microtiming: "smooth_flow",
   },
 };
 
@@ -326,10 +383,14 @@ export const AMAPIANO_THRESHOLD = 0.60;
 // ─── Elite quality thresholds per lane ───────────────────────────────────────
 
 export const ELITE_THRESHOLDS: Record<Lane, number> = {
-  private_school: 0.85,
-  sgija:          0.80,
-  bacardi:        0.78,
-  commercial:     0.82,
+  private_school:      0.85,
+  sgija:               0.80,
+  bacardi:             0.78,
+  stixx_sgija:         0.80,
+  mbiraiano:           0.85,
+  three_step:          0.80,
+  gqom_fusion:         0.78,
+  hybrid_rnb_amapiano: 0.82,
 };
 
 // ─── Lane acoustic targets (ported from authenticity_scoring.py) ──────────────
@@ -341,7 +402,11 @@ export const LANE_TARGETS: Record<Lane, {
   private_school: { bpm: 112, energy: 0.45, centroid: 1375, swing: 0.50, syncopation: 0.25, bpmSigma: 3, energySigma: 0.10, centroidSigma: 200, syncopSigma: 0.12 },
   sgija:          { bpm: 114, energy: 0.80, centroid: 1525, swing: 0.50, syncopation: 0.50, bpmSigma: 3, energySigma: 0.10, centroidSigma: 200, syncopSigma: 0.12 },
   bacardi:        { bpm: 118, energy: 0.90, centroid: 1700, swing: 0.50, syncopation: 0.65, bpmSigma: 3, energySigma: 0.10, centroidSigma: 250, syncopSigma: 0.12 },
-  commercial:     { bpm: 116, energy: 0.82, centroid: 1950, swing: 0.50, syncopation: 0.15, bpmSigma: 4, energySigma: 0.12, centroidSigma: 300, syncopSigma: 0.12 },
+  stixx_sgija:         { bpm: 115, energy: 0.82, centroid: 1600, swing: 0.53, syncopation: 0.55, bpmSigma: 3, energySigma: 0.10, centroidSigma: 200, syncopSigma: 0.12 },
+  mbiraiano:           { bpm: 110, energy: 0.38, centroid: 1150, swing: 0.51, syncopation: 0.30, bpmSigma: 4, energySigma: 0.10, centroidSigma: 200, syncopSigma: 0.12 },
+  three_step:          { bpm: 113, energy: 0.60, centroid: 1400, swing: 0.53, syncopation: 0.42, bpmSigma: 3, energySigma: 0.10, centroidSigma: 200, syncopSigma: 0.12 },
+  gqom_fusion:         { bpm: 120, energy: 0.88, centroid: 1800, swing: 0.50, syncopation: 0.62, bpmSigma: 4, energySigma: 0.08, centroidSigma: 250, syncopSigma: 0.12 },
+  hybrid_rnb_amapiano: { bpm: 112, energy: 0.62, centroid: 1600, swing: 0.51, syncopation: 0.28, bpmSigma: 3, energySigma: 0.12, centroidSigma: 250, syncopSigma: 0.12 },
 };
 
 // ─── Lane dimension weights (tuned against corpus) ────────────────────────────
@@ -352,7 +417,11 @@ export const LANE_WEIGHTS: Record<Lane, {
   private_school: { bpm: 0.30, energy: 0.25, centroid: 0.20, syncopation: 0.25 },
   sgija:          { bpm: 0.25, energy: 0.30, centroid: 0.20, syncopation: 0.25 },
   bacardi:        { bpm: 0.25, energy: 0.30, centroid: 0.20, syncopation: 0.25 },
-  commercial:     { bpm: 0.25, energy: 0.25, centroid: 0.30, syncopation: 0.20 },
+  stixx_sgija:         { bpm: 0.25, energy: 0.30, centroid: 0.20, syncopation: 0.25 },
+  mbiraiano:           { bpm: 0.30, energy: 0.20, centroid: 0.25, syncopation: 0.25 },
+  three_step:          { bpm: 0.25, energy: 0.25, centroid: 0.20, syncopation: 0.30 },
+  gqom_fusion:         { bpm: 0.25, energy: 0.30, centroid: 0.20, syncopation: 0.25 },
+  hybrid_rnb_amapiano: { bpm: 0.25, energy: 0.25, centroid: 0.25, syncopation: 0.25 },
 };
 
 // ─── Refinement action names ──────────────────────────────────────────────────

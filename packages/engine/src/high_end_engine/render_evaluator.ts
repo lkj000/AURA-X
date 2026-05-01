@@ -52,10 +52,14 @@ function computeLogDrumFit(groove: GroovePlan): number {
 
   // Per-lane log drum density targets
   const targetHits: Record<Lane, number> = {
-    private_school: 2,
-    sgija:          4,
-    bacardi:        5,
-    commercial:     3,
+    private_school:      2,
+    sgija:               4,
+    bacardi:             5,
+    stixx_sgija:         5,
+    mbiraiano:           3,
+    three_step:          3,
+    gqom_fusion:         5,
+    hybrid_rnb_amapiano: 3,
   };
   const target = targetHits[groove.lane] ?? 3;
   const score  = 1 - Math.abs(logHits - target) / 6;

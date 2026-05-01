@@ -70,7 +70,7 @@ import { extractAudioFeatures }        from "./audio_intelligence/feature_extrac
 import { scoreAuthenticityLanes }      from "./audio_intelligence/authenticity_scoring";
 import { scoreLaneQuality }            from "./audio_intelligence/lane_quality";
 import { extractGroovePattern }        from "./intelligence/groove_pattern";
-import { AMAPIANO_THRESHOLD, LANE_GRAMMARS } from "./types";
+import { AMAPIANO_THRESHOLD, LANE_GRAMMARS, LANE_TARGETS } from "./types";
 import type { AmapianEvaluation, Enhancement, GroovePlan } from "./types";
 
 export function evaluateBuffer(buffer: Buffer): AmapianEvaluation {
@@ -126,7 +126,7 @@ export function buildEnhancement(evaluation: AmapianEvaluation): Enhancement {
     if (issue.includes("Log drum"))
       suggestions.push("Layer a log drum sample on beats 2 and 4 (steps 7, 15)");
     else if (issue.includes("BPM"))
-      suggestions.push(`Adjust tempo to ${lane === "private_school" ? 112 : lane === "sgija" ? 114 : lane === "bacardi" ? 118 : 116} BPM`);
+      suggestions.push(`Adjust tempo to ${LANE_TARGETS[lane].bpm} BPM`);
     else if (issue.includes("Swing"))
       suggestions.push("Apply triplet quantisation or set DAW swing to 53–55%");
     else if (issue.includes("authenticity"))

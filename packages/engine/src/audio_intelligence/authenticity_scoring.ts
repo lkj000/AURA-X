@@ -1,5 +1,4 @@
-// 4-lane Amapiano authenticity scoring with softmax normalization.
-// Mirrors aura-x-engine/audio_intelligence/authenticity_scoring.py
+// 8-lane Amapiano authenticity scoring with softmax normalization.
 
 import { gaussScore, softmax } from "../_utils";
 import {
@@ -32,16 +31,16 @@ export function scoreAuthenticityLanes(features: AudioFeatures): LaneScores {
   const best   = laneScores[0];
   const second = laneScores[1];
 
+  const scores = {} as Record<Lane, number>;
+  LANES.forEach((lane, i) => { scores[lane] = rawScores[i]; });
+
   return {
-    privateSchoolScore: rawScores[0],
-    sgijaScore:         rawScores[1],
-    bacardiScore:       rawScores[2],
-    commercialScore:    rawScores[3],
+    scores,
     overallAuthenticity: best.score,
-    bestFitLane:        best.lane,
-    laneConfidence:     best.probability,
+    bestFitLane:         best.lane,
+    laneConfidence:      best.probability,
     laneScores,
-    secondaryLane:      second.lane,
-    hybridFlag:         (best.probability - second.probability) < 0.10,
+    secondaryLane:       second.lane,
+    hybridFlag:          (best.probability - second.probability) < 0.10,
   };
 }

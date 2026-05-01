@@ -24,10 +24,14 @@ export function emptyPolicy(): ActionPolicy {
     actions[action] = { emaUtility: 0, varianceEma: 0, support: 0 };
   }
   const laneMap: ActionPolicy["lanes"] = {
-    private_school: { ...actions },
-    sgija:          { ...actions },
-    bacardi:        { ...actions },
-    commercial:     { ...actions },
+    private_school:      { ...actions },
+    sgija:               { ...actions },
+    bacardi:             { ...actions },
+    stixx_sgija:         { ...actions },
+    mbiraiano:           { ...actions },
+    three_step:          { ...actions },
+    gqom_fusion:         { ...actions },
+    hybrid_rnb_amapiano: { ...actions },
   };
 
   return {
