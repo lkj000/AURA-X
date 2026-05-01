@@ -41,6 +41,7 @@ import { transposeProgression } from "../intelligence/key_transposer";
 import { automateGains } from "../arrangement/stem_gain_automator";
 import { generateSidechain } from "../groove/sidechain_generator";
 import { generateFilterAutomation } from "../arrangement/filter_automator";
+import { calculateReverb } from "../mix/reverb_calculator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -3165,6 +3166,94 @@ describe("filter_automator", () => {
     for (const lane of LANES) {
       const a = planArrangementArc(lane, { totalBars: 32 });
       expect(() => generateFilterAutomation(a)).not.toThrow();
+    }
+  });
+});
+
+// ── 41. Reverb tail calculator ────────────────────────────────────────────────
+
+describe("reverb_calculator", () => {
+  const spec = calculateReverb(114, "luxury_noir");
+
+  test("returns one ReverbParams per stem (5 total)", () => {
+    expect(spec.params).toHaveLength(5);
+  });
+
+  test("all 5 stems are present", () => {
+    const stems = spec.params.map((p) => p.stem);
+    expect(stems).toContain("sub_bass");
+    expect(stems).toContain("log_drum");
+    expect(stems).toContain("chord_pad");
+    expect(stems).toContain("percussion");
+    expect(stems).toContain("air");
+  });
+
+  test("all preDelayMs in [0, 200]", () => {
+    for (const p of spec.params) {
+      expect(p.preDelayMs).toBeGreaterThanOrEqual(0);
+      expect(p.preDelayMs).toBeLessThanOrEqual(200);
+    }
+  });
+
+  test("all decayMs in [50, 4000]", () => {
+    for (const p of spec.params) {
+      expect(p.decayMs).toBeGreaterThanOrEqual(50);
+      expect(p.decayMs).toBeLessThanOrEqual(4000);
+    }
+  });
+
+  test("all wetLevel in [0, 1]", () => {
+    for (const p of spec.params) {
+      expect(p.wetLevel).toBeGreaterThanOrEqual(0);
+      expect(p.wetLevel).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("all roomSize in [0, 1]", () => {
+    for (const p of spec.params) {
+      expect(p.roomSize).toBeGreaterThanOrEqual(0);
+      expect(p.roomSize).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("sub_bass has the lowest wetLevel (dry bass)", () => {
+    const wetLevels = spec.params.map((p) => p.wetLevel);
+    const subWet    = spec.params.find((p) => p.stem === "sub_bass")!.wetLevel;
+    expect(subWet).toBe(Math.min(...wetLevels));
+  });
+
+  test("air has the highest decayMs (lush tail)", () => {
+    const decays  = spec.params.map((p) => p.decayMs);
+    const airDecay = spec.params.find((p) => p.stem === "air")!.decayMs;
+    expect(airDecay).toBe(Math.max(...decays));
+  });
+
+  test("chord_pad decayMs > log_drum decayMs", () => {
+    const chordDecay = spec.params.find((p) => p.stem === "chord_pad")!.decayMs;
+    const logDecay   = spec.params.find((p) => p.stem === "log_drum")!.decayMs;
+    expect(chordDecay).toBeGreaterThan(logDecay);
+  });
+
+  test("spiritual_organic produces higher decayMs than raw_street for chord_pad", () => {
+    const spiritual = calculateReverb(114, "spiritual_organic");
+    const raw       = calculateReverb(114, "raw_street");
+    const sChord    = spiritual.params.find((p) => p.stem === "chord_pad")!.decayMs;
+    const rChord    = raw.params.find((p) => p.stem === "chord_pad")!.decayMs;
+    expect(sChord).toBeGreaterThan(rChord);
+  });
+
+  test("higher BPM yields shorter decayMs for chord_pad (same profile)", () => {
+    const slow = calculateReverb(90,  "luxury_noir");
+    const fast = calculateReverb(140, "luxury_noir");
+    const sChord = slow.params.find((p) => p.stem === "chord_pad")!.decayMs;
+    const fChord = fast.params.find((p) => p.stem === "chord_pad")!.decayMs;
+    expect(sChord).toBeGreaterThan(fChord);
+  });
+
+  test("works for all 6 MixProfile values without throwing", () => {
+    const profiles = ["luxury_noir", "raw_street", "bounce_club", "spiritual_organic", "dark_tribal", "crossover_rb"] as const;
+    for (const mp of profiles) {
+      expect(() => calculateReverb(114, mp)).not.toThrow();
     }
   });
 });

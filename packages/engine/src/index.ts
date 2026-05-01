@@ -50,6 +50,7 @@ export type {
   GainPoint, StemGainCurve, GainAutomation,
   SidechainCurve,
   FilterPoint, FilterAutomation,
+  ReverbParams, ReverbSpec,
 }                                                     from "./types";
 
 export {
@@ -134,6 +135,9 @@ export { generateFilterAutomation }                   from "./arrangement/filter
 
 // ── Mix spec ──────────────────────────────────────────────────────────────────
 export { generateMixSpec }                            from "./mix/mix_spec";
+
+// ── Reverb calculator ─────────────────────────────────────────────────────────
+export { calculateReverb }                            from "./mix/reverb_calculator";
 
 // ── Sample recommendation ─────────────────────────────────────────────────────
 export { recommendSamples }                           from "./intelligence/sample_recommender";

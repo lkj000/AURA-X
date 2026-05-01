@@ -431,6 +431,22 @@ export interface FilterAutomation {
   points:    FilterPoint[];   // ascending by bar; interpolate linearly
 }
 
+// ─── Reverb spec ─────────────────────────────────────────────────────────────
+
+export interface ReverbParams {
+  stem:        StemName;
+  preDelayMs:  number;   // pre-delay in ms [0, 200]
+  decayMs:     number;   // RT60 decay time in ms [50, 4000]
+  wetLevel:    number;   // wet signal level [0, 1]
+  roomSize:    number;   // normalised room size [0, 1] — for plugin mapping
+}
+
+export interface ReverbSpec {
+  bpm:        number;
+  mixProfile: MixProfile;
+  params:     ReverbParams[];   // one per stem, ordered sub_bass → air
+}
+
 // ─── Sidechain automation ─────────────────────────────────────────────────────
 
 export interface SidechainCurve {
