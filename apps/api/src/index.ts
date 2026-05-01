@@ -12,6 +12,7 @@ import feedbackRouter from "./routes/feedback";
 import authRouter from "./routes/auth";
 import tracksRouter from "./routes/tracks";
 import licensingRouter from "./routes/licensing";
+import royaltiesRouter from "./routes/royalties";
 
 const app = express();
 
@@ -37,7 +38,7 @@ app.get("/", (_req, res) => {
   res.json({
     service: "aura-x-api",
     version: "0.1.0",
-    endpoints: ["/health", "/api/generate", "/api/audio", "/api/queue", "/api/evaluate", "/api/agent", "/api/video", "/api/feedback", "/api/auth", "/api/tracks", "/api/licensing"],
+    endpoints: ["/health", "/api/generate", "/api/audio", "/api/queue", "/api/evaluate", "/api/agent", "/api/video", "/api/feedback", "/api/auth", "/api/tracks", "/api/licensing", "/api/royalties"],
   });
 });
 
@@ -60,6 +61,7 @@ app.use("/api/feedback", feedbackRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/tracks", tracksRouter);
 app.use("/api/licensing", licensingRouter);
+app.use("/api/royalties", royaltiesRouter);
 
 // Start BullMQ workers (side-effect import — only in server process)
 if (require.main === module) {
