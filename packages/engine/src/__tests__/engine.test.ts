@@ -27,6 +27,7 @@ import { fingerprintGroovePlan, comparePatterns } from "../groove/pattern_finger
 import { planArrangementArc } from "../arrangement/arc_planner";
 import { generateMixSpec } from "../mix/mix_spec";
 import { recommendSamples } from "../intelligence/sample_recommender";
+import { humanizePattern } from "../groove/tempo_humanizer";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -1846,7 +1847,99 @@ describe("sample_recommender", () => {
   });
 });
 
-// ── 26. Lane grammar constants ────────────────────────────────────────────────
+// ── 26. Tempo humanizer ───────────────────────────────────────────────────────
+
+describe("tempo_humanizer", () => {
+  const set = generateGrooveVariations("sgija");
+  const hp  = humanizePattern(set.main, { bpm: 114, humanness: 0.5 });
+
+  test("returns a HumanizedPattern", () => {
+    expect(hp).toBeDefined();
+    expect(hp.hits).toBeDefined();
+    expect(hp.lane).toBe("sgija");
+  });
+
+  test("hits only contains active steps (value === 1)", () => {
+    const active = [
+      ...Array.from(set.main.kickPattern).filter((v) => v === 1),
+      ...Array.from(set.main.hatPattern).filter((v) => v === 1),
+      ...Array.from(set.main.shakerPattern).filter((v) => v === 1),
+      ...Array.from(set.main.logDrumPattern).filter((v) => v === 1),
+    ].length;
+    expect(hp.hits).toHaveLength(active);
+  });
+
+  test("all step values in [0, 15]", () => {
+    for (const h of hp.hits) {
+      expect(h.step).toBeGreaterThanOrEqual(0);
+      expect(h.step).toBeLessThanOrEqual(15);
+    }
+  });
+
+  test("all voice values are valid VoiceNames", () => {
+    const valid = new Set(["kick", "hat", "shaker", "log"]);
+    for (const h of hp.hits) expect(valid.has(h.voice)).toBe(true);
+  });
+
+  test("all velocityScale values in [0.7, 1.3]", () => {
+    for (const h of hp.hits) {
+      expect(h.velocityScale).toBeGreaterThanOrEqual(0.7);
+      expect(h.velocityScale).toBeLessThanOrEqual(1.3);
+    }
+  });
+
+  test("swingMs is positive for swing > 0.5", () => {
+    expect(set.main.swing).toBeGreaterThan(0.5);
+    expect(hp.swingMs).toBeGreaterThan(0);
+  });
+
+  test("humanness=0 produces near-zero jitter offsets", () => {
+    const tight = humanizePattern(set.main, { bpm: 114, humanness: 0 });
+    for (const h of tight.hits) {
+      // With humanness=0, only swing offset survives — jitter and globalShift collapse
+      const isOffBeat = h.step % 2 === 1;
+      if (!isOffBeat) expect(Math.abs(h.offsetMs)).toBeLessThan(0.01);
+    }
+  });
+
+  test("humanness=1 produces larger offsets than humanness=0.1", () => {
+    const loose = humanizePattern(set.main, { bpm: 114, humanness: 1.0 });
+    const tight = humanizePattern(set.main, { bpm: 114, humanness: 0.1 });
+    const rmsLoose = Math.sqrt(loose.hits.reduce((s, h) => s + h.offsetMs ** 2, 0) / loose.hits.length);
+    const rmsTight = Math.sqrt(tight.hits.reduce((s, h) => s + h.offsetMs ** 2, 0) / tight.hits.length);
+    expect(rmsLoose).toBeGreaterThan(rmsTight);
+  });
+
+  test("is deterministic — same inputs produce identical output", () => {
+    const a = humanizePattern(set.main, { bpm: 114, humanness: 0.6 });
+    const b = humanizePattern(set.main, { bpm: 114, humanness: 0.6 });
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+
+  test("hits are sorted by step ascending", () => {
+    for (let i = 1; i < hp.hits.length; i++) {
+      expect(hp.hits[i].step).toBeGreaterThanOrEqual(hp.hits[i - 1].step);
+    }
+  });
+
+  test("offsetTicks is proportional to offsetMs at given BPM", () => {
+    for (const h of hp.hits) {
+      const expectedTicks = h.offsetMs * (114 / 60) * (480 / 1000);
+      expect(h.offsetTicks).toBeCloseTo(expectedTicks, 5);
+    }
+  });
+
+  test("works for all 8 lanes and all 5 groove variants", () => {
+    for (const lane of LANES) {
+      const s = generateGrooveVariations(lane);
+      for (const variant of [s.main, s.variation, s.fill, s.breakdown, s.build]) {
+        expect(() => humanizePattern(variant, { bpm: 114 })).not.toThrow();
+      }
+    }
+  });
+});
+
+// ── 27. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;

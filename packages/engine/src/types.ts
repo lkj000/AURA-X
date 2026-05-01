@@ -410,6 +410,26 @@ export interface PatternSimilarity {
   isMatch:      boolean;    // overallSim >= 0.75
 }
 
+// ─── Tempo humanizer ─────────────────────────────────────────────────────────
+
+export type VoiceName = "kick" | "hat" | "shaker" | "log";
+
+export interface HumanizedHit {
+  step:          number;    // 0–15
+  voice:         VoiceName;
+  offsetMs:      number;    // timing offset in ms (negative = early, positive = late)
+  offsetTicks:   number;    // same offset in MIDI ticks (480 tpq base)
+  velocityScale: number;    // [0.7, 1.3] — multiply against nominal velocity
+}
+
+export interface HumanizedPattern {
+  lane:      Lane;
+  bpm:       number;
+  hits:      HumanizedHit[];  // active hits only (value === 1), all voices combined
+  swingMs:   number;           // effective swing offset applied to off-beat steps
+  humanness: number;           // [0, 1] — magnitude of timing variation applied
+}
+
 // ─── Sample recommendation ────────────────────────────────────────────────────
 
 export type SampleRole = "log_drum" | "chord_stab" | "bassline" | "top_loop" | "atmosphere" | "fx";

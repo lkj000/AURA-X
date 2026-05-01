@@ -38,6 +38,7 @@ export type {
   SectionName, ArrangementSection, ArrangementArc,
   StemMixParams, MasterChain, MixSpec,
   SampleRole, SampleRecommendation, SamplePack,
+  VoiceName, HumanizedHit, HumanizedPattern,
 }                                                     from "./types";
 
 export {
@@ -114,3 +115,7 @@ export { generateMixSpec }                            from "./mix/mix_spec";
 // ── Sample recommendation ─────────────────────────────────────────────────────
 export { recommendSamples }                           from "./intelligence/sample_recommender";
 export type { RecommenderOptions }                    from "./intelligence/sample_recommender";
+
+// ── Tempo humanizer ───────────────────────────────────────────────────────────
+export { humanizePattern }                            from "./groove/tempo_humanizer";
+export type { HumanizerOptions }                      from "./groove/tempo_humanizer";
