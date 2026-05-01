@@ -22,6 +22,7 @@ import { synthesizeCtl } from "../ctl_synthesis/ctl_synthesizer";
 import { analyzeAndPlan } from "../pipeline/analysis_pipeline";
 import { evaluateBuffer, buildEnhancement } from "../pipeline/evaluation";
 import { generateGrooveVariations } from "../groove/variation_engine";
+import { compareEvaluations } from "../evaluation/comparison";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -1351,7 +1352,109 @@ describe("generateGrooveVariations", () => {
   });
 });
 
-// ── 21. Lane grammar constants ────────────────────────────────────────────────
+// ── 21. Comparative evaluation engine ────────────────────────────────────────
+
+describe("comparison_engine", () => {
+  const wav = buildWav(4);
+  const sourceEv  = evaluateBuffer(wav);
+  const genEv     = evaluateBuffer(buildWav(4, 44100, 110, 116)); // slightly different BPM
+
+  test("compareEvaluations returns a ComparisonReport", () => {
+    const report = compareEvaluations(sourceEv, genEv);
+    expect(report).toBeDefined();
+    expect(report.deltas).toHaveLength(8);
+  });
+
+  test("deltas array has 8 entries with required fields", () => {
+    const { deltas } = compareEvaluations(sourceEv, genEv);
+    for (const d of deltas) {
+      expect(typeof d.dimension).toBe("string");
+      expect(typeof d.source).toBe("number");
+      expect(typeof d.generated).toBe("number");
+      expect(typeof d.delta).toBe("number");
+      expect(typeof d.weight).toBe("number");
+      expect(typeof d.improved).toBe("boolean");
+      expect(typeof d.regressed).toBe("boolean");
+    }
+  });
+
+  test("all source/generated scores in [0, 1]", () => {
+    const { deltas } = compareEvaluations(sourceEv, genEv);
+    for (const d of deltas) {
+      expect(d.source).toBeGreaterThanOrEqual(0);
+      expect(d.source).toBeLessThanOrEqual(1);
+      expect(d.generated).toBeGreaterThanOrEqual(0);
+      expect(d.generated).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("all delta values in [-1, 1]", () => {
+    const { deltas } = compareEvaluations(sourceEv, genEv);
+    for (const d of deltas) {
+      expect(d.delta).toBeGreaterThanOrEqual(-1);
+      expect(d.delta).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("overallDelta in [-1, 1]", () => {
+    const { overallDelta } = compareEvaluations(sourceEv, genEv);
+    expect(overallDelta).toBeGreaterThanOrEqual(-1);
+    expect(overallDelta).toBeLessThanOrEqual(1);
+  });
+
+  test("weights sum to ~1.0", () => {
+    const { deltas } = compareEvaluations(sourceEv, genEv);
+    const total = deltas.reduce((s, d) => s + d.weight, 0);
+    expect(total).toBeCloseTo(1.0, 5);
+  });
+
+  test("dimension keys include all 8 expected names", () => {
+    const { deltas } = compareEvaluations(sourceEv, genEv);
+    const keys = deltas.map((d) => d.dimension);
+    for (const k of ["authenticity", "quality", "cultural_alignment", "perception", "log_drum", "groove", "stem_balance", "bpm_proximity"]) {
+      expect(keys).toContain(k);
+    }
+  });
+
+  test("improved flag matches delta > 0.04", () => {
+    const { deltas } = compareEvaluations(sourceEv, genEv);
+    for (const d of deltas) {
+      if (d.improved) expect(d.delta).toBeGreaterThan(0.04 - 1e-9);
+      if (d.regressed) expect(d.delta).toBeLessThan(-0.04 + 1e-9);
+    }
+  });
+
+  test("improvements and regressions are string arrays", () => {
+    const { improvements, regressions } = compareEvaluations(sourceEv, genEv);
+    expect(Array.isArray(improvements)).toBe(true);
+    expect(Array.isArray(regressions)).toBe(true);
+    for (const s of [...improvements, ...regressions]) expect(typeof s).toBe("string");
+  });
+
+  test("sourceLane and generatedLane are valid Lane values", () => {
+    const { sourceLane, generatedLane } = compareEvaluations(sourceEv, genEv);
+    expect(LANES).toContain(sourceLane);
+    expect(LANES).toContain(generatedLane);
+  });
+
+  test("self-comparison yields overallDelta of 0", () => {
+    const { overallDelta } = compareEvaluations(sourceEv, sourceEv);
+    expect(overallDelta).toBeCloseTo(0, 9);
+  });
+
+  test("self-comparison has no improvements or regressions", () => {
+    const { improvements, regressions } = compareEvaluations(sourceEv, sourceEv);
+    expect(improvements).toHaveLength(0);
+    expect(regressions).toHaveLength(0);
+  });
+
+  test("improved flag on report matches overallDelta sign", () => {
+    const report = compareEvaluations(sourceEv, genEv);
+    expect(report.improved).toBe(report.overallDelta > 0);
+  });
+});
+
+// ── 22. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;

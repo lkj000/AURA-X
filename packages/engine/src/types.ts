@@ -363,6 +363,28 @@ export interface PerceptionReport {
   violations:      string[];
 }
 
+// ─── Comparative evaluation ───────────────────────────────────────────────────
+
+export interface DimensionDelta {
+  dimension:  string;
+  source:     number;   // score in [0, 1]
+  generated:  number;   // score in [0, 1]
+  delta:      number;   // generated - source ∈ [-1, 1]
+  weight:     number;   // contribution to overallDelta
+  improved:   boolean;  // delta > IMPROVEMENT_THRESHOLD
+  regressed:  boolean;  // delta < -REGRESSION_THRESHOLD
+}
+
+export interface ComparisonReport {
+  sourceLane:    Lane;
+  generatedLane: Lane;
+  deltas:        DimensionDelta[];
+  overallDelta:  number;    // weighted average ∈ [-1, 1]
+  improved:      boolean;   // overallDelta > 0
+  regressions:   string[];  // human-readable regression messages
+  improvements:  string[];  // human-readable improvement messages
+}
+
 // ─── Groove variations ────────────────────────────────────────────────────────
 
 export type GrooveVariationType = "main" | "variation" | "fill" | "breakdown" | "build";

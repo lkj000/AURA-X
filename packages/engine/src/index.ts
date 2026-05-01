@@ -33,6 +33,7 @@ export type {
   GrooveVariationType, GrooveVariationSet,
   AmapianEvaluation, Enhancement,
   MidiNote, BlendStrategy, ArrangementStrategy, RefinementAction,
+  DimensionDelta, ComparisonReport,
 }                                                     from "./types";
 
 export {
@@ -92,3 +93,6 @@ export type { AnalysisPlan }                          from "./pipeline/analysis_
 // ── Groove variations ─────────────────────────────────────────────────────────
 export { generateGrooveVariations }                   from "./groove/variation_engine";
 export type { VariationOptions }                      from "./groove/variation_engine";
+
+// ── Comparative evaluation ────────────────────────────────────────────────────
+export { compareEvaluations, compareBuffers }         from "./evaluation/comparison";
