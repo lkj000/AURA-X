@@ -52,7 +52,8 @@ import { validateStructure } from "../pipeline/structure_validator";
 import { generateCallResponse } from "../groove/call_response_generator";
 import { deduplicateMidi } from "../daw_export/midi_deduplicator";
 import { shapeVelocities } from "../groove/velocity_shaper";
-import { quantizeSwing }   from "../groove/swing_quantizer";
+import { quantizeSwing }         from "../groove/swing_quantizer";
+import { generateMuteSchedule }  from "../arrangement/stem_mute_automator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -4255,5 +4256,79 @@ describe("52. Groove swing quantizer", () => {
     const r1 = quantizeSwing(ALL16, { swingPercent: 33, ticksPerBeat: 480 });
     const r2 = quantizeSwing(ALL16, { swingPercent: 33, ticksPerBeat: 480 });
     expect(r1.tickPositions).toEqual(r2.tickPositions);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 53. Stem mute automator
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("53. Stem mute automator", () => {
+  const arc      = planArrangementArc("sgija");
+  const schedule = generateMuteSchedule(arc);
+
+  const event = (sec: string, stem: string) =>
+    schedule.events.find((e) => e.section === sec && e.stem === stem);
+
+  test("events count equals sections × 5 stems", () => {
+    expect(schedule.events).toHaveLength(arc.sections.length * 5);
+  });
+
+  test("sections array matches arc section names in order", () => {
+    expect(schedule.sections).toEqual(arc.sections.map((s) => s.name));
+  });
+
+  test("stems array contains all 5 canonical stems", () => {
+    expect(schedule.stems).toEqual(
+      expect.arrayContaining(["sub_bass", "log_drum", "chord_pad", "percussion", "air"]),
+    );
+    expect(schedule.stems).toHaveLength(5);
+  });
+
+  test("log_drum is active (not muted) in every section", () => {
+    const logEvents = schedule.events.filter((e) => e.stem === "log_drum");
+    expect(logEvents.every((e) => e.muted === false)).toBe(true);
+  });
+
+  test("sub_bass is muted in intro", () => {
+    expect(event("intro", "sub_bass")?.muted).toBe(true);
+  });
+
+  test("sub_bass is active in drop1", () => {
+    expect(event("drop1", "sub_bass")?.muted).toBe(false);
+  });
+
+  test("all 5 stems are active in drop1", () => {
+    const drop1Events = schedule.events.filter((e) => e.section === "drop1");
+    expect(drop1Events.every((e) => e.muted === false)).toBe(true);
+  });
+
+  test("all 5 stems are active in drop2", () => {
+    const drop2Events = schedule.events.filter((e) => e.section === "drop2");
+    expect(drop2Events.every((e) => e.muted === false)).toBe(true);
+  });
+
+  test("chord_pad is muted in outro_fade", () => {
+    expect(event("outro_fade", "chord_pad")?.muted).toBe(true);
+  });
+
+  test("percussion is muted in breakdown", () => {
+    expect(event("breakdown", "percussion")?.muted).toBe(true);
+  });
+
+  test("air is muted in intro", () => {
+    expect(event("intro", "air")?.muted).toBe(true);
+  });
+
+  test("output is deterministic — same arc produces identical schedule", () => {
+    const arc2  = planArrangementArc("sgija");
+    const sched2 = generateMuteSchedule(arc2);
+    expect(sched2.events).toEqual(schedule.events);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      expect(() => generateMuteSchedule(planArrangementArc(lane))).not.toThrow();
+    }
   });
 });

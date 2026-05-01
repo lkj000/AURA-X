@@ -464,6 +464,20 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Stem mute schedule ───────────────────────────────────────────────────────
+
+export interface StemMuteEvent {
+  section: SectionName;   // which section this applies to
+  stem:    StemName;      // which stem
+  muted:   boolean;       // true = muted (silent) in this section
+}
+
+export interface MuteSchedule {
+  events:   StemMuteEvent[];   // one entry per (section × stem), section-major order
+  sections: SectionName[];     // section names in input arc order
+  stems:    StemName[];        // all 5 stems in canonical order
+}
+
 // ─── Swing quantization ───────────────────────────────────────────────────────
 
 export interface SwingResult {

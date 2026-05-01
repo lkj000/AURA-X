@@ -62,6 +62,7 @@ export type {
   MidiNoteEvent, DeduplicateResult,
   VelocityShape,
   SwingResult,
+  StemMuteEvent, MuteSchedule,
 }                                                     from "./types";
 
 export {
@@ -208,6 +209,9 @@ export type { VelocityShapeOptions }                  from "./groove/velocity_sh
 // ── Groove swing quantizer ────────────────────────────────────────────────────
 export { quantizeSwing }                              from "./groove/swing_quantizer";
 export type { SwingOptions }                          from "./groove/swing_quantizer";
+
+// ── Stem mute automator ───────────────────────────────────────────────────────
+export { generateMuteSchedule }                       from "./arrangement/stem_mute_automator";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";
