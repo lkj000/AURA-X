@@ -419,6 +419,16 @@ export interface TransposeResult {
   semitones:   number;            // signed shortest-path offset (−6 … +6)
 }
 
+// ─── Sidechain automation ─────────────────────────────────────────────────────
+
+export interface SidechainCurve {
+  bpm:       number;
+  depth:     number;     // applied depth [0, 1]
+  releaseMs: number;     // time from kick step to full recovery (ms)
+  stepGains: number[];   // 16 normalised gain values [0, 1] — one per 16th step
+  kickSteps: number[];   // step indices where the kick fires
+}
+
 // ─── Stem gain automation ─────────────────────────────────────────────────────
 
 export interface GainPoint {

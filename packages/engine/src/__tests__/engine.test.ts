@@ -39,6 +39,7 @@ import { computeLaneSimilarityMatrix } from "../audio_intelligence/lane_similari
 import { scoreGrooveComplexity } from "../groove/complexity_scorer";
 import { transposeProgression } from "../intelligence/key_transposer";
 import { automateGains } from "../arrangement/stem_gain_automator";
+import { generateSidechain } from "../groove/sidechain_generator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -2997,6 +2998,100 @@ describe("stem_gain_automator", () => {
     for (const lane of LANES) {
       const a = planArrangementArc(lane, { totalBars: 32 });
       expect(() => automateGains(a)).not.toThrow();
+    }
+  });
+});
+
+// ── 39. Sidechain pattern generator ──────────────────────────────────────────
+
+describe("sidechain_generator", () => {
+  // Kick on steps 0 and 8 — classic four-to-the-floor half-bar kicks
+  const scPlan: import("../types").GroovePlan = {
+    grooveType: "main",
+    lane: "private_school",
+    steps: 16,
+    kickPattern:    [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
+    hatPattern:     [0,0,1,0, 0,0,1,0, 0,0,1,0, 0,0,1,0],
+    shakerPattern:  [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
+    logDrumPattern: [0,0,0,0, 1,0,0,1, 0,0,0,0, 1,0,0,1],
+    swing: 0.52,
+    densityProfile: "medium",
+    microtimingProfile: "straight",
+    styleBiasApplied: false,
+  };
+
+  const sc = generateSidechain(scPlan, { bpm: 112 });
+
+  test("stepGains has exactly 16 values", () => {
+    expect(sc.stepGains).toHaveLength(16);
+  });
+
+  test("all gain values are in [0, 1]", () => {
+    for (const g of sc.stepGains) {
+      expect(g).toBeGreaterThanOrEqual(0);
+      expect(g).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("kick steps (0, 8) have reduced gain", () => {
+    expect(sc.stepGains[0]).toBeLessThan(1);
+    expect(sc.stepGains[8]).toBeLessThan(1);
+  });
+
+  test("kick step gain equals 1 − depth (default 0.70)", () => {
+    expect(sc.stepGains[0]).toBeCloseTo(0.30, 6);
+    expect(sc.stepGains[8]).toBeCloseTo(0.30, 6);
+  });
+
+  test("steps outside all release windows have gain = 1.0", () => {
+    // kicks at 0 and 8, release=3 → windows [0–3] and [8–11] are affected
+    expect(sc.stepGains[4]).toBeCloseTo(1.0, 6);
+    expect(sc.stepGains[5]).toBeCloseTo(1.0, 6);
+    expect(sc.stepGains[12]).toBeCloseTo(1.0, 6);
+  });
+
+  test("kickSteps matches the kick pattern", () => {
+    expect(sc.kickSteps).toEqual([0, 8]);
+  });
+
+  test("releaseMs scales with BPM (lower BPM → longer step)", () => {
+    const slow = generateSidechain(scPlan, { bpm: 80 });
+    const fast = generateSidechain(scPlan, { bpm: 140 });
+    expect(slow.releaseMs).toBeGreaterThan(fast.releaseMs);
+  });
+
+  test("depth=0 yields all gains = 1.0", () => {
+    const noSc = generateSidechain(scPlan, { bpm: 112, depth: 0 });
+    for (const g of noSc.stepGains) expect(g).toBeCloseTo(1.0, 6);
+  });
+
+  test("depth=1.0 yields gain=0 at kick steps", () => {
+    const fullSc = generateSidechain(scPlan, { bpm: 112, depth: 1.0 });
+    expect(fullSc.stepGains[0]).toBeCloseTo(0, 6);
+    expect(fullSc.stepGains[8]).toBeCloseTo(0, 6);
+  });
+
+  test("gain recovers monotonically after each kick", () => {
+    // Steps 0→1→2→3 should be strictly increasing
+    expect(sc.stepGains[1]).toBeGreaterThan(sc.stepGains[0]);
+    expect(sc.stepGains[2]).toBeGreaterThan(sc.stepGains[1]);
+    expect(sc.stepGains[3]).toBeGreaterThan(sc.stepGains[2]);
+  });
+
+  test("plan with no kicks returns all gains = 1.0", () => {
+    const silentPlan: import("../types").GroovePlan = {
+      ...scPlan,
+      kickPattern: [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+    };
+    const silent = generateSidechain(silentPlan, { bpm: 112 });
+    for (const g of silent.stepGains) expect(g).toBeCloseTo(1.0, 6);
+    expect(silent.kickSteps).toHaveLength(0);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      const lp: import("../types").GroovePlan = { ...scPlan, lane };
+      expect(() => generateSidechain(lp, { bpm: 114 })).not.toThrow();
     }
   });
 });

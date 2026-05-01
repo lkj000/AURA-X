@@ -48,6 +48,7 @@ export type {
   ComplexityTier, VoiceComplexity, GrooveComplexityScore,
   TransposeResult,
   GainPoint, StemGainCurve, GainAutomation,
+  SidechainCurve,
 }                                                     from "./types";
 
 export {
@@ -144,6 +145,10 @@ export { transposeProgression }                       from "./intelligence/key_t
 // ── Tempo humanizer ───────────────────────────────────────────────────────────
 export { humanizePattern }                            from "./groove/tempo_humanizer";
 export type { HumanizerOptions }                      from "./groove/tempo_humanizer";
+
+// ── Sidechain generator ───────────────────────────────────────────────────────
+export { generateSidechain }                          from "./groove/sidechain_generator";
+export type { SidechainOptions }                      from "./groove/sidechain_generator";
 
 // ── Groove interpolator ───────────────────────────────────────────────────────
 export { interpolateGrooves }                         from "./groove/groove_interpolator";
