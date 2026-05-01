@@ -43,6 +43,7 @@ export type {
   GrooveInterpolation,
   ProductionReportSummary, ProductionReport,
   ChordFunction, ChordVoicing, ChordProgression,
+  DriftTrend, SignalTrace, DriftReport,
 }                                                     from "./types";
 
 export {
@@ -137,3 +138,6 @@ export { runQualityGates }                            from "./pipeline/quality_g
 
 // ── Production report ─────────────────────────────────────────────────────────
 export { generateProductionReport }                   from "./pipeline/production_report";
+
+// ── Session drift detector ────────────────────────────────────────────────────
+export { detectDrift }                                from "./pipeline/drift_detector";

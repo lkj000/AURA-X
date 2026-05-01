@@ -32,6 +32,7 @@ import { runQualityGates } from "../pipeline/quality_gate";
 import { interpolateGrooves } from "../groove/groove_interpolator";
 import { generateProductionReport } from "../pipeline/production_report";
 import { buildChordProgression } from "../intelligence/chord_voicing";
+import { detectDrift } from "../pipeline/drift_detector";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -2317,7 +2318,93 @@ describe("chord_voicing", () => {
   });
 });
 
-// ── 31. Lane grammar constants ────────────────────────────────────────────────
+// ── 31. Session drift detector ────────────────────────────────────────────────
+
+describe("drift_detector", () => {
+  const wav = buildWav(4);
+  const stableEv = evaluateBuffer(wav);
+
+  // 5-element stable series
+  const stableSeries = [stableEv, stableEv, stableEv, stableEv, stableEv];
+
+  test("returns a DriftReport with 4 traces", () => {
+    const r = detectDrift("sgija", stableSeries);
+    expect(r).toBeDefined();
+    expect(r.traces).toHaveLength(4);
+  });
+
+  test("trace names are authenticity, quality, cultural, stemBalance", () => {
+    const r = detectDrift("sgija", stableSeries);
+    expect(r.traces.map((t) => t.signal)).toEqual(["authenticity", "quality", "cultural", "stemBalance"]);
+  });
+
+  test("iterations matches series length", () => {
+    const r = detectDrift("sgija", stableSeries);
+    expect(r.iterations).toBe(5);
+  });
+
+  test("each trace.values has same length as series", () => {
+    const r = detectDrift("sgija", stableSeries);
+    for (const t of r.traces) expect(t.values).toHaveLength(5);
+  });
+
+  test("all trace.mean values in [0, 1]", () => {
+    const r = detectDrift("sgija", stableSeries);
+    for (const t of r.traces) {
+      expect(t.mean).toBeGreaterThanOrEqual(0);
+      expect(t.mean).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("all trace.velocity values in [-1, 1]", () => {
+    const r = detectDrift("sgija", stableSeries);
+    for (const t of r.traces) {
+      expect(t.velocity).toBeGreaterThanOrEqual(-1);
+      expect(t.velocity).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("stable series produces velocity ≈ 0 for each trace", () => {
+    const r = detectDrift("sgija", stableSeries);
+    for (const t of r.traces) expect(Math.abs(t.velocity)).toBeCloseTo(0, 9);
+  });
+
+  test("stable series: driftDetected is false", () => {
+    const r = detectDrift("sgija", stableSeries);
+    expect(r.driftDetected).toBe(false);
+  });
+
+  test("all trend values are valid DriftTrend strings", () => {
+    const valid = new Set(["improving", "stable", "degrading", "volatile"]);
+    const r = detectDrift("private_school", stableSeries);
+    for (const t of r.traces) expect(valid.has(t.trend)).toBe(true);
+    expect(valid.has(r.overallTrend)).toBe(true);
+  });
+
+  test("recovery is a non-empty string array", () => {
+    const r = detectDrift("sgija", stableSeries);
+    expect(Array.isArray(r.recovery)).toBe(true);
+    expect(r.recovery.length).toBeGreaterThan(0);
+    for (const s of r.recovery) expect(typeof s).toBe("string");
+  });
+
+  test("criticalSignals is empty for stable series", () => {
+    const r = detectDrift("sgija", stableSeries);
+    expect(r.criticalSignals).toHaveLength(0);
+  });
+
+  test("single evaluation does not throw", () => {
+    expect(() => detectDrift("bacardi", [stableEv])).not.toThrow();
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      expect(() => detectDrift(lane, stableSeries)).not.toThrow();
+    }
+  });
+});
+
+// ── 32. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;

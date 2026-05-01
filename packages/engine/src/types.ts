@@ -410,6 +410,28 @@ export interface PatternSimilarity {
   isMatch:      boolean;    // overallSim >= 0.75
 }
 
+// ─── Session drift ────────────────────────────────────────────────────────────
+
+export type DriftTrend = "improving" | "stable" | "degrading" | "volatile";
+
+export interface SignalTrace {
+  signal:   string;      // signal name
+  values:   number[];    // one value per evaluation in the series
+  mean:     number;      // arithmetic mean
+  trend:    DriftTrend;
+  velocity: number;      // linear regression slope, clipped to [-1, 1]
+}
+
+export interface DriftReport {
+  targetLane:      Lane;
+  iterations:      number;            // length of the evaluation series
+  traces:          SignalTrace[];      // exactly 4 — authenticity, quality, cultural, stemBalance
+  overallTrend:    DriftTrend;
+  driftDetected:   boolean;           // any signal velocity < -0.05
+  criticalSignals: string[];          // names of degrading signals
+  recovery:        string[];          // targeted recovery actions
+}
+
 // ─── Chord voicing ────────────────────────────────────────────────────────────
 
 export type ChordFunction = "tonic" | "subdominant" | "dominant" | "tension";
