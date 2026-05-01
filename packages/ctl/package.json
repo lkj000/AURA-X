@@ -6,7 +6,8 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "jest --no-coverage"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
@@ -21,10 +22,5 @@
     "preset": "ts-jest",
     "testEnvironment": "node",
     "testPathIgnorePatterns": ["<rootDir>/dist/"]
-  },
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "test": "jest --no-coverage"
   }
 }
