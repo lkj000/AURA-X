@@ -61,7 +61,8 @@ import { generateEuclidean }     from "../groove/euclidean_rhythm";
 import { generatePolyrhythm }   from "../groove/polyrhythm_generator";
 import { combinePatterns }      from "../groove/pattern_combiner";
 import { quantizeNotes }        from "../daw_export/note_quantizer";
-import { generateChordStab }   from "../groove/chord_stab_generator";
+import { generateChordStab }      from "../groove/chord_stab_generator";
+import { computeEnergyProfile }   from "../intelligence/energy_profile";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -5005,5 +5006,92 @@ describe("61. Chord stab pattern generator", () => {
         expect(() => generateChordStab(lane, { intensity })).not.toThrow();
       }
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 62. Groove energy profile
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("62. Groove energy profile", () => {
+  const allZ = new Array(16).fill(0);
+  const allO = new Array(16).fill(1);
+  const even = allO.map((_, i) => (i % 2 === 0 ? 1 : 0));
+
+  test("empty layers returns all-zero curve, peakStep -1", () => {
+    const r = computeEnergyProfile([]);
+    expect(r.curve.every((v) => v === 0)).toBe(true);
+    expect(r.peakStep).toBe(-1);
+    expect(r.activeSteps).toBe(0);
+  });
+
+  test("curve length is always 16", () => {
+    expect(computeEnergyProfile([{ pattern: allO }]).curve).toHaveLength(16);
+    expect(computeEnergyProfile([]).curve).toHaveLength(16);
+  });
+
+  test("single all-ones pattern: all curve values = 1.0", () => {
+    const r = computeEnergyProfile([{ pattern: allO }]);
+    expect(r.curve.every((v) => v === 1)).toBe(true);
+  });
+
+  test("single all-zeros pattern: all curve values = 0", () => {
+    const r = computeEnergyProfile([{ pattern: allZ }]);
+    expect(r.curve.every((v) => v === 0)).toBe(true);
+  });
+
+  test("curve values are always in [0, 1]", () => {
+    const r = computeEnergyProfile([
+      { pattern: even, weight: 2 },
+      { pattern: allO, weight: 1 },
+    ]);
+    for (const v of r.curve) {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("peakEnergy = 1.0 when any layer has active steps", () => {
+    const r = computeEnergyProfile([{ pattern: even }]);
+    expect(r.peakEnergy).toBe(1.0);
+  });
+
+  test("peakStep = index of max curve value", () => {
+    const r = computeEnergyProfile([{ pattern: allO }]);
+    expect(r.curve[r.peakStep]).toBe(1.0);
+  });
+
+  test("meanEnergy = mean of the 16 curve values", () => {
+    const r = computeEnergyProfile([{ pattern: even }]);
+    const expected = r.curve.reduce((s, v) => s + v, 0) / 16;
+    expect(r.meanEnergy).toBeCloseTo(expected, 6);
+  });
+
+  test("activeSteps = count of steps with energy > 0", () => {
+    const r = computeEnergyProfile([{ pattern: even }]);
+    expect(r.activeSteps).toBe((even as number[]).reduce((s, v) => s + v, 0));
+  });
+
+  test("higher weight layer dominates curve shape", () => {
+    const heavy = [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0];
+    const light = allO;
+    const r = computeEnergyProfile([
+      { pattern: heavy, weight: 100 },
+      { pattern: light, weight:   1 },
+    ]);
+    // Step 0 should have the highest energy (close to 1.0)
+    expect(r.peakStep).toBe(0);
+    expect(r.curve[0]).toBe(1.0);
+  });
+
+  test("two identical layers sum to same shape as one", () => {
+    const r1 = computeEnergyProfile([{ pattern: even }]);
+    const r2 = computeEnergyProfile([{ pattern: even }, { pattern: even }]);
+    expect(r2.curve).toEqual(r1.curve);
+  });
+
+  test("output is deterministic", () => {
+    const layers = [{ pattern: even, weight: 2 }, { pattern: allO, weight: 1 }];
+    expect(computeEnergyProfile(layers)).toEqual(computeEnergyProfile(layers));
   });
 });

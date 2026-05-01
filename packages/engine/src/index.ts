@@ -71,6 +71,7 @@ export type {
   CombineMode, CombineResult,
   QuantizeResolution, QuantizeNoteResult,
   StabPattern,
+  EnergyLayer, EnergyProfile,
 }                                                     from "./types";
 
 export {
@@ -252,6 +253,9 @@ export type { QuantizeNoteOptions }                   from "./daw_export/note_qu
 // ── Chord stab pattern generator ──────────────────────────────────────────────
 export { generateChordStab }                          from "./groove/chord_stab_generator";
 export type { StabOptions }                           from "./groove/chord_stab_generator";
+
+// ── Groove energy profile ─────────────────────────────────────────────────────
+export { computeEnergyProfile }                       from "./intelligence/energy_profile";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";

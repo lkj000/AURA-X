@@ -464,6 +464,21 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Groove energy profile ────────────────────────────────────────────────────
+
+export interface EnergyLayer {
+  pattern: readonly number[];   // 16-step binary (shorter inputs are zero-padded)
+  weight?: number;              // contribution weight, default 1.0
+}
+
+export interface EnergyProfile {
+  curve:       number[];   // 16-element normalized energy per step [0, 1]
+  peakStep:    number;     // index of highest-energy step; -1 if all zero
+  meanEnergy:  number;     // mean of the 16 curve values
+  peakEnergy:  number;     // max value in curve
+  activeSteps: number;     // count of steps with energy > 0
+}
+
 // ─── Chord stab pattern ───────────────────────────────────────────────────────
 
 export interface StabPattern {
