@@ -290,6 +290,111 @@ export const submitFeedback = (body: FeedbackInput) =>
     body: JSON.stringify(body),
   });
 
+// ── Marketplace ──────────────────────────────────────────────────────────────
+
+export interface MarketplaceTier {
+  price_usd: number;
+  rights: string;
+}
+
+export interface MarketplaceListing {
+  id: string;
+  title: string;
+  subgenre: string;
+  bpm: number;
+  key: string;
+  created_by: string;
+  created_at: string;
+  tiers: { STANDARD: MarketplaceTier; PREMIUM: MarketplaceTier; EXCLUSIVE: MarketplaceTier };
+}
+
+export interface MarketplaceListResult {
+  listings: MarketplaceListing[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface LicensePurchaseResult {
+  license_id: string;
+  split_id: string;
+  tier: string;
+  price_usd: number;
+  access_token: string;
+  split_status: string;
+}
+
+export const listMarketplace = (params?: { page?: number; limit?: number }) => {
+  const q = new URLSearchParams();
+  if (params?.page  != null) q.set("page",  String(params.page));
+  if (params?.limit != null) q.set("limit", String(params.limit));
+  const qs = q.toString();
+  return request<MarketplaceListResult>(`/api/marketplace${qs ? `?${qs}` : ""}`);
+};
+
+export const purchaseLicense = (trackId: string, tier: string, token: string) =>
+  request<LicensePurchaseResult>(`/api/marketplace/${trackId}/license`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ tier }),
+  });
+
+// ── Earnings ─────────────────────────────────────────────────────────────────
+
+export interface EarningsSummary {
+  artist_id: string;
+  total_earned: number;
+  split_count: number;
+  track_count: number;
+}
+
+export interface EarningsHistoryRow {
+  split_id: string;
+  track_id: string;
+  period: string;
+  amount_usd: number;
+  role: string;
+  status: string;
+  created_at: string;
+}
+
+export interface EarningsHistoryResult {
+  artist_id: string;
+  history: EarningsHistoryRow[];
+  page: number;
+  limit: number;
+}
+
+export interface WithdrawResult {
+  status: string;
+  amount_usd: number;
+  period: string;
+  nexus_tx_id: string | null;
+  nexus_payout: Record<string, unknown>;
+}
+
+export const getEarningsSummary = (token: string) =>
+  request<EarningsSummary>("/api/earnings", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+export const getEarningsHistory = (token: string, params?: { page?: number; limit?: number }) => {
+  const q = new URLSearchParams();
+  if (params?.page  != null) q.set("page",  String(params.page));
+  if (params?.limit != null) q.set("limit", String(params.limit));
+  const qs = q.toString();
+  return request<EarningsHistoryResult>(`/api/earnings/history${qs ? `?${qs}` : ""}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+};
+
+export const withdrawEarnings = (token: string, amount_usd: number) =>
+  request<WithdrawResult>("/api/earnings/withdraw", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ amount_usd }),
+  });
+
 // ── Finetune ─────────────────────────────────────────────────────────────────
 
 export const triggerFinetune = (body: {

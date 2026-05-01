@@ -7,6 +7,8 @@ const links = [
   { href: "/", label: "Dashboard" },
   { href: "/generate", label: "Generate" },
   { href: "/tracks", label: "Tracks" },
+  { href: "/marketplace", label: "Marketplace" },
+  { href: "/earnings", label: "Earnings" },
   { href: "/dataset", label: "Dataset" },
 ];
 
