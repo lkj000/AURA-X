@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import multer from "multer";
-import { extractAudioFeatures, evaluateAmapiano, buildEnhancement } from "../lib/audio-analysis";
+import { evaluateBuffer, buildEnhancement } from "@aura-x/engine";
 
 const router = Router();
 
@@ -10,8 +10,8 @@ const upload = multer({
 });
 
 // POST /api/amapianorize
-// Accepts an uploaded audio file (WAV), evaluates it against the 4-lane
-// Amapiano model, and returns evaluation scores + enhancement CTL.
+// Accepts an uploaded WAV file, evaluates it against the 4-lane Amapiano
+// engine model, and returns evaluation scores + enhancement CTL plan.
 // Content-Type: multipart/form-data  field: audio
 router.post(
   "/",
@@ -29,8 +29,7 @@ router.post(
     }
 
     try {
-      const features   = extractAudioFeatures(req.file.buffer);
-      const evaluation = evaluateAmapiano(features);
+      const evaluation = evaluateBuffer(req.file.buffer);
       const enhancement = buildEnhancement(evaluation);
       res.json({ evaluation, enhancement });
     } catch (e) {

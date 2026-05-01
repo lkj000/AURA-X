@@ -272,24 +272,24 @@ describe("POST /api/amapianorize", () => {
     expect(res.body.enhancement).toBeDefined();
   });
 
-  it("28. evaluation has bpm, authenticityScore, passesThreshold, lanes[4]", async () => {
+  it("28. evaluation has features.bpm, passesThreshold, laneScores with 4 lanes", async () => {
     const wav = buildWav({ bpm: 112, durationSec: 12 });
     const res = await request(app)
       .post("/api/amapianorize")
       .attach("audio", wav, { filename: "track.wav", contentType: "audio/wav" });
     const ev = res.body.evaluation;
-    expect(typeof ev.bpm).toBe("number");
-    expect(typeof ev.authenticityScore).toBe("number");
+    expect(typeof ev.features.bpm).toBe("number");
     expect(typeof ev.passesThreshold).toBe("boolean");
-    expect(ev.lanes).toHaveLength(4);
+    expect(typeof ev.laneScores.overallAuthenticity).toBe("number");
+    expect(ev.laneScores.laneScores).toHaveLength(4);
   });
 
-  it("29. enhancement.recommendedCtl.global.subgenre is a valid lane", async () => {
+  it("29. enhancement.recommendedCtl.lane is a valid Amapiano lane", async () => {
     const wav  = buildWav({ bpm: 112, durationSec: 12 });
     const res  = await request(app)
       .post("/api/amapianorize")
       .attach("audio", wav, { filename: "track.wav", contentType: "audio/wav" });
-    const lane = res.body.enhancement.recommendedCtl.global.subgenre;
+    const lane = res.body.enhancement.recommendedCtl.lane;
     expect(["private_school", "sgija", "bacardi", "commercial"]).toContain(lane);
   });
 

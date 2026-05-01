@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@aura-x/ac-ami": "workspace:*",
+    "@aura-x/engine": "workspace:*",
     "@aura-x/ctl": "workspace:*",
     "@aura-x/replicate-client": "workspace:*",
     "@aura-x/suno-exporter": "workspace:*",
