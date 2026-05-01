@@ -66,6 +66,7 @@ import { computeEnergyProfile }      from "../intelligence/energy_profile";
 import { generateTransitionFill }    from "../arrangement/transition_fill_generator";
 import { generatePitchBend }         from "../intelligence/pitch_bend_generator";
 import { generateCcAutomation }      from "../daw_export/cc_automation";
+import { analyzeTaps }               from "../intelligence/tap_analyzer";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -5348,5 +5349,73 @@ describe("65. MIDI CC automation generator", () => {
   test("output is deterministic", () => {
     const opts = { shape: "swell" as const, resolution: 16, cc: 11 };
     expect(generateCcAutomation(opts)).toEqual(generateCcAutomation(opts));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 66. BPM tap analyzer
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("66. BPM tap analyzer", () => {
+  // 114 BPM → interval = 60000/114 ≈ 526.316 ms
+  const BPM114_MS = 60_000 / 114;
+  const perfect114 = [0, BPM114_MS, BPM114_MS * 2, BPM114_MS * 3, BPM114_MS * 4];
+
+  test("fewer than 2 taps → bpm=0, confidence=0", () => {
+    expect(analyzeTaps([]).bpm).toBe(0);
+    expect(analyzeTaps([0]).bpm).toBe(0);
+    expect(analyzeTaps([]).confidence).toBe(0);
+  });
+
+  test("perfect 114 BPM taps → bpm ≈ 114", () => {
+    const r = analyzeTaps(perfect114);
+    expect(r.bpm).toBeCloseTo(114, 0);
+  });
+
+  test("perfect taps → confidence = 1.0", () => {
+    const r = analyzeTaps(perfect114);
+    expect(r.confidence).toBeCloseTo(1.0, 6);
+  });
+
+  test("perfect 120 BPM taps → bpm ≈ 120", () => {
+    const ms = 60_000 / 120;
+    const r  = analyzeTaps([0, ms, ms*2, ms*3]);
+    expect(r.bpm).toBeCloseTo(120, 0);
+  });
+
+  test("tapCount equals input length", () => {
+    expect(analyzeTaps(perfect114).tapCount).toBe(5);
+    expect(analyzeTaps([0, 500]).tapCount).toBe(2);
+  });
+
+  test("intervalMs ≈ 60000 / bpm", () => {
+    const r = analyzeTaps(perfect114);
+    expect(r.intervalMs).toBeCloseTo(BPM114_MS, 0);
+  });
+
+  test("stdDevMs = 0 for perfectly even taps", () => {
+    const r = analyzeTaps(perfect114);
+    expect(r.stdDevMs).toBe(0);
+  });
+
+  test("inAmapianoRange true for BPM ∈ [100, 130]", () => {
+    const ms = 60_000 / 114;
+    expect(analyzeTaps([0, ms, ms*2, ms*3]).inAmapianoRange).toBe(true);
+  });
+
+  test("inAmapianoRange false for BPM outside [100, 130]", () => {
+    const ms = 60_000 / 90;   // 90 BPM
+    expect(analyzeTaps([0, ms, ms*2, ms*3]).inAmapianoRange).toBe(false);
+  });
+
+  test("noisy taps → lower confidence than perfect taps", () => {
+    const noisy = [0, 530, 1060 + 40, 1590 - 30, 2120 + 60];
+    const rNoisy   = analyzeTaps(noisy);
+    const rPerfect = analyzeTaps(perfect114);
+    expect(rPerfect.confidence).toBeGreaterThan(rNoisy.confidence);
+  });
+
+  test("output is deterministic", () => {
+    expect(analyzeTaps(perfect114)).toEqual(analyzeTaps(perfect114));
   });
 });

@@ -464,6 +464,17 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── BPM tap analysis ─────────────────────────────────────────────────────────
+
+export interface TapAnalysis {
+  bpm:          number;     // estimated BPM (median inter-tap interval)
+  confidence:   number;     // [0, 1] — 1 = perfect consistency, 0 = chaotic
+  tapCount:     number;     // number of taps received
+  intervalMs:   number;     // median inter-tap interval in milliseconds
+  stdDevMs:     number;     // standard deviation of intervals (0 = perfect)
+  inAmapianoRange: boolean; // true if bpm ∈ [100, 130]
+}
+
 // ─── MIDI CC automation ───────────────────────────────────────────────────────
 
 export interface CcPoint {

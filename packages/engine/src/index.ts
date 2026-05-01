@@ -75,6 +75,7 @@ export type {
   TransitionType, TransitionFill,
   PitchBendPoint, PitchBendShape, PitchBendCurve,
   CcPoint, CcShape, CcAutomation,
+  TapAnalysis,
 }                                                     from "./types";
 
 export {
@@ -271,6 +272,9 @@ export type { PitchBendOptions }                      from "./intelligence/pitch
 // ── MIDI CC automation generator ──────────────────────────────────────────────
 export { generateCcAutomation }                       from "./daw_export/cc_automation";
 export type { CcAutomationOptions }                   from "./daw_export/cc_automation";
+
+// ── BPM tap analyzer ──────────────────────────────────────────────────────────
+export { analyzeTaps }                                from "./intelligence/tap_analyzer";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";
