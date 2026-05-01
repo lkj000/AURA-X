@@ -56,6 +56,7 @@ import { quantizeSwing }         from "../groove/swing_quantizer";
 import { generateMuteSchedule }  from "../arrangement/stem_mute_automator";
 import { normalizeDensity }      from "../groove/density_normalizer";
 import { buildTickMap }          from "../daw_export/bar_tick_converter";
+import { retrogradePattern }     from "../groove/retrograde";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -4498,5 +4499,81 @@ describe("55. Bar-to-tick converter", () => {
     for (const lane of LANES) {
       expect(() => buildTickMap(planArrangementArc(lane))).not.toThrow();
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 56. Pattern retrograde
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("56. Pattern retrograde", () => {
+  const pat  = [1,0,0,1, 0,1,0,0, 1,0,1,0, 0,0,1,0];
+  const result = retrogradePattern(pat);
+
+  test("original is a copy of input (not same reference)", () => {
+    const input = [...pat];
+    const r = retrogradePattern(input);
+    input[0] = 0;
+    expect(r.original[0]).toBe(1);
+  });
+
+  test("reversed is the time-reversal of original", () => {
+    expect(result.reversed).toEqual([...pat].reverse());
+  });
+
+  test("mirrored flips every bit (0→1, 1→0)", () => {
+    for (let i = 0; i < 16; i++) {
+      expect(result.mirrored[i]).toBe(pat[i] === 1 ? 0 : 1);
+    }
+  });
+
+  test("rotated by default 8 = second half followed by first half", () => {
+    const expected = [...pat.slice(8), ...pat.slice(0, 8)];
+    expect(result.rotated).toEqual(expected);
+  });
+
+  test("rotated by 0 equals original", () => {
+    const r = retrogradePattern(pat, { rotateBy: 0 });
+    expect(r.rotated).toEqual([...pat]);
+  });
+
+  test("rotated by 16 wraps to original", () => {
+    const r = retrogradePattern(pat, { rotateBy: 16 });
+    expect(r.rotated).toEqual([...pat]);
+  });
+
+  test("all output arrays are length 16", () => {
+    expect(result.original).toHaveLength(16);
+    expect(result.reversed).toHaveLength(16);
+    expect(result.mirrored).toHaveLength(16);
+    expect(result.rotated).toHaveLength(16);
+  });
+
+  test("palindrome=true for a symmetric pattern", () => {
+    const sym = [1,0,1,0, 0,1,0,1, 1,0,1,0, 0,1,0,1];
+    expect(retrogradePattern(sym).palindrome).toBe(true);
+  });
+
+  test("palindrome=false for non-symmetric pattern", () => {
+    expect(result.palindrome).toBe(false);
+  });
+
+  test("reversed of reversed equals original", () => {
+    const r2 = retrogradePattern(result.reversed);
+    expect(r2.reversed).toEqual(result.original);
+  });
+
+  test("mirrored of mirrored equals original", () => {
+    const r2 = retrogradePattern(result.mirrored);
+    expect(r2.mirrored).toEqual(result.original);
+  });
+
+  test("empty input pads to 16 zeros", () => {
+    const r = retrogradePattern([]);
+    expect(r.original).toEqual(new Array(16).fill(0));
+  });
+
+  test("output is deterministic", () => {
+    expect(retrogradePattern(pat)).toEqual(retrogradePattern(pat));
   });
 });

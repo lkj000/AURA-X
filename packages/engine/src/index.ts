@@ -65,6 +65,7 @@ export type {
   StemMuteEvent, MuteSchedule,
   DensityNormalizeResult,
   SectionTickRange, TickMap,
+  RetrogradResult,
 }                                                     from "./types";
 
 export {
@@ -222,6 +223,10 @@ export type { NormalizeDensityOptions }               from "./groove/density_nor
 // ── Bar-to-tick converter ─────────────────────────────────────────────────────
 export { buildTickMap }                               from "./daw_export/bar_tick_converter";
 export type { TickMapOptions }                        from "./daw_export/bar_tick_converter";
+
+// ── Pattern retrograde ────────────────────────────────────────────────────────
+export { retrogradePattern }                          from "./groove/retrograde";
+export type { RetrogradeOptions }                     from "./groove/retrograde";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";

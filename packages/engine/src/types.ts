@@ -464,6 +464,16 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Pattern retrograde / mirror ─────────────────────────────────────────────
+
+export interface RetrogradResult {
+  original:   number[];   // 16-step input (copy)
+  reversed:   number[];   // step-reversed (retrograde)
+  mirrored:   number[];   // bit-flipped (0↔1)
+  rotated:    number[];   // rotated by rotateBy steps (default 8)
+  palindrome: boolean;    // true if original === reversed
+}
+
 // ─── Bar-to-tick map ──────────────────────────────────────────────────────────
 
 export interface SectionTickRange {
