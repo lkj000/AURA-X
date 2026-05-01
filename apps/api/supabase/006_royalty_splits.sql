@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS royalty_splits (
   id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  track_id         TEXT        NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+  track_id         UUID        NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
   period           TEXT        NOT NULL,
   total_amount_usd NUMERIC(10,2) NOT NULL CHECK (total_amount_usd > 0),
   splits           JSONB       NOT NULL,
