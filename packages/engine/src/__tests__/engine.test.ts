@@ -54,6 +54,7 @@ import { deduplicateMidi } from "../daw_export/midi_deduplicator";
 import { shapeVelocities } from "../groove/velocity_shaper";
 import { quantizeSwing }         from "../groove/swing_quantizer";
 import { generateMuteSchedule }  from "../arrangement/stem_mute_automator";
+import { normalizeDensity }      from "../groove/density_normalizer";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -4330,5 +4331,91 @@ describe("53. Stem mute automator", () => {
     for (const lane of LANES) {
       expect(() => generateMuteSchedule(planArrangementArc(lane))).not.toThrow();
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 54. Groove density normalizer
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("54. Groove density normalizer", () => {
+  const allZero = new Array(16).fill(0);
+  const allOne  = new Array(16).fill(1);
+  const half    = allOne.map((_, i) => (i % 2 === 0 ? 1 : 0)); // 8 active
+
+  test("all-zero + targetFill=0.5 adds 8 steps", () => {
+    const r = normalizeDensity(allZero, { targetFill: 0.5 });
+    expect(r.stepsAdded).toBe(8);
+    expect(r.stepsRemoved).toBe(0);
+    expect(r.pattern.reduce((s, v) => s + v, 0)).toBe(8);
+  });
+
+  test("all-ones + targetFill=0.5 removes 8 steps", () => {
+    const r = normalizeDensity(allOne, { targetFill: 0.5 });
+    expect(r.stepsRemoved).toBe(8);
+    expect(r.stepsAdded).toBe(0);
+    expect(r.pattern.reduce((s, v) => s + v, 0)).toBe(8);
+  });
+
+  test("pattern already at target fill → no change", () => {
+    const r = normalizeDensity(half, { targetFill: 0.5 });
+    expect(r.stepsAdded).toBe(0);
+    expect(r.stepsRemoved).toBe(0);
+    expect(r.pattern).toEqual(half);
+  });
+
+  test("actualFill = active steps / 16 after normalization", () => {
+    const r = normalizeDensity(allZero, { targetFill: 0.75 });
+    expect(r.actualFill).toBeCloseTo(r.pattern.reduce((s, v) => s + v, 0) / 16, 6);
+  });
+
+  test("actualFill is close to targetFill (within 1/16)", () => {
+    const r = normalizeDensity(allZero, { targetFill: 0.6 });
+    expect(Math.abs(r.actualFill - r.targetFill)).toBeLessThanOrEqual(1 / 16);
+  });
+
+  test("output pattern length is always 16", () => {
+    expect(normalizeDensity([], { targetFill: 0.5 }).pattern).toHaveLength(16);
+    expect(normalizeDensity(allOne).pattern).toHaveLength(16);
+  });
+
+  test("originalFill reflects input fill ratio", () => {
+    expect(normalizeDensity(half).originalFill).toBeCloseTo(0.5, 6);
+    expect(normalizeDensity(allZero).originalFill).toBeCloseTo(0.0, 6);
+    expect(normalizeDensity(allOne).originalFill).toBeCloseTo(1.0, 6);
+  });
+
+  test("targetFill=0 removes all active steps", () => {
+    const r = normalizeDensity(allOne, { targetFill: 0 });
+    expect(r.pattern.every((v) => v === 0)).toBe(true);
+  });
+
+  test("targetFill=1 activates all steps", () => {
+    const r = normalizeDensity(allZero, { targetFill: 1 });
+    expect(r.pattern.every((v) => v === 1)).toBe(true);
+  });
+
+  test("stepsAdded and stepsRemoved cannot both be > 0", () => {
+    for (const fill of [0, 0.25, 0.5, 0.75, 1]) {
+      const r = normalizeDensity(half, { targetFill: fill });
+      expect(r.stepsAdded === 0 || r.stepsRemoved === 0).toBe(true);
+    }
+  });
+
+  test("output is deterministic for same inputs", () => {
+    const r1 = normalizeDensity(allZero, { targetFill: 0.5, seed: "x" });
+    const r2 = normalizeDensity(allZero, { targetFill: 0.5, seed: "x" });
+    expect(r1.pattern).toEqual(r2.pattern);
+  });
+
+  test("different seeds produce different patterns when adding steps", () => {
+    const r1 = normalizeDensity(allZero, { targetFill: 0.5, seed: "seedA" });
+    const r2 = normalizeDensity(allZero, { targetFill: 0.5, seed: "seedB" });
+    expect(r1.pattern).not.toEqual(r2.pattern);
+  });
+
+  test("output pattern is binary — only 0s and 1s", () => {
+    const r = normalizeDensity(half, { targetFill: 0.75 });
+    expect(r.pattern.every((v) => v === 0 || v === 1)).toBe(true);
   });
 });

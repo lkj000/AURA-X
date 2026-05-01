@@ -63,6 +63,7 @@ export type {
   VelocityShape,
   SwingResult,
   StemMuteEvent, MuteSchedule,
+  DensityNormalizeResult,
 }                                                     from "./types";
 
 export {
@@ -212,6 +213,10 @@ export type { SwingOptions }                          from "./groove/swing_quant
 
 // ── Stem mute automator ───────────────────────────────────────────────────────
 export { generateMuteSchedule }                       from "./arrangement/stem_mute_automator";
+
+// ── Groove density normalizer ─────────────────────────────────────────────────
+export { normalizeDensity }                           from "./groove/density_normalizer";
+export type { NormalizeDensityOptions }               from "./groove/density_normalizer";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";

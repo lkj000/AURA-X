@@ -464,6 +464,17 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Groove density normalization ────────────────────────────────────────────
+
+export interface DensityNormalizeResult {
+  pattern:      number[];   // 16-step binary, adjusted to target density
+  originalFill: number;     // fill ratio of input [0, 1]
+  targetFill:   number;     // requested fill ratio [0, 1]
+  actualFill:   number;     // achieved fill ratio [0, 1]
+  stepsAdded:   number;     // steps turned on
+  stepsRemoved: number;     // steps turned off
+}
+
 // ─── Stem mute schedule ───────────────────────────────────────────────────────
 
 export interface StemMuteEvent {
