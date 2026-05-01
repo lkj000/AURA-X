@@ -62,7 +62,8 @@ import { generatePolyrhythm }   from "../groove/polyrhythm_generator";
 import { combinePatterns }      from "../groove/pattern_combiner";
 import { quantizeNotes }        from "../daw_export/note_quantizer";
 import { generateChordStab }      from "../groove/chord_stab_generator";
-import { computeEnergyProfile }   from "../intelligence/energy_profile";
+import { computeEnergyProfile }      from "../intelligence/energy_profile";
+import { generateTransitionFill }    from "../arrangement/transition_fill_generator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -5093,5 +5094,94 @@ describe("62. Groove energy profile", () => {
   test("output is deterministic", () => {
     const layers = [{ pattern: even, weight: 2 }, { pattern: allO, weight: 1 }];
     expect(computeEnergyProfile(layers)).toEqual(computeEnergyProfile(layers));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 63. Section transition fill generator
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("63. Section transition fill generator", () => {
+  const TRANSITIONS = [
+    "build_to_drop", "drop_to_breakdown", "breakdown_to_build", "drop_to_outro",
+  ] as const;
+
+  test("pattern length is 16 for all types and lanes", () => {
+    for (const t of TRANSITIONS) {
+      expect(generateTransitionFill("sgija", t).pattern).toHaveLength(16);
+    }
+  });
+
+  test("transitionType and lane are reflected in output", () => {
+    const r = generateTransitionFill("bacardi", "build_to_drop");
+    expect(r.transitionType).toBe("build_to_drop");
+    expect(r.lane).toBe("bacardi");
+  });
+
+  test("density = active steps / 16", () => {
+    for (const t of TRANSITIONS) {
+      const r = generateTransitionFill("sgija", t);
+      const expected = r.pattern.reduce((s, v) => s + v, 0) / 16;
+      expect(r.density).toBeCloseTo(expected, 6);
+    }
+  });
+
+  test("pattern is binary — only 0s and 1s", () => {
+    for (const t of TRANSITIONS) {
+      const r = generateTransitionFill("private_school", t);
+      expect(r.pattern.every((v) => v === 0 || v === 1)).toBe(true);
+    }
+  });
+
+  test("build_to_drop hits are concentrated in second half (steps 8–15)", () => {
+    const r = generateTransitionFill("sgija", "build_to_drop");
+    const firstHalf  = r.pattern.slice(0, 8).reduce((s, v) => s + v, 0);
+    const secondHalf = r.pattern.slice(8).reduce((s, v) => s + v, 0);
+    expect(secondHalf).toBeGreaterThan(firstHalf);
+  });
+
+  test("drop_to_breakdown hits are concentrated in first half (steps 0–7)", () => {
+    const r = generateTransitionFill("sgija", "drop_to_breakdown");
+    const firstHalf  = r.pattern.slice(0, 8).reduce((s, v) => s + v, 0);
+    const secondHalf = r.pattern.slice(8).reduce((s, v) => s + v, 0);
+    expect(firstHalf).toBeGreaterThan(secondHalf);
+  });
+
+  test("climaxStep is a valid active step index", () => {
+    for (const t of TRANSITIONS) {
+      const r = generateTransitionFill("mbiraiano", t);
+      if (r.climaxStep !== -1) {
+        expect(r.pattern[r.climaxStep]).toBe(1);
+      }
+    }
+  });
+
+  test("output is deterministic for same lane + type", () => {
+    const r1 = generateTransitionFill("sgija", "build_to_drop");
+    const r2 = generateTransitionFill("sgija", "build_to_drop");
+    expect(r1.pattern).toEqual(r2.pattern);
+  });
+
+  test("different lanes produce different patterns for the same transition type", () => {
+    const patterns = LANES.map((lane) =>
+      generateTransitionFill(lane, "breakdown_to_build").pattern.join(""),
+    );
+    const unique = new Set(patterns);
+    expect(unique.size).toBeGreaterThan(1);
+  });
+
+  test("works for all 8 lanes × 4 transition types without throwing", () => {
+    for (const lane of LANES) {
+      for (const t of TRANSITIONS) {
+        expect(() => generateTransitionFill(lane, t)).not.toThrow();
+      }
+    }
+  });
+
+  test("drop_to_outro produces sparse pattern (density ≤ 0.5)", () => {
+    for (const lane of LANES) {
+      const r = generateTransitionFill(lane, "drop_to_outro");
+      expect(r.density).toBeLessThanOrEqual(0.5);
+    }
   });
 });

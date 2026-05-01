@@ -72,6 +72,7 @@ export type {
   QuantizeResolution, QuantizeNoteResult,
   StabPattern,
   EnergyLayer, EnergyProfile,
+  TransitionType, TransitionFill,
 }                                                     from "./types";
 
 export {
@@ -256,6 +257,10 @@ export type { StabOptions }                           from "./groove/chord_stab_
 
 // ── Groove energy profile ─────────────────────────────────────────────────────
 export { computeEnergyProfile }                       from "./intelligence/energy_profile";
+
+// ── Section transition fill generator ────────────────────────────────────────
+export { generateTransitionFill }                     from "./arrangement/transition_fill_generator";
+export type { FillOptions }                           from "./arrangement/transition_fill_generator";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";

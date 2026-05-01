@@ -464,6 +464,22 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Section transition fill ──────────────────────────────────────────────────
+
+export type TransitionType =
+  | "build_to_drop"
+  | "drop_to_breakdown"
+  | "breakdown_to_build"
+  | "drop_to_outro";
+
+export interface TransitionFill {
+  pattern:        number[];        // 16-step binary fill pattern
+  transitionType: TransitionType;
+  lane:           Lane;
+  density:        number;          // fill ratio [0, 1]
+  climaxStep:     number;          // step index of highest-intensity hit
+}
+
 // ─── Groove energy profile ────────────────────────────────────────────────────
 
 export interface EnergyLayer {
