@@ -447,6 +447,24 @@ export interface ReverbSpec {
   params:     ReverbParams[];   // one per stem, ordered sub_bass → air
 }
 
+// ─── Harmonic tension ─────────────────────────────────────────────────────────
+
+export type TensionLabel = "resolved" | "mild" | "moderate" | "tense" | "dissonant";
+
+export interface ChordTension {
+  chordSymbol: string;
+  tension:     number;        // mean pairwise interval dissonance [0, 1]
+  label:       TensionLabel;
+}
+
+export interface TensionArc {
+  key:         string;
+  chords:      ChordTension[];
+  meanTension: number;   // arithmetic mean of all chord tensions
+  peakTension: number;   // highest single-chord tension
+  resolution:  number;   // tension of the final chord (ending feel)
+}
+
 // ─── Scale quantizer ──────────────────────────────────────────────────────────
 
 export type ScaleName =

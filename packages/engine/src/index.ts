@@ -56,6 +56,7 @@ export type {
   ChopEvent, VocalChopPattern,
   WidthPoint, WidthAutomation,
   ScaleName, QuantizedNote, ScaleQuantizeResult,
+  TensionLabel, ChordTension, TensionArc,
 }                                                     from "./types";
 
 export {
@@ -159,6 +160,9 @@ export type { ChopOptions }                           from "./intelligence/vocal
 
 // ── Scale quantizer ───────────────────────────────────────────────────────────
 export { quantizeToScale, SCALE_INTERVALS }           from "./intelligence/scale_quantizer";
+
+// ── Harmonic tension scorer ───────────────────────────────────────────────────
+export { scoreTension }                               from "./intelligence/tension_scorer";
 
 // ── Sample recommendation ─────────────────────────────────────────────────────
 export { recommendSamples }                           from "./intelligence/sample_recommender";

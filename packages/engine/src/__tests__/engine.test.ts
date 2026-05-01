@@ -47,6 +47,7 @@ import { generateEqSpec } from "../mix/eq_generator";
 import { scheduleVocalChops } from "../intelligence/vocal_chop_scheduler";
 import { generateWidthAutomation } from "../arrangement/width_automator";
 import { quantizeToScale, SCALE_INTERVALS } from "../intelligence/scale_quantizer";
+import { scoreTension } from "../intelligence/tension_scorer";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -3694,6 +3695,95 @@ describe("scale_quantizer", () => {
     const scales = Object.keys(SCALE_INTERVALS) as import("../types").ScaleName[];
     for (const s of scales) {
       expect(() => quantizeToScale([60, 62, 64, 65, 67], "C", s)).not.toThrow();
+    }
+  });
+});
+
+// ── 47. Harmonic tension scorer ───────────────────────────────────────────────
+
+describe("tension_scorer", () => {
+  // Use buildChordProgression for a real Am-key progression
+  const prog = buildChordProgression({ lane: "private_school" });
+  const arc  = scoreTension(prog);
+
+  test("returns one ChordTension per voicing", () => {
+    expect(arc.chords).toHaveLength(prog.voicings.length);
+  });
+
+  test("all tension values in [0, 1]", () => {
+    for (const c of arc.chords) {
+      expect(c.tension).toBeGreaterThanOrEqual(0);
+      expect(c.tension).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("peakTension >= every chord tension", () => {
+    for (const c of arc.chords) expect(arc.peakTension).toBeGreaterThanOrEqual(c.tension);
+  });
+
+  test("meanTension is the arithmetic mean of chord tensions", () => {
+    const expected = arc.chords.reduce((s, c) => s + c.tension, 0) / arc.chords.length;
+    expect(arc.meanTension).toBeCloseTo(expected, 6);
+  });
+
+  test("resolution equals the tension of the final chord", () => {
+    expect(arc.resolution).toBe(arc.chords[arc.chords.length - 1].tension);
+  });
+
+  test("key is reflected in output", () => {
+    expect(arc.key).toBe(prog.key);
+  });
+
+  test("C major triad is labelled 'resolved' (tension < 0.15)", () => {
+    const cMajProg: import("../types").ChordProgression = {
+      lane: "private_school", key: "C", loopable: true, amapianoStyle: false,
+      voicings: [{ chordSymbol: "C", rootMidi: 48, notes: [60, 64, 67], function: "tonic", tension: 0 }],
+    };
+    const r = scoreTension(cMajProg);
+    expect(r.chords[0].label).toBe("resolved");
+    expect(r.chords[0].tension).toBeLessThan(0.15);
+  });
+
+  test("semitone cluster is labelled 'dissonant' (tension >= 0.70)", () => {
+    const clusterProg: import("../types").ChordProgression = {
+      lane: "private_school", key: "C", loopable: false, amapianoStyle: false,
+      voicings: [{ chordSymbol: "cluster", rootMidi: 60, notes: [60, 61, 62], function: "tension", tension: 1 }],
+    };
+    const r = scoreTension(clusterProg);
+    expect(r.chords[0].label).toBe("dissonant");
+    expect(r.chords[0].tension).toBeGreaterThanOrEqual(0.70);
+  });
+
+  test("tritone dyad has higher tension than perfect-5th dyad", () => {
+    const makeSimple = (notes: number[]): import("../types").ChordProgression => ({
+      lane: "private_school", key: "C", loopable: false, amapianoStyle: false,
+      voicings: [{ chordSymbol: "x", rootMidi: notes[0], notes, function: "dominant", tension: 0.5 }],
+    });
+    const tritoneTension = scoreTension(makeSimple([60, 66])).chords[0].tension;
+    const fifthTension   = scoreTension(makeSimple([60, 67])).chords[0].tension;
+    expect(tritoneTension).toBeGreaterThan(fifthTension);
+  });
+
+  test("empty progression returns safe zero defaults", () => {
+    const empty = scoreTension({ lane: "private_school", key: "Am", voicings: [], loopable: false, amapianoStyle: false });
+    expect(empty.chords).toHaveLength(0);
+    expect(empty.meanTension).toBe(0);
+    expect(empty.peakTension).toBe(0);
+    expect(empty.resolution).toBe(0);
+  });
+
+  test("single-note voicing has tension = 0 (no pairs)", () => {
+    const singleProg: import("../types").ChordProgression = {
+      lane: "private_school", key: "C", loopable: false, amapianoStyle: false,
+      voicings: [{ chordSymbol: "C", rootMidi: 60, notes: [60], function: "tonic", tension: 0 }],
+    };
+    expect(scoreTension(singleProg).chords[0].tension).toBe(0);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      const p = buildChordProgression({ lane });
+      expect(() => scoreTension(p)).not.toThrow();
     }
   });
 });
