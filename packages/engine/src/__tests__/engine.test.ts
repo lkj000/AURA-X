@@ -30,6 +30,7 @@ import { recommendSamples } from "../intelligence/sample_recommender";
 import { humanizePattern } from "../groove/tempo_humanizer";
 import { runQualityGates } from "../pipeline/quality_gate";
 import { interpolateGrooves } from "../groove/groove_interpolator";
+import { generateProductionReport } from "../pipeline/production_report";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -2127,7 +2128,90 @@ describe("groove_interpolator", () => {
   });
 });
 
-// ── 29. Lane grammar constants ────────────────────────────────────────────────
+// ── 29. Production report generator ──────────────────────────────────────────
+
+describe("production_report", () => {
+  const wav = buildWav(4);
+  let report: ReturnType<typeof generateProductionReport>;
+  beforeAll(() => { report = generateProductionReport(evaluateBuffer(wav)); });
+
+  test("returns a ProductionReport with all required fields", () => {
+    expect(report.summary).toBeDefined();
+    expect(report.qualityGate).toBeDefined();
+    expect(report.mixSpec).toBeDefined();
+    expect(report.samplePack).toBeDefined();
+    expect(report.arrangement).toBeDefined();
+    expect(report.recommendations).toBeDefined();
+    expect(report.generatedAt).toBeDefined();
+  });
+
+  test("summary.lane is a valid Lane", () => {
+    expect(LANES).toContain(report.summary.lane);
+  });
+
+  test("summary.bpm is a positive integer", () => {
+    expect(Number.isInteger(report.summary.bpm)).toBe(true);
+    expect(report.summary.bpm).toBeGreaterThan(0);
+  });
+
+  test("summary.grade matches qualityGate.grade", () => {
+    expect(report.summary.grade).toBe(report.qualityGate.grade);
+  });
+
+  test("summary.overallScore matches qualityGate.overallScore", () => {
+    expect(report.summary.overallScore).toBeCloseTo(report.qualityGate.overallScore, 9);
+  });
+
+  test("summary.readyForRelease matches qualityGate.readyForRelease", () => {
+    expect(report.summary.readyForRelease).toBe(report.qualityGate.readyForRelease);
+  });
+
+  test("mixSpec has 5 stems", () => {
+    expect(report.mixSpec.stems).toHaveLength(5);
+  });
+
+  test("samplePack has 6 recommendations", () => {
+    expect(report.samplePack.recommendations).toHaveLength(6);
+  });
+
+  test("arrangement has 8 sections", () => {
+    expect(report.arrangement.sections).toHaveLength(8);
+  });
+
+  test("arrangement lane matches summary lane", () => {
+    expect(report.arrangement.lane).toBe(report.summary.lane);
+  });
+
+  test("recommendations is an array of strings, max 12", () => {
+    expect(Array.isArray(report.recommendations)).toBe(true);
+    expect(report.recommendations.length).toBeLessThanOrEqual(12);
+    for (const r of report.recommendations) expect(typeof r).toBe("string");
+  });
+
+  test("recommendations has no duplicates", () => {
+    const unique = new Set(report.recommendations);
+    expect(unique.size).toBe(report.recommendations.length);
+  });
+
+  test("generatedAt is a valid ISO-8601 string", () => {
+    expect(() => new Date(report.generatedAt)).not.toThrow();
+    expect(new Date(report.generatedAt).toISOString()).toBe(report.generatedAt);
+  });
+
+  test("qualityGate has 5 gates summing weight to 1.0", () => {
+    const total = report.qualityGate.gates.reduce((s, g) => s + g.weight, 0);
+    expect(total).toBeCloseTo(1.0, 9);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      const ev = evaluateBuffer(buildWav(4, 44100, 110, lane === "gqom_fusion" ? 120 : 114));
+      expect(() => generateProductionReport(ev)).not.toThrow();
+    }
+  });
+});
+
+// ── 30. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;

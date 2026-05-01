@@ -410,6 +410,28 @@ export interface PatternSimilarity {
   isMatch:      boolean;    // overallSim >= 0.75
 }
 
+// ─── Production report ────────────────────────────────────────────────────────
+
+export interface ProductionReportSummary {
+  lane:             Lane;
+  bpm:              number;
+  key:              string | null;
+  passesThreshold:  boolean;
+  grade:            GradeLabel;
+  readyForRelease:  boolean;
+  overallScore:     number;   // from quality gate ∈ [0, 1]
+}
+
+export interface ProductionReport {
+  summary:       ProductionReportSummary;
+  qualityGate:   QualityGateReport;
+  mixSpec:       MixSpec;
+  samplePack:    SamplePack;
+  arrangement:   ArrangementArc;
+  recommendations: string[];   // aggregated, deduplicated
+  generatedAt:   string;       // ISO-8601
+}
+
 // ─── Groove interpolation ─────────────────────────────────────────────────────
 
 export interface GrooveInterpolation {

@@ -41,6 +41,7 @@ export type {
   VoiceName, HumanizedHit, HumanizedPattern,
   GradeLabel, GateResult, QualityGateReport,
   GrooveInterpolation,
+  ProductionReportSummary, ProductionReport,
 }                                                     from "./types";
 
 export {
@@ -128,3 +129,6 @@ export type { InterpolateOptions }                    from "./groove/groove_inte
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";
+
+// ── Production report ─────────────────────────────────────────────────────────
+export { generateProductionReport }                   from "./pipeline/production_report";
