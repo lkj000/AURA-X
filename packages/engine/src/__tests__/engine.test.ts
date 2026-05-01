@@ -61,6 +61,7 @@ import { generateEuclidean }     from "../groove/euclidean_rhythm";
 import { generatePolyrhythm }   from "../groove/polyrhythm_generator";
 import { combinePatterns }      from "../groove/pattern_combiner";
 import { quantizeNotes }        from "../daw_export/note_quantizer";
+import { generateChordStab }   from "../groove/chord_stab_generator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -4918,5 +4919,91 @@ describe("60. Note quantizer", () => {
   test("output is deterministic", () => {
     const input = [note(110), note(230), note(350)];
     expect(quantizeNotes(input)).toEqual(quantizeNotes(input));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 61. Chord stab pattern generator
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("61. Chord stab pattern generator", () => {
+  test("pattern length is 16 for every lane", () => {
+    for (const lane of LANES) {
+      expect(generateChordStab(lane).pattern).toHaveLength(16);
+    }
+  });
+
+  test("lane is reflected in output", () => {
+    for (const lane of LANES) {
+      expect(generateChordStab(lane).lane).toBe(lane);
+    }
+  });
+
+  test("stabCount equals sum of active steps", () => {
+    for (const lane of LANES) {
+      const r = generateChordStab(lane);
+      expect(r.stabCount).toBe(r.pattern.reduce((s, v) => s + v, 0));
+    }
+  });
+
+  test("syncopation is in [0, 1]", () => {
+    for (const lane of LANES) {
+      const r = generateChordStab(lane);
+      expect(r.syncopation).toBeGreaterThanOrEqual(0);
+      expect(r.syncopation).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("pattern is binary — only 0s and 1s", () => {
+    for (const lane of LANES) {
+      const r = generateChordStab(lane);
+      expect(r.pattern.every((v) => v === 0 || v === 1)).toBe(true);
+    }
+  });
+
+  test("dense produces more stabs than sparse for the same lane", () => {
+    const sparse = generateChordStab("sgija", { intensity: "sparse" });
+    const dense  = generateChordStab("sgija", { intensity: "dense"  });
+    expect(dense.stabCount).toBeGreaterThan(sparse.stabCount);
+  });
+
+  test("sparse has fewer stabs than medium", () => {
+    const medium = generateChordStab("sgija", { intensity: "medium" });
+    const sparse = generateChordStab("sgija", { intensity: "sparse" });
+    expect(sparse.stabCount).toBeLessThan(medium.stabCount);
+  });
+
+  test("dense has more stabs than medium", () => {
+    const medium = generateChordStab("sgija", { intensity: "medium" });
+    const dense  = generateChordStab("sgija", { intensity: "dense"  });
+    expect(dense.stabCount).toBeGreaterThan(medium.stabCount);
+  });
+
+  test("syncopation correctly excludes downbeats (0, 4, 8, 12)", () => {
+    const r = generateChordStab("private_school");
+    const offBeat = r.pattern.filter((v, i) => v === 1 && ![0,4,8,12].includes(i)).length;
+    const expected = r.stabCount > 0 ? offBeat / r.stabCount : 0;
+    expect(r.syncopation).toBeCloseTo(expected, 6);
+  });
+
+  test("output is deterministic for same lane + options", () => {
+    const r1 = generateChordStab("mbiraiano", { intensity: "medium", seed: "s" });
+    const r2 = generateChordStab("mbiraiano", { intensity: "medium", seed: "s" });
+    expect(r1.pattern).toEqual(r2.pattern);
+  });
+
+  test("different seeds produce different patterns (dense adds different steps)", () => {
+    const r1 = generateChordStab("sgija", { intensity: "dense", seed: "alpha" });
+    const r2 = generateChordStab("sgija", { intensity: "dense", seed: "beta"  });
+    expect(r1.pattern).not.toEqual(r2.pattern);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    const intensities = ["sparse", "medium", "dense"] as const;
+    for (const lane of LANES) {
+      for (const intensity of intensities) {
+        expect(() => generateChordStab(lane, { intensity })).not.toThrow();
+      }
+    }
   });
 });

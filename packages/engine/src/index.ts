@@ -70,6 +70,7 @@ export type {
   PolyrhythmLayer, PolyrhythmResult,
   CombineMode, CombineResult,
   QuantizeResolution, QuantizeNoteResult,
+  StabPattern,
 }                                                     from "./types";
 
 export {
@@ -247,6 +248,10 @@ export type { CombineOptions }                        from "./groove/pattern_com
 // ── Note quantizer ────────────────────────────────────────────────────────────
 export { quantizeNotes }                              from "./daw_export/note_quantizer";
 export type { QuantizeNoteOptions }                   from "./daw_export/note_quantizer";
+
+// ── Chord stab pattern generator ──────────────────────────────────────────────
+export { generateChordStab }                          from "./groove/chord_stab_generator";
+export type { StabOptions }                           from "./groove/chord_stab_generator";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";

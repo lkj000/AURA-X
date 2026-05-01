@@ -464,6 +464,15 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Chord stab pattern ───────────────────────────────────────────────────────
+
+export interface StabPattern {
+  pattern:     number[];   // 16-step binary chord stab rhythm
+  lane:        Lane;
+  stabCount:   number;     // number of active steps
+  syncopation: number;     // fraction of hits on off-beat positions [0, 1]
+}
+
 // ─── Note quantizer ───────────────────────────────────────────────────────────
 
 export type QuantizeResolution = "1/4" | "1/8" | "1/16" | "1/32";
