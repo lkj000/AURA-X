@@ -410,6 +410,27 @@ export interface PatternSimilarity {
   isMatch:      boolean;    // overallSim >= 0.75
 }
 
+// ─── Groove complexity ────────────────────────────────────────────────────────
+
+export type ComplexityTier = "minimal" | "sparse" | "moderate" | "complex" | "dense";
+
+export interface VoiceComplexity {
+  voice:       VoiceName;
+  entropy:     number;   // [0, 1] — Shannon entropy of 16-step binary sequence
+  syncopation: number;   // [0, 1] — off-beat hit fraction
+  density:     number;   // [0, 1] — active steps / 16
+}
+
+export interface GrooveComplexityScore {
+  voiceScores:    VoiceComplexity[];  // one per voice (kick, hat, shaker, log)
+  entropy:        number;             // mean entropy across voices
+  syncopation:    number;             // log-weighted mean syncopation
+  density:        number;             // total hits / 64
+  independence:   number;             // [0, 1] — mean normalised Hamming distance across voice pairs
+  overall:        number;             // weighted ∈ [0, 1]
+  complexityTier: ComplexityTier;
+}
+
 // ─── Lane similarity ──────────────────────────────────────────────────────────
 
 export interface LanePair {

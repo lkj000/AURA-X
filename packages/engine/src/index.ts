@@ -45,6 +45,7 @@ export type {
   ChordFunction, ChordVoicing, ChordProgression,
   DriftTrend, SignalTrace, DriftReport,
   LanePair, LaneSimilarityMatrix,
+  ComplexityTier, VoiceComplexity, GrooveComplexityScore,
 }                                                     from "./types";
 
 export {
@@ -107,6 +108,9 @@ export type { AnalysisPlan }                          from "./pipeline/analysis_
 // ── Groove variations ─────────────────────────────────────────────────────────
 export { generateGrooveVariations }                   from "./groove/variation_engine";
 export type { VariationOptions }                      from "./groove/variation_engine";
+
+// ── Groove complexity ─────────────────────────────────────────────────────────
+export { scoreGrooveComplexity }                      from "./groove/complexity_scorer";
 
 // ── Comparative evaluation ────────────────────────────────────────────────────
 export { compareEvaluations, compareBuffers }         from "./evaluation/comparison";

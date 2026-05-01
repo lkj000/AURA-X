@@ -36,6 +36,7 @@ import { detectDrift } from "../pipeline/drift_detector";
 import { exportChordProgressionToMidi } from "../daw_export/chord_midi_export";
 import { runFullSession } from "../pipeline/full_session";
 import { computeLaneSimilarityMatrix } from "../audio_intelligence/lane_similarity";
+import { scoreGrooveComplexity } from "../groove/complexity_scorer";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -2685,7 +2686,112 @@ describe("lane_similarity", () => {
   });
 });
 
-// ── 35. Lane grammar constants ────────────────────────────────────────────────
+// ── 35. Groove complexity scorer ─────────────────────────────────────────────
+
+describe("groove_complexity", () => {
+  const set = generateGrooveVariations("sgija");
+
+  test("returns a GrooveComplexityScore", () => {
+    const score = scoreGrooveComplexity(set.main);
+    expect(score).toBeDefined();
+    expect(score.voiceScores).toHaveLength(4);
+  });
+
+  test("voiceScores covers kick, hat, shaker, log in order", () => {
+    const { voiceScores } = scoreGrooveComplexity(set.main);
+    expect(voiceScores.map((v) => v.voice)).toEqual(["kick", "hat", "shaker", "log"]);
+  });
+
+  test("all voice entropy values in [0, 1]", () => {
+    const { voiceScores } = scoreGrooveComplexity(set.main);
+    for (const v of voiceScores) {
+      expect(v.entropy).toBeGreaterThanOrEqual(0);
+      expect(v.entropy).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("all voice syncopation values in [0, 1]", () => {
+    const { voiceScores } = scoreGrooveComplexity(set.main);
+    for (const v of voiceScores) {
+      expect(v.syncopation).toBeGreaterThanOrEqual(0);
+      expect(v.syncopation).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("all voice density values in [0, 1]", () => {
+    const { voiceScores } = scoreGrooveComplexity(set.main);
+    for (const v of voiceScores) {
+      expect(v.density).toBeGreaterThanOrEqual(0);
+      expect(v.density).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("aggregate entropy in [0, 1]", () => {
+    const s = scoreGrooveComplexity(set.main);
+    expect(s.entropy).toBeGreaterThanOrEqual(0);
+    expect(s.entropy).toBeLessThanOrEqual(1);
+  });
+
+  test("syncopation in [0, 1]", () => {
+    const s = scoreGrooveComplexity(set.main);
+    expect(s.syncopation).toBeGreaterThanOrEqual(0);
+    expect(s.syncopation).toBeLessThanOrEqual(1);
+  });
+
+  test("density in [0, 1]", () => {
+    const s = scoreGrooveComplexity(set.main);
+    expect(s.density).toBeGreaterThanOrEqual(0);
+    expect(s.density).toBeLessThanOrEqual(1);
+  });
+
+  test("independence in [0, 1]", () => {
+    const s = scoreGrooveComplexity(set.main);
+    expect(s.independence).toBeGreaterThanOrEqual(0);
+    expect(s.independence).toBeLessThanOrEqual(1);
+  });
+
+  test("overall in [0, 1]", () => {
+    const s = scoreGrooveComplexity(set.main);
+    expect(s.overall).toBeGreaterThanOrEqual(0);
+    expect(s.overall).toBeLessThanOrEqual(1);
+  });
+
+  test("complexityTier is a valid tier string", () => {
+    const valid = new Set(["minimal", "sparse", "moderate", "complex", "dense"]);
+    const s = scoreGrooveComplexity(set.main);
+    expect(valid.has(s.complexityTier)).toBe(true);
+  });
+
+  test("breakdown (no log drum) has lower complexity than fill", () => {
+    const bd   = scoreGrooveComplexity(set.breakdown);
+    const fill = scoreGrooveComplexity(set.fill);
+    expect(fill.overall).toBeGreaterThan(bd.overall);
+  });
+
+  test("fill has higher density than breakdown", () => {
+    const bd   = scoreGrooveComplexity(set.breakdown);
+    const fill = scoreGrooveComplexity(set.fill);
+    expect(fill.density).toBeGreaterThan(bd.density);
+  });
+
+  test("all-zero pattern produces entropy 0", () => {
+    const emptyPlan = { ...set.breakdown, logDrumPattern: new Array(16).fill(0) as unknown as readonly number[] };
+    const s = scoreGrooveComplexity(emptyPlan);
+    const logScore = s.voiceScores.find((v) => v.voice === "log")!;
+    expect(logScore.entropy).toBeCloseTo(0, 9);
+  });
+
+  test("works for all 8 lanes and 5 variants without throwing", () => {
+    for (const lane of LANES) {
+      const s = generateGrooveVariations(lane);
+      for (const variant of [s.main, s.variation, s.fill, s.breakdown, s.build]) {
+        expect(() => scoreGrooveComplexity(variant)).not.toThrow();
+      }
+    }
+  });
+});
+
+// ── 36. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;
