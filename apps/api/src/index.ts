@@ -14,6 +14,7 @@ import tracksRouter from "./routes/tracks";
 import licensingRouter from "./routes/licensing";
 import royaltiesRouter from "./routes/royalties";
 import marketplaceRouter from "./routes/marketplace";
+import earningsRouter from "./routes/earnings";
 
 const app = express();
 
@@ -64,6 +65,7 @@ app.use("/api/tracks", tracksRouter);
 app.use("/api/licensing", licensingRouter);
 app.use("/api/royalties", royaltiesRouter);
 app.use("/api/marketplace", marketplaceRouter);
+app.use("/api/earnings", earningsRouter);
 
 // Start BullMQ workers (side-effect import — only in server process)
 if (require.main === module) {
