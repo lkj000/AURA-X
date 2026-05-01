@@ -69,6 +69,7 @@ export type {
   EuclideanResult,
   PolyrhythmLayer, PolyrhythmResult,
   CombineMode, CombineResult,
+  QuantizeResolution, QuantizeNoteResult,
 }                                                     from "./types";
 
 export {
@@ -242,6 +243,10 @@ export type { PolyrhythmOptions }                     from "./groove/polyrhythm_
 // ── Groove pattern combiner ───────────────────────────────────────────────────
 export { combinePatterns }                            from "./groove/pattern_combiner";
 export type { CombineOptions }                        from "./groove/pattern_combiner";
+
+// ── Note quantizer ────────────────────────────────────────────────────────────
+export { quantizeNotes }                              from "./daw_export/note_quantizer";
+export type { QuantizeNoteOptions }                   from "./daw_export/note_quantizer";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";

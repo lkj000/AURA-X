@@ -464,6 +464,17 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Note quantizer ───────────────────────────────────────────────────────────
+
+export type QuantizeResolution = "1/4" | "1/8" | "1/16" | "1/32";
+
+export interface QuantizeNoteResult {
+  notes:         MidiNoteEvent[];   // quantized copies of input notes
+  originalTicks: number[];          // original startTick per note
+  shiftedTicks:  number[];          // signed tick shift applied per note
+  strength:      number;            // quantize strength used [0, 1]
+}
+
 // ─── Pattern combiner ─────────────────────────────────────────────────────────
 
 export type CombineMode = "or" | "and" | "xor" | "a_not_b" | "b_not_a" | "interleave";

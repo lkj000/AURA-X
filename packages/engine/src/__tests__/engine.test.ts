@@ -60,6 +60,7 @@ import { retrogradePattern }     from "../groove/retrograde";
 import { generateEuclidean }     from "../groove/euclidean_rhythm";
 import { generatePolyrhythm }   from "../groove/polyrhythm_generator";
 import { combinePatterns }      from "../groove/pattern_combiner";
+import { quantizeNotes }        from "../daw_export/note_quantizer";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -4828,5 +4829,94 @@ describe("59. Groove pattern combiner", () => {
   test("output is deterministic", () => {
     expect(combinePatterns(A, B, { mode: "xor" }))
       .toEqual(combinePatterns(A, B, { mode: "xor" }));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 60. Note quantizer
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("60. Note quantizer", () => {
+  const TPB = 480;
+  const GRID_16 = 120;   // 480 / 4
+
+  function note(startTick: number): MidiNoteEvent {
+    return { pitch: 60, startTick, durationTicks: 96, velocity: 80, channel: 0 };
+  }
+
+  test("empty input returns empty output", () => {
+    const r = quantizeNotes([]);
+    expect(r.notes).toHaveLength(0);
+    expect(r.originalTicks).toHaveLength(0);
+    expect(r.shiftedTicks).toHaveLength(0);
+  });
+
+  test("note exactly on grid → zero shift", () => {
+    const r = quantizeNotes([note(240)]);   // 240 = 2 × 120 grid
+    expect(r.shiftedTicks[0]).toBe(0);
+    expect(r.notes[0].startTick).toBe(240);
+  });
+
+  test("note halfway between grid points → snaps to nearest (up)", () => {
+    // halfway between 120 and 240 → 180; nearest grid is 240 (rounds up)
+    const r = quantizeNotes([note(180)], { resolution: "1/16" });
+    expect(r.notes[0].startTick).toBe(240);
+  });
+
+  test("note just before grid point → snaps to next grid", () => {
+    // 115 ticks: nearest 1/16 grid = 120
+    const r = quantizeNotes([note(115)]);
+    expect(r.notes[0].startTick).toBe(120);
+  });
+
+  test("strength=0 → no movement", () => {
+    const r = quantizeNotes([note(110)], { strength: 0 });
+    expect(r.notes[0].startTick).toBe(110);
+    expect(r.shiftedTicks[0]).toBe(0);
+  });
+
+  test("strength=0.5 → half the snap distance", () => {
+    // note at 100, nearest grid = 120, distance = 20, half = 10 → 110
+    const r = quantizeNotes([note(100)], { strength: 0.5, resolution: "1/16" });
+    expect(r.notes[0].startTick).toBe(110);
+  });
+
+  test("strength=1 → full snap to nearest grid", () => {
+    const r = quantizeNotes([note(110)], { strength: 1.0, resolution: "1/16" });
+    expect(r.notes[0].startTick).toBe(120);
+  });
+
+  test("resolution '1/8' grid = 240 ticks at PPQ 480", () => {
+    // note at 200 → nearest 1/8 grid: 0 or 240; 200 closer to 240 → 240
+    const r = quantizeNotes([note(200)], { resolution: "1/8" });
+    expect(r.notes[0].startTick).toBe(240);
+  });
+
+  test("resolution '1/4' grid = 480 ticks at PPQ 480", () => {
+    const r = quantizeNotes([note(250)], { resolution: "1/4" });
+    expect(r.notes[0].startTick).toBe(480);
+  });
+
+  test("originalTicks contains pre-quantize positions", () => {
+    const r = quantizeNotes([note(110), note(250)]);
+    expect(r.originalTicks).toEqual([110, 250]);
+  });
+
+  test("shiftedTicks = quantized − original for each note", () => {
+    const r = quantizeNotes([note(110), note(250)]);
+    for (let i = 0; i < r.notes.length; i++) {
+      expect(r.shiftedTicks[i]).toBe(r.notes[i].startTick - r.originalTicks[i]);
+    }
+  });
+
+  test("quantized startTick never goes below 0", () => {
+    // note at tick 5 — nearest 1/16 grid is 0 (closer than 120)
+    const r = quantizeNotes([note(5)]);
+    expect(r.notes[0].startTick).toBeGreaterThanOrEqual(0);
+  });
+
+  test("output is deterministic", () => {
+    const input = [note(110), note(230), note(350)];
+    expect(quantizeNotes(input)).toEqual(quantizeNotes(input));
   });
 });
