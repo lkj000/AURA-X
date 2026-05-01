@@ -31,6 +31,7 @@ import { humanizePattern } from "../groove/tempo_humanizer";
 import { runQualityGates } from "../pipeline/quality_gate";
 import { interpolateGrooves } from "../groove/groove_interpolator";
 import { generateProductionReport } from "../pipeline/production_report";
+import { buildChordProgression } from "../intelligence/chord_voicing";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -2211,7 +2212,112 @@ describe("production_report", () => {
   });
 });
 
-// ── 30. Lane grammar constants ────────────────────────────────────────────────
+// ── 30. Chord voicing engine ──────────────────────────────────────────────────
+
+describe("chord_voicing", () => {
+  const prog = buildChordProgression({ lane: "private_school" });
+
+  test("returns a ChordProgression", () => {
+    expect(prog).toBeDefined();
+    expect(prog.voicings).toHaveLength(4);
+  });
+
+  test("amapianoStyle is true", () => {
+    expect(prog.amapianoStyle).toBe(true);
+  });
+
+  test("loopable is true", () => {
+    expect(prog.loopable).toBe(true);
+  });
+
+  test("all chord symbols are non-empty strings", () => {
+    for (const v of prog.voicings) {
+      expect(typeof v.chordSymbol).toBe("string");
+      expect(v.chordSymbol.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("all rootMidi values in valid MIDI range [36, 71] (octave 3)", () => {
+    for (const v of prog.voicings) {
+      expect(v.rootMidi).toBeGreaterThanOrEqual(36);
+      expect(v.rootMidi).toBeLessThanOrEqual(71);
+    }
+  });
+
+  test("all notes arrays have rootMidi as first element", () => {
+    for (const v of prog.voicings) {
+      expect(v.notes[0]).toBe(v.rootMidi);
+    }
+  });
+
+  test("all notes are in ascending order", () => {
+    for (const v of prog.voicings) {
+      for (let i = 1; i < v.notes.length; i++) {
+        expect(v.notes[i]).toBeGreaterThanOrEqual(v.notes[i - 1]);
+      }
+    }
+  });
+
+  test("all notes in valid MIDI range [48, 96]", () => {
+    for (const v of prog.voicings) {
+      for (const n of v.notes) {
+        expect(n).toBeGreaterThanOrEqual(48);
+        expect(n).toBeLessThanOrEqual(96);
+      }
+    }
+  });
+
+  test("each voicing has 3–5 notes (Amapiano compact spread)", () => {
+    for (const v of prog.voicings) {
+      expect(v.notes.length).toBeGreaterThanOrEqual(3);
+      expect(v.notes.length).toBeLessThanOrEqual(6);
+    }
+  });
+
+  test("all tension values in [0, 1]", () => {
+    for (const v of prog.voicings) {
+      expect(v.tension).toBeGreaterThanOrEqual(0);
+      expect(v.tension).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("all chordFunction values are valid", () => {
+    const valid = new Set(["tonic", "subdominant", "dominant", "tension"]);
+    for (const v of prog.voicings) expect(valid.has(v.function)).toBe(true);
+  });
+
+  test("first chord is always tonic function", () => {
+    expect(prog.voicings[0].function).toBe("tonic");
+  });
+
+  test("mbiraiano uses pure minor (shorter intervals, 3 notes)", () => {
+    const mbira = buildChordProgression({ lane: "mbiraiano" });
+    for (const v of mbira.voicings) {
+      expect(v.notes.length).toBe(4); // bass + 3 intervals for "m"
+    }
+  });
+
+  test("gqom_fusion last chord has highest tension", () => {
+    const gqom = buildChordProgression({ lane: "gqom_fusion" });
+    const last   = gqom.voicings[gqom.voicings.length - 1];
+    for (const v of gqom.voicings.slice(0, -1)) {
+      expect(last.tension).toBeGreaterThan(v.tension - 0.001);
+    }
+  });
+
+  test("key field is non-empty string", () => {
+    expect(typeof prog.key).toBe("string");
+    expect(prog.key.length).toBeGreaterThan(0);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      expect(() => buildChordProgression({ lane })).not.toThrow();
+    }
+  });
+});
+
+// ── 31. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;

@@ -410,6 +410,26 @@ export interface PatternSimilarity {
   isMatch:      boolean;    // overallSim >= 0.75
 }
 
+// ─── Chord voicing ────────────────────────────────────────────────────────────
+
+export type ChordFunction = "tonic" | "subdominant" | "dominant" | "tension";
+
+export interface ChordVoicing {
+  chordSymbol: string;     // e.g. "Am9", "Fmaj7"
+  rootMidi:    number;     // MIDI note for bass root (octave 3)
+  notes:       number[];   // all MIDI notes lowest → highest (4–5 notes)
+  function:    ChordFunction;
+  tension:     number;     // [0, 1] — 0 = stable, 1 = highly dissonant
+}
+
+export interface ChordProgression {
+  lane:         Lane;
+  key:          string;          // root key e.g. "Am"
+  voicings:     ChordVoicing[];  // exactly 4 chords
+  loopable:     boolean;         // last chord voice-leads back to first
+  amapianoStyle: boolean;        // wide voicing + omitted 5ths applied
+}
+
 // ─── Production report ────────────────────────────────────────────────────────
 
 export interface ProductionReportSummary {

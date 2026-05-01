@@ -42,6 +42,7 @@ export type {
   GradeLabel, GateResult, QualityGateReport,
   GrooveInterpolation,
   ProductionReportSummary, ProductionReport,
+  ChordFunction, ChordVoicing, ChordProgression,
 }                                                     from "./types";
 
 export {
@@ -118,6 +119,10 @@ export { generateMixSpec }                            from "./mix/mix_spec";
 // ── Sample recommendation ─────────────────────────────────────────────────────
 export { recommendSamples }                           from "./intelligence/sample_recommender";
 export type { RecommenderOptions }                    from "./intelligence/sample_recommender";
+
+// ── Chord voicing ─────────────────────────────────────────────────────────────
+export { buildChordProgression }                      from "./intelligence/chord_voicing";
+export type { VoicingOptions }                        from "./intelligence/chord_voicing";
 
 // ── Tempo humanizer ───────────────────────────────────────────────────────────
 export { humanizePattern }                            from "./groove/tempo_humanizer";
