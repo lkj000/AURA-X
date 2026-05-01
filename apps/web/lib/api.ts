@@ -2,8 +2,8 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3003";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...init?.headers },
     ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!res.ok) {
     let detail = "";
