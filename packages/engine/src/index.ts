@@ -58,6 +58,7 @@ export type {
   ScaleName, QuantizedNote, ScaleQuantizeResult,
   TensionLabel, ChordTension, TensionArc,
   StructureRule, StructureValidation,
+  CallAndResponse,
 }                                                     from "./types";
 
 export {
@@ -167,6 +168,10 @@ export { scoreTension }                               from "./intelligence/tensi
 
 // ── Song structure validator ──────────────────────────────────────────────────
 export { validateStructure }                          from "./pipeline/structure_validator";
+
+// ── Call-and-response generator ───────────────────────────────────────────────
+export { generateCallResponse }                       from "./groove/call_response_generator";
+export type { CallResponseOptions }                   from "./groove/call_response_generator";
 
 // ── Sample recommendation ─────────────────────────────────────────────────────
 export { recommendSamples }                           from "./intelligence/sample_recommender";

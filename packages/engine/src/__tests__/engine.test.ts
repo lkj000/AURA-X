@@ -49,6 +49,7 @@ import { generateWidthAutomation } from "../arrangement/width_automator";
 import { quantizeToScale, SCALE_INTERVALS } from "../intelligence/scale_quantizer";
 import { scoreTension } from "../intelligence/tension_scorer";
 import { validateStructure } from "../pipeline/structure_validator";
+import { generateCallResponse } from "../groove/call_response_generator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -3860,6 +3861,81 @@ describe("structure_validator", () => {
     for (const lane of LANES) {
       const a = planArrangementArc(lane, { totalBars: 64 });
       expect(() => validateStructure(a)).not.toThrow();
+    }
+  });
+});
+
+// ── 49. Call-and-response generator ──────────────────────────────────────────
+
+describe("call_response_generator", () => {
+  const cr = generateCallResponse("private_school", { density: "medium" });
+
+  test("call pattern has exactly 16 steps", () => {
+    expect(cr.call).toHaveLength(16);
+  });
+
+  test("response pattern has exactly 16 steps", () => {
+    expect(cr.response).toHaveLength(16);
+  });
+
+  test("all response values are 0 or 1", () => {
+    for (const v of cr.response) expect(v === 0 || v === 1).toBe(true);
+  });
+
+  test("complement + overlap = 1.0", () => {
+    expect(cr.complement + cr.overlap).toBeCloseTo(1.0, 6);
+  });
+
+  test("complement is the fraction of response hits on call-silent steps", () => {
+    const total    = cr.response.reduce((s, v) => s + v, 0);
+    const compHits = cr.response.reduce((s, v, i) => s + (v === 1 && cr.call[i] === 0 ? 1 : 0), 0);
+    const expected = total > 0 ? compHits / total : 0;
+    expect(cr.complement).toBeCloseTo(expected, 6);
+  });
+
+  test("dense density produces more response hits than sparse", () => {
+    const dense  = generateCallResponse("private_school", { density: "dense"  });
+    const sparse = generateCallResponse("private_school", { density: "sparse" });
+    const dHits  = dense.response.reduce((s, v) => s + v, 0);
+    const sHits  = sparse.response.reduce((s, v) => s + v, 0);
+    expect(dHits).toBeGreaterThanOrEqual(sHits);
+  });
+
+  test("callVoice and respVoice are reflected in output", () => {
+    expect(cr.callVoice).toBe("log");
+    expect(cr.respVoice).toBe("hat");
+  });
+
+  test("output is deterministic", () => {
+    const a = generateCallResponse("sgija", { density: "dense", callVoice: "log", respVoice: "hat" });
+    const b = generateCallResponse("sgija", { density: "dense", callVoice: "log", respVoice: "hat" });
+    expect(a.response).toEqual(b.response);
+  });
+
+  test("all-zero call produces complement = 1.0 (all hits fill silences)", () => {
+    const silentCall = new Array(16).fill(0);
+    const r = generateCallResponse("private_school", { callPattern: silentCall });
+    if (r.response.some((v) => v === 1)) {
+      expect(r.complement).toBeCloseTo(1.0, 6);
+      expect(r.overlap).toBeCloseTo(0.0, 6);
+    }
+  });
+
+  test("complement is in [0, 1]", () => {
+    expect(cr.complement).toBeGreaterThanOrEqual(0);
+    expect(cr.complement).toBeLessThanOrEqual(1);
+  });
+
+  test("medium density: complement > 0.5 (majority fills silences)", () => {
+    expect(cr.complement).toBeGreaterThan(0.5);
+  });
+
+  test("works for all 8 lanes and all densities without throwing", () => {
+    const densities = ["sparse", "medium", "dense"] as const;
+    for (const lane of LANES) {
+      for (const d of densities) {
+        expect(() => generateCallResponse(lane, { density: d })).not.toThrow();
+      }
     }
   });
 });

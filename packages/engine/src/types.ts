@@ -447,6 +447,17 @@ export interface ReverbSpec {
   params:     ReverbParams[];   // one per stem, ordered sub_bass → air
 }
 
+// ─── Call-and-response ────────────────────────────────────────────────────────
+
+export interface CallAndResponse {
+  call:       number[];   // 16-step binary call pattern (input, as array copy)
+  response:   number[];   // 16-step binary response pattern (generated)
+  callVoice:  VoiceName;
+  respVoice:  VoiceName;
+  complement: number;     // fraction of response hits that land on call-silent steps [0, 1]
+  overlap:    number;     // fraction of response hits that land on call-active steps [0, 1]
+}
+
 // ─── Structure validation ─────────────────────────────────────────────────────
 
 export interface StructureRule {
