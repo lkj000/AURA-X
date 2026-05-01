@@ -143,3 +143,7 @@ export { generateProductionReport }                   from "./pipeline/productio
 
 // ── Session drift detector ────────────────────────────────────────────────────
 export { detectDrift }                                from "./pipeline/drift_detector";
+
+// ── Full session engine ───────────────────────────────────────────────────────
+export { runFullSession }                             from "./pipeline/full_session";
+export type { FullSessionOptions, FullSession }       from "./pipeline/full_session";

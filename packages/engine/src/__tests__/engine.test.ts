@@ -34,6 +34,7 @@ import { generateProductionReport } from "../pipeline/production_report";
 import { buildChordProgression } from "../intelligence/chord_voicing";
 import { detectDrift } from "../pipeline/drift_detector";
 import { exportChordProgressionToMidi } from "../daw_export/chord_midi_export";
+import { runFullSession } from "../pipeline/full_session";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -2487,7 +2488,104 @@ describe("chord_midi_export", () => {
   });
 });
 
-// ── 33. Lane grammar constants ────────────────────────────────────────────────
+// ── 33. Full session engine ───────────────────────────────────────────────────
+
+describe("full_session", () => {
+  let session: ReturnType<typeof runFullSession>;
+  beforeAll(() => { session = runFullSession({ lane: "sgija" }); });
+
+  test("returns a FullSession object", () => {
+    expect(session).toBeDefined();
+    expect(session.lane).toBe("sgija");
+  });
+
+  test("bpm defaults to lane target", () => {
+    expect(session.bpm).toBeGreaterThan(0);
+  });
+
+  test("grooves has all 5 variants", () => {
+    expect(session.grooves.main).toBeDefined();
+    expect(session.grooves.variation).toBeDefined();
+    expect(session.grooves.fill).toBeDefined();
+    expect(session.grooves.breakdown).toBeDefined();
+    expect(session.grooves.build).toBeDefined();
+  });
+
+  test("fingerprints has entries for all 5 variants", () => {
+    for (const v of ["main", "variation", "fill", "breakdown", "build"]) {
+      expect(session.fingerprints[v as keyof typeof session.fingerprints]).toBeDefined();
+      expect(session.fingerprints[v as keyof typeof session.fingerprints].hash).toHaveLength(32);
+    }
+  });
+
+  test("arc has 8 sections", () => {
+    expect(session.arc.sections).toHaveLength(8);
+  });
+
+  test("arc lane matches session lane", () => {
+    expect(session.arc.lane).toBe(session.lane);
+  });
+
+  test("humanized.lane matches session lane", () => {
+    expect(session.humanized.lane).toBe(session.lane);
+  });
+
+  test("interpolated.laneA and laneB are both session lane", () => {
+    expect(session.interpolated.laneA).toBe(session.lane);
+    expect(session.interpolated.laneB).toBe(session.lane);
+  });
+
+  test("samplePack has 6 recommendations", () => {
+    expect(session.samplePack.recommendations).toHaveLength(6);
+  });
+
+  test("chords has 4 voicings", () => {
+    expect(session.chords.voicings).toHaveLength(4);
+  });
+
+  test("mixSpec is null when no evaluation provided", () => {
+    expect(session.mixSpec).toBeNull();
+  });
+
+  test("report is null when no evaluation provided", () => {
+    expect(session.report).toBeNull();
+  });
+
+  test("grooveMidi is a Buffer with MThd header", () => {
+    expect(Buffer.isBuffer(session.grooveMidi)).toBe(true);
+    expect(session.grooveMidi[0]).toBe(0x4d);
+    expect(session.grooveMidi[3]).toBe(0x64);
+  });
+
+  test("chordMidi is a Buffer with MThd header", () => {
+    expect(Buffer.isBuffer(session.chordMidi)).toBe(true);
+    expect(session.chordMidi[0]).toBe(0x4d);
+    expect(session.chordMidi[3]).toBe(0x64);
+  });
+
+  test("with evaluation: mixSpec and report are populated", () => {
+    const ev = evaluateBuffer(buildWav(4));
+    const s  = runFullSession({ lane: "sgija", evaluation: ev });
+    expect(s.mixSpec).not.toBeNull();
+    expect(s.report).not.toBeNull();
+    expect(s.report!.summary.lane).toBeDefined();
+  });
+
+  test("custom bpm is respected across modules", () => {
+    const s = runFullSession({ lane: "bacardi", bpm: 120 });
+    expect(s.bpm).toBe(120);
+    expect(s.arc.bpm).toBe(120);
+    expect(s.humanized.bpm).toBe(120);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      expect(() => runFullSession({ lane })).not.toThrow();
+    }
+  });
+});
+
+// ── 34. Lane grammar constants ────────────────────────────────────────────────
 
 describe("LANE_GRAMMARS", () => {
   const lanes = ["private_school", "sgija", "bacardi", "stixx_sgija", "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano"] as const;
