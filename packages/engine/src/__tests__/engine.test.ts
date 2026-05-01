@@ -38,6 +38,7 @@ import { runFullSession } from "../pipeline/full_session";
 import { computeLaneSimilarityMatrix } from "../audio_intelligence/lane_similarity";
 import { scoreGrooveComplexity } from "../groove/complexity_scorer";
 import { transposeProgression } from "../intelligence/key_transposer";
+import { automateGains } from "../arrangement/stem_gain_automator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -2907,4 +2908,95 @@ describe("LANE_GRAMMARS", () => {
       expect(LANE_GRAMMARS[lane].swing).toBeLessThanOrEqual(0.58);
     });
   }
+});
+
+// ── 38. Stem gain automator ───────────────────────────────────────────────────
+
+describe("stem_gain_automator", () => {
+  const arc = planArrangementArc("private_school", { totalBars: 64 });
+  const automation = automateGains(arc);
+
+  test("returns one curve per stem (5 stems)", () => {
+    expect(automation.curves).toHaveLength(5);
+  });
+
+  test("each curve has the correct stem name", () => {
+    const names = automation.curves.map((c) => c.stem);
+    expect(names).toContain("sub_bass");
+    expect(names).toContain("log_drum");
+    expect(names).toContain("chord_pad");
+    expect(names).toContain("percussion");
+    expect(names).toContain("air");
+  });
+
+  test("totalBars matches arc", () => {
+    expect(automation.totalBars).toBe(arc.totalBars);
+  });
+
+  test("all gain values are clamped to [0, 1]", () => {
+    for (const curve of automation.curves) {
+      for (const p of curve.points) {
+        expect(p.gain).toBeGreaterThanOrEqual(0);
+        expect(p.gain).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  test("gain points are in ascending bar order", () => {
+    for (const curve of automation.curves) {
+      for (let i = 1; i < curve.points.length; i++) {
+        expect(curve.points[i].bar).toBeGreaterThan(curve.points[i - 1].bar);
+      }
+    }
+  });
+
+  test("each curve has at least 2 points", () => {
+    for (const curve of automation.curves) {
+      expect(curve.points.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  test("drop sections bring sub_bass to 1.0", () => {
+    const subBass = automation.curves.find((c) => c.stem === "sub_bass")!;
+    const drop1Section = arc.sections.find((s) => s.name === "drop1")!;
+    const dropPoint = subBass.points.find((p) => p.bar === drop1Section.endBar);
+    expect(dropPoint?.gain).toBe(1.0);
+  });
+
+  test("breakdown section brings sub_bass below 0.5", () => {
+    const subBass = automation.curves.find((c) => c.stem === "sub_bass")!;
+    const bdSection = arc.sections.find((s) => s.name === "breakdown")!;
+    const bdPoint = subBass.points.find((p) => p.bar === bdSection.endBar);
+    expect(bdPoint?.gain).toBeLessThan(0.5);
+  });
+
+  test("breakdown section lifts air to 1.0", () => {
+    const air = automation.curves.find((c) => c.stem === "air")!;
+    const bdSection = arc.sections.find((s) => s.name === "breakdown")!;
+    const bdPoint = air.points.find((p) => p.bar === bdSection.endBar);
+    expect(bdPoint?.gain).toBe(1.0);
+  });
+
+  test("outro_fade ends all stems at gain 0", () => {
+    for (const curve of automation.curves) {
+      const last = curve.points[curve.points.length - 1];
+      expect(last.gain).toBe(0);
+    }
+  });
+
+  test("build1 end gain is higher than intro end gain for log_drum", () => {
+    const log = automation.curves.find((c) => c.stem === "log_drum")!;
+    const introEnd = arc.sections.find((s) => s.name === "intro")!.endBar;
+    const build1End = arc.sections.find((s) => s.name === "build1")!.endBar;
+    const introGain = log.points.find((p) => p.bar === introEnd)?.gain ?? 0;
+    const build1Gain = log.points.find((p) => p.bar === build1End)?.gain ?? 0;
+    expect(build1Gain).toBeGreaterThan(introGain);
+  });
+
+  test("works for all 8 lanes without throwing", () => {
+    for (const lane of LANES) {
+      const a = planArrangementArc(lane, { totalBars: 32 });
+      expect(() => automateGains(a)).not.toThrow();
+    }
+  });
 });

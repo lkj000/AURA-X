@@ -47,6 +47,7 @@ export type {
   LanePair, LaneSimilarityMatrix,
   ComplexityTier, VoiceComplexity, GrooveComplexityScore,
   TransposeResult,
+  GainPoint, StemGainCurve, GainAutomation,
 }                                                     from "./types";
 
 export {
@@ -122,6 +123,9 @@ export { fingerprintGroovePlan, comparePatterns }     from "./groove/pattern_fin
 // ── Arrangement arc ───────────────────────────────────────────────────────────
 export { planArrangementArc }                         from "./arrangement/arc_planner";
 export type { ArcOptions }                            from "./arrangement/arc_planner";
+
+// ── Stem gain automation ──────────────────────────────────────────────────────
+export { automateGains }                              from "./arrangement/stem_gain_automator";
 
 // ── Mix spec ──────────────────────────────────────────────────────────────────
 export { generateMixSpec }                            from "./mix/mix_spec";

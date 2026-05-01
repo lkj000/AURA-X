@@ -419,6 +419,23 @@ export interface TransposeResult {
   semitones:   number;            // signed shortest-path offset (−6 … +6)
 }
 
+// ─── Stem gain automation ─────────────────────────────────────────────────────
+
+export interface GainPoint {
+  bar:  number;   // absolute bar index within the arrangement
+  gain: number;   // normalised amplitude [0, 1]
+}
+
+export interface StemGainCurve {
+  stem:   StemName;
+  points: GainPoint[];   // ascending by bar; interpolate linearly between points
+}
+
+export interface GainAutomation {
+  totalBars: number;
+  curves:    StemGainCurve[];   // one curve per stem
+}
+
 // ─── Groove complexity ────────────────────────────────────────────────────────
 
 export type ComplexityTier = "minimal" | "sparse" | "moderate" | "complex" | "dense";
