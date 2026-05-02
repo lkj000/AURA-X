@@ -8,7 +8,7 @@ const router = Router();
 // POST /api/generate
 // Body: { track_id, ctl_id, ctl, mode_override? }
 router.post("/", async (req: Request, res: Response): Promise<void> => {
-  const { track_id, ctl_id, mode_override } = req.body;
+  const { track_id, ctl_id, mode_override, webhook_url } = req.body;
 
   if (!track_id || !ctl_id) {
     res.status(400).json({ error: "track_id and ctl_id are required" });
@@ -26,6 +26,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     ctl_id,
     ctl: parsed.data,
     mode_override,
+    webhook_url: typeof webhook_url === "string" ? webhook_url : undefined,
   });
 
   const statusCode =

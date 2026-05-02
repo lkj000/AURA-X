@@ -10,6 +10,7 @@ export type GenerationRequest = {
   ctl_id: string;
   ctl: CTLv1;
   mode_override?: "mode_1_suno" | "mode_2_musicgen" | "mode_3_suno_api";
+  webhook_url?: string;
 };
 
 export type GenerationResponse = {
@@ -156,6 +157,7 @@ export async function runGeneration(
         generation_id,
         track_id: req.track_id,
         prediction_id: prediction.id,
+        webhook_url: req.webhook_url,
       });
 
       return {
@@ -217,6 +219,7 @@ async function enqueueMode2Completion(data: {
   generation_id: string;
   track_id: string;
   prediction_id: string;
+  webhook_url?: string;
 }): Promise<void> {
   const { generationQueue } = await import("../queue");
   if (!generationQueue) return; // Redis unavailable in local dev
@@ -228,6 +231,7 @@ async function enqueueMode2Completion(data: {
       ctl_id: "pending",
       generation_id: data.generation_id,
       prediction_id: data.prediction_id,
+      ...(data.webhook_url ? { webhook_url: data.webhook_url } : {}),
     },
     {
       attempts: 10,

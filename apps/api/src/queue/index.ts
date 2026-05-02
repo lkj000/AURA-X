@@ -24,6 +24,15 @@ export type GenerationMode2Job = {
   track_id: string;
   ctl_id: string;
   generation_id: string;
+  webhook_url?: string;
+};
+
+export type WebhookJobData = {
+  type: "webhook.deliver";
+  generation_id: string;
+  webhook_url: string;
+  event: "complete" | "gate_failed" | "failed";
+  payload: Record<string, unknown>;
 };
 
 export type AudioJobData      = AudioAnalyzeJob | AudioStemsJob;
@@ -36,6 +45,7 @@ export type GenerationJobData = GenerationMode2Job;
 
 let _audioQueue: import("bullmq").Queue | null = null;
 let _generationQueue: import("bullmq").Queue | null = null;
+let _webhookQueue: import("bullmq").Queue | null = null;
 export let connection: IORedis | null = null;
 
 if (!isLocalhost) {
@@ -50,16 +60,18 @@ if (!isLocalhost) {
     console.error("[queue] Redis error:", err.message);
   });
 
-  _audioQueue    = new Queue("audio-processing", { connection });
+  _audioQueue      = new Queue("audio-processing", { connection });
   _generationQueue = new Queue("generation", { connection });
+  _webhookQueue    = new Queue("webhook", { connection });
 
   console.log("[queue] BullMQ connected to Redis:", redisUrl.replace(/:\/\/.*@/, "://***@"));
 } else {
   console.log("[queue] No Redis in local dev — queue jobs disabled. Set REDIS_URL to enable.");
 }
 
-export const audioQueue    = _audioQueue;
+export const audioQueue      = _audioQueue;
 export const generationQueue = _generationQueue;
+export const webhookQueue    = _webhookQueue;
 
 // ─── ENQUEUE HELPERS ──────────────────────────────────────────────────────────
 export async function enqueueAudioAnalysis(data: Omit<AudioAnalyzeJob, "type">) {
@@ -100,6 +112,20 @@ export async function enqueueMode2Generation(data: Omit<GenerationMode2Job, "typ
       backoff: { type: "exponential", delay: 10000 },
       removeOnComplete: 100,
       removeOnFail: 50,
+    }
+  );
+}
+
+export async function enqueueWebhook(data: Omit<WebhookJobData, "type">) {
+  if (!_webhookQueue) return null;
+  return _webhookQueue.add(
+    "webhook.deliver",
+    { ...data, type: "webhook.deliver" } as WebhookJobData,
+    {
+      attempts: 5,
+      backoff: { type: "exponential", delay: 2000 },
+      removeOnComplete: 200,
+      removeOnFail: 100,
     }
   );
 }

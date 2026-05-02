@@ -3256,6 +3256,40 @@ SUCCESS CRITERIA
   [x] 25 prior tracks tests still green (no regressions)
 
 
+---
+
+### JOB H-07 — Webhook Retry / Outbound Producer Notifications
+---
+
+PROBLEM DEFINITION
+  Mode 2 generation is asynchronous: the producer receives `status: "queued"`
+  immediately and must poll GET /api/generate/status/:id to know when the job
+  finishes. There was no push-based notification mechanism, so producers had to
+  implement polling loops instead of reacting to events.
+
+SOLUTION
+  Added an outbound webhook delivery system:
+    1. POST /api/generate now accepts optional `webhook_url` in the request body.
+    2. `webhook_url` is threaded through GenerationRequest → enqueueMode2Completion
+       → the BullMQ generation job payload so the worker has it at completion time.
+    3. After each terminal state (complete / gate_failed / prediction failed),
+       generationWorker enqueues a `webhook.deliver` job if `webhook_url` is present.
+    4. A new `webhookWorker` (BullMQ "webhook" queue, concurrency 5) POSTs a JSON
+       body `{ generation_id, event, ...payload }` to the producer-supplied URL.
+    5. Retry policy: 5 attempts, exponential backoff 2s — rethrows on 5xx/network
+       errors (retry) and returns `{ skipped }` on 4xx (no retry, job completes).
+    6. `WebhookJobData` type + `_webhookQueue` + `enqueueWebhook` helper added to
+       `queue/index.ts`. Queue created alongside audio-processing and generation.
+
+SUCCESS CRITERIA
+  [x] webhookWorker registered on "webhook" queue
+  [x] 2xx → { delivered: true }; 4xx → { skipped: true } no throw; 5xx/net → throws
+  [x] axios.post called with correct URL, body, timeout: 10000
+  [x] generationWorker enqueues webhook on complete, gate_failed, prediction failed
+  [x] No webhook enqueued when webhook_url absent
+  [x] 434 tests passing, audio.test.ts pre-existing failures unchanged
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.

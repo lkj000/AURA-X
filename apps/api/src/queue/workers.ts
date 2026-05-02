@@ -1,7 +1,7 @@
 import { Worker, Job } from "bullmq";
 import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
-import { connection, AudioJobData, GenerationJobData, enqueueAudioAnalysis } from "./index";
+import { connection, AudioJobData, GenerationJobData, WebhookJobData, enqueueAudioAnalysis, enqueueWebhook } from "./index";
 import { evaluateBuffer, runQualityGates } from "@aura-x/engine";
 import { metricsCollector } from "../lib/metricsCollector";
 
@@ -154,6 +154,14 @@ export const generationWorker = new Worker(
           completed_at: new Date().toISOString(),
         })
         .eq("id", generation_id);
+      if (job.data.webhook_url) {
+        await enqueueWebhook({
+          generation_id,
+          webhook_url: job.data.webhook_url,
+          event: "failed",
+          payload: { error: prediction.error ?? `Prediction ${prediction.status}` },
+        });
+      }
       return { status: "failed", generation_id };
     }
 
@@ -240,6 +248,18 @@ export const generationWorker = new Worker(
       console.log(
         `[generation.mode2] Gate failed — grade:${gateReport.grade} score:${gateReport.overallScore.toFixed(3)} failing:[${failingGates.join(",")}]`
       );
+      if (job.data.webhook_url) {
+        await enqueueWebhook({
+          generation_id,
+          webhook_url: job.data.webhook_url,
+          event: "gate_failed",
+          payload: {
+            grade:         gateReport.grade,
+            overall_score: gateReport.overallScore,
+            failing_gates: failingGates,
+          },
+        });
+      }
       return {
         status: "gate_failed",
         generation_id,
@@ -266,6 +286,19 @@ export const generationWorker = new Worker(
       format: "wav",
     });
 
+    if (job.data.webhook_url) {
+      await enqueueWebhook({
+        generation_id,
+        webhook_url: job.data.webhook_url,
+        event: "complete",
+        payload: {
+          audio_file_id: fileId,
+          grade:         gateReport?.grade ?? "skip",
+          overall_score: gateReport?.overallScore ?? null,
+        },
+      });
+    }
+
     console.log(`[generation.mode2] ✓ Generation ${generation_id} complete — ${storagePath} grade:${gateReport?.grade ?? "skip"}`);
     return {
       status: "complete",
@@ -289,4 +322,40 @@ generationWorker.on("failed", (job, err) => {
   // "will retry" errors are expected polling retries — don't alarm
   if (err.message.includes("will retry")) return;
   console.error(`[generation-queue] Job ${job?.id} failed permanently:`, err.message);
+});
+
+// ─── WEBHOOK DELIVERY WORKER ──────────────────────────────────────────────────
+// POSTs a JSON notification to the producer-supplied webhook_url.
+// 5xx / network errors → retry (BullMQ backoff). 4xx → mark complete (skip).
+
+export const webhookWorker = new Worker<WebhookJobData>(
+  "webhook",
+  async (job) => {
+    const { webhook_url, generation_id, event, payload } = job.data;
+    try {
+      const response = await axios.post(
+        webhook_url,
+        { generation_id, event, ...payload },
+        { timeout: 10000 }
+      );
+      console.log(`[webhook.deliver] ✓ gen:${generation_id} event:${event} status:${response.status}`);
+      return { delivered: true, status: response.status };
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? (err as { response?: { status: number } }).response?.status : undefined;
+      if (status !== undefined && status >= 400 && status < 500) {
+        console.warn(`[webhook.deliver] 4xx ${status} gen:${generation_id} — not retrying`);
+        return { skipped: true, status };
+      }
+      throw err;
+    }
+  },
+  { connection, concurrency: 5 }
+);
+
+webhookWorker.on("completed", (job) => {
+  console.log(`[webhook-queue] Job ${job.id} completed`);
+});
+
+webhookWorker.on("failed", (job, err) => {
+  console.error(`[webhook-queue] Job ${job?.id} failed permanently:`, err.message);
 });

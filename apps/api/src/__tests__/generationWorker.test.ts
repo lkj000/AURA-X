@@ -100,6 +100,7 @@ jest.mock("../queue/index", () => ({
   enqueueAudioAnalysis: jest.fn().mockResolvedValue({ id: "job-1" }),
   enqueueMode2Generation: jest.fn().mockResolvedValue({ id: "job-1" }),
   enqueueAudioStems: jest.fn().mockResolvedValue({ id: "job-1" }),
+  enqueueWebhook: jest.fn().mockResolvedValue({ id: "wh-1" }),
 }));
 
 // ─── Imports ──────────────────────────────────────────────────────────────────
@@ -367,6 +368,42 @@ describe("Generation Worker", () => {
     mockEvaluateBuffer.mockImplementation(() => { throw new Error("parse error"); });
     await workerProcessor(makeJob());
     expect(mockRunQualityGates).not.toHaveBeenCalled();
+  });
+
+  // ─── Webhook dispatch ──────────────────────────────────────────────────────
+
+  it("21. Complete + webhook_url → enqueueWebhook called with event: 'complete'", async () => {
+    const { enqueueWebhook } = jest.requireMock("../queue/index");
+    mockRunQualityGates.mockReturnValue(makePassingGateReport());
+    await workerProcessor(makeJob({ webhook_url: "https://hook.example.com/cb" }));
+    expect(enqueueWebhook).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "complete", webhook_url: "https://hook.example.com/cb", generation_id: "gen-001" })
+    );
+  });
+
+  it("22. Gate failed + webhook_url → enqueueWebhook called with event: 'gate_failed'", async () => {
+    const { enqueueWebhook } = jest.requireMock("../queue/index");
+    mockRunQualityGates.mockReturnValue(makeFailingGateReport());
+    await workerProcessor(makeJob({ webhook_url: "https://hook.example.com/cb" }));
+    expect(enqueueWebhook).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "gate_failed", webhook_url: "https://hook.example.com/cb" })
+    );
+  });
+
+  it("23. Prediction failed + webhook_url → enqueueWebhook called with event: 'failed'", async () => {
+    const { enqueueWebhook } = jest.requireMock("../queue/index");
+    mockGetPrediction.mockResolvedValue(makePrediction("failed", null, "Model OOM"));
+    await workerProcessor(makeJob({ webhook_url: "https://hook.example.com/cb" }));
+    expect(enqueueWebhook).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "failed", webhook_url: "https://hook.example.com/cb" })
+    );
+  });
+
+  it("24. No webhook_url → enqueueWebhook NOT called", async () => {
+    const { enqueueWebhook } = jest.requireMock("../queue/index");
+    mockRunQualityGates.mockReturnValue(makePassingGateReport());
+    await workerProcessor(makeJob());
+    expect(enqueueWebhook).not.toHaveBeenCalled();
   });
 
 });
