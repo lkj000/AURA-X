@@ -88,18 +88,31 @@ class CtlFromGoalRequest(BaseModel):
     temperature:       float = 0.5
 
 
+class CtlFromGoalResponse(BaseModel):
+    ctl:               dict[str, Any]
+    perception_report: dict[str, Any]
+    cultural_report:   dict[str, Any]
+    quality_score:     float
+    generation_source: str
+
+
 class SignalScoreResponse(BaseModel):
-    composite_score:            float   # 0–1 blended signal quality
-    perception_state:           str     # harmonic | ambiguous | percussion
-    lane_match:                 bool    # does audio classify as target_lane?
-    classified_lane:            str     # what the audio actually sounds like
-    classification_confidence:  float
-    bpm_measured:               float
-    key_measured:               str
-    b_eff:                      float
-    transient_density:          float
-    violations:                 list[str]
-    quality_score:              float   # raw perception quality (C1/C2/C3 gates)
+    composite_score:    float   # 0–1 blended signal quality
+    lane_match:         bool    # does audio classify as target_lane?
+    lane_score:         float   # softmin probability for target_lane
+    perception_score:   float   # raw perception quality (C1/C2/C3 gates)
+    authenticity_score: float   # Mahalanobis classification confidence
+    bpm_score:          float   # BPM proximity to target_bpm (0–1)
+    key_score:          float   # key match score (1.0 | 0.5 | 0.0)
+    perception_state:   str     # harmonic | ambiguous | percussion
+    c1_pass:            bool
+    c2_pass:            bool
+    c3_pass:            bool
+    detected_lane:      str
+    detected_bpm:       float
+    detected_key:       str
+    violations:         list[str]
+    recommendations:    list[str]
 
 
 # ── WAV parsing ───────────────────────────────────────────────────────────────
@@ -225,11 +238,11 @@ async def classify_features(req: ClassifyRequest):
     }
 
 
-@app.post("/ctl/from-goal", response_model=GoalResponse)
+@app.post("/ctl/from-goal", response_model=CtlFromGoalResponse)
 async def ctl_from_goal(req: CtlFromGoalRequest):
     """
     TypeScript agent primary path: goal → CTL from lane acoustic priors.
-    Accepts the TypeScript AgentGoalInput shape (subgenre, not lane).
+    Returns enriched response with perception_report, cultural_report, quality_score.
     """
     if req.subgenre not in LANES:
         raise HTTPException(
@@ -240,17 +253,30 @@ async def ctl_from_goal(req: CtlFromGoalRequest):
     result = from_goal(
         lane=req.subgenre,
         title=req.title,
-        bpm=req.bpm,
-        key=req.key,
+        bpm=req.bpm if req.bpm and req.bpm > 0 else None,
+        key=req.key if req.key else None,
         generation_mode=req.generation_mode,
         created_by=req.created_by,
     )
 
-    return GoalResponse(
+    from .culture import get_lane_prior
+    prior = get_lane_prior(req.subgenre)
+
+    return CtlFromGoalResponse(
         ctl=result.ctl,
-        lane=result.lane,
-        perception_state=result.perception_state,
-        synthesis_ms=result.synthesis_ms,
+        perception_report={
+            "state":     result.perception_state,
+            "converged": result.perception_state == "harmonic",
+            "source":    "goal_synthesis",
+        },
+        cultural_report={
+            "best_fit_lane": req.subgenre,
+            "source":        "acoustic_prior",
+            "prior_bpm":     prior["bpm"],
+            "prior_b_eff":   prior["b_eff"],
+        },
+        quality_score=0.80,  # priors are by definition well-formed
+        generation_source="goal_synthesis",
     )
 
 
@@ -258,12 +284,12 @@ async def ctl_from_goal(req: CtlFromGoalRequest):
 async def signal_score(
     audio: UploadFile = File(...),
     target_lane: str = Form(default="private_school"),
+    target_bpm: float = Form(default=0.0),
+    target_key: str = Form(default=""),
 ):
     """
-    Signal scoring gate: analyse actual WAV output and score against target lane.
-
+    Signal scoring gate: analyse actual WAV and score against target lane.
     Called by the TypeScript generation worker after Mode 2 audio is downloaded.
-    Returns composite_score (0–1), perception state, lane classification fidelity.
     """
     raw = await audio.read()
     if len(raw) < 44:
@@ -273,34 +299,78 @@ async def signal_score(
     if len(samples) < sr:
         raise HTTPException(status_code=400, detail="Audio must be at least 1 second long")
 
-    # Extract features and evaluate
     features  = extract_features(samples, sr)
     report    = evaluate_perception(features)
     classif   = classify_from_features(features)
 
-    # Lane fidelity: does the audio classify as what was requested?
-    lane_match = classif.lane == target_lane
-    lane_match_prob = classif.probabilities.get(target_lane, 0.0)
+    # Per-constraint pass/fail
+    c_pass = {c.name: c.passed for c in report.constraints}
+    c1_pass = c_pass.get("C1_b_eff", True)
+    c2_pass = c_pass.get("C2_transient_density", True)
+    c3_pass = c_pass.get("C3_ld_anchor", True)
 
-    # Composite score: 60% perception quality + 40% lane fidelity
+    # Lane fidelity
+    lane_match      = classif.lane == target_lane
+    lane_score      = classif.probabilities.get(target_lane, 0.0)
+    auth_score      = classif.confidence
+
+    # BPM score: 1.0 within 5 BPM, falls off linearly to 0 at ±30 BPM
+    if target_bpm > 0:
+        bpm_score = float(max(0.0, 1.0 - abs(features.bpm - target_bpm) / 25.0))
+    else:
+        bpm_score = 1.0
+
+    # Key score: 1.0 exact match, 0.5 relative major/minor, 0.0 unrelated
+    key_score = 1.0
+    if target_key:
+        detected = f"{features.key_root}{'m' if features.key_mode == 'minor' else ''}"
+        if detected == target_key:
+            key_score = 1.0
+        elif features.key_root == target_key.rstrip("m"):
+            key_score = 0.5
+        else:
+            key_score = 0.0
+
+    # Composite: 35% perception + 25% lane match + 20% BPM + 10% key + 10% authenticity
     composite_score = round(
-        0.60 * report.quality_score + 0.40 * lane_match_prob, 4
+        0.35 * report.quality_score +
+        0.25 * lane_score +
+        0.20 * bpm_score +
+        0.10 * key_score +
+        0.10 * auth_score,
+        4,
     )
 
     key_str = f"{features.key_root}{'m' if features.key_mode == 'minor' else ''}"
 
+    # Recommendations from violations
+    recommendations: list[str] = []
+    if not c1_pass:
+        recommendations.append(f"Reduce sub-bass energy (b_eff={features.b_eff:.3f} > 0.40)")
+    if not c2_pass:
+        recommendations.append(f"Reduce transient density ({features.transient_density:.1f}/bar > 4)")
+    if not lane_match:
+        recommendations.append(
+            f"Audio classified as '{classif.lane}', not '{target_lane}' — review lane parameters"
+        )
+
     return SignalScoreResponse(
         composite_score=composite_score,
-        perception_state=report.state,
         lane_match=lane_match,
-        classified_lane=classif.lane,
-        classification_confidence=classif.confidence,
-        bpm_measured=features.bpm,
-        key_measured=key_str,
-        b_eff=features.b_eff,
-        transient_density=features.transient_density,
+        lane_score=round(lane_score, 4),
+        perception_score=round(report.quality_score, 4),
+        authenticity_score=round(auth_score, 4),
+        bpm_score=round(bpm_score, 4),
+        key_score=round(key_score, 4),
+        perception_state=report.state,
+        c1_pass=c1_pass,
+        c2_pass=c2_pass,
+        c3_pass=c3_pass,
+        detected_lane=classif.lane,
+        detected_bpm=features.bpm,
+        detected_key=key_str,
         violations=report.violations,
-        quality_score=report.quality_score,
+        recommendations=recommendations,
     )
 
 
