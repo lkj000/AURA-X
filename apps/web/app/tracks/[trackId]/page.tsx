@@ -207,8 +207,8 @@ export default function TrackDetailPage({ params }: { params: Promise<{ trackId:
 
           <div className="space-y-2">
             <input
-              type="text"
-              placeholder="Your JWT"
+              type="password"
+              placeholder="API token (from Sign up → copy token)"
               value={sunoToken}
               onChange={(e) => setSunoToken(e.target.value)}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-violet-500"
@@ -268,9 +268,13 @@ export default function TrackDetailPage({ params }: { params: Promise<{ trackId:
               "text-xs px-2 py-0.5 rounded-full border",
               track.generation.status === "complete"
                 ? "bg-emerald-500/20 text-emerald-400 border-emerald-800"
-                : "bg-zinc-700/50 text-zinc-400 border-zinc-700"
+                : track.generation.mode === "mode_1_suno" && track.generation.prompt_style
+                  ? "bg-violet-500/20 text-violet-400 border-violet-800"
+                  : "bg-zinc-700/50 text-zinc-400 border-zinc-700"
             )}>
-              {track.generation.status}
+              {track.generation.status === "failed" && track.generation.mode === "mode_1_suno" && track.generation.prompt_style
+                ? "prompt ready"
+                : track.generation.status}
             </span>
             <span className="text-xs text-zinc-600 font-mono">{track.generation.mode}</span>
           </div>
