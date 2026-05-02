@@ -68,6 +68,7 @@ import { generatePitchBend }         from "../intelligence/pitch_bend_generator"
 import { generateCcAutomation }      from "../daw_export/cc_automation";
 import { analyzeTaps }               from "../intelligence/tap_analyzer";
 import { resolveProb }               from "../groove/prob_sequencer";
+import { generateTempoRamp }         from "../arrangement/tempo_ramp_generator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -5493,5 +5494,76 @@ describe("67. Probabilistic step sequencer", () => {
     const r = resolveProb({ probabilities: [1, 0, ...new Array(14).fill(0.5)] });
     expect(r.pattern[0]).toBe(1);
     expect(r.pattern[1]).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 68. Tempo ramp generator
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("68. Tempo ramp generator", () => {
+  test("points count = totalBars + 1", () => {
+    expect(generateTempoRamp({ totalBars: 16 }).points).toHaveLength(17);
+    expect(generateTempoRamp({ totalBars: 8  }).points).toHaveLength(9);
+  });
+
+  test("first point has startBpm", () => {
+    const r = generateTempoRamp({ startBpm: 100, endBpm: 130, totalBars: 8 });
+    expect(r.points[0].bpm).toBeCloseTo(100, 1);
+  });
+
+  test("last point has endBpm", () => {
+    const r = generateTempoRamp({ startBpm: 100, endBpm: 130, totalBars: 8 });
+    expect(r.points[r.points.length - 1].bpm).toBeCloseTo(130, 1);
+  });
+
+  test("linear shape: midpoint BPM ≈ (start + end) / 2", () => {
+    const r = generateTempoRamp({ startBpm: 100, endBpm: 130, totalBars: 8, shape: "linear" });
+    const mid = r.points[4].bpm;
+    expect(mid).toBeCloseTo(115, 0);
+  });
+
+  test("exponential shape: midpoint BPM = sqrt(start × end)", () => {
+    const r = generateTempoRamp({ startBpm: 100, endBpm: 130, totalBars: 8, shape: "exponential" });
+    const mid = r.points[4].bpm;
+    expect(mid).toBeCloseTo(Math.sqrt(100 * 130), 0);
+  });
+
+  test("all BPMs are positive", () => {
+    const r = generateTempoRamp({ startBpm: 80, endBpm: 160, totalBars: 16 });
+    for (const p of r.points) expect(p.bpm).toBeGreaterThan(0);
+  });
+
+  test("tick positions are monotonically increasing", () => {
+    const r = generateTempoRamp({ totalBars: 8 });
+    for (let i = 1; i < r.points.length; i++) {
+      expect(r.points[i].tick).toBeGreaterThan(r.points[i - 1].tick);
+    }
+  });
+
+  test("first tick = startBar × ticksPerBeat × beatsPerBar", () => {
+    const r = generateTempoRamp({ startBar: 8, ticksPerBeat: 480, beatsPerBar: 4 });
+    expect(r.points[0].tick).toBe(8 * 480 * 4);
+  });
+
+  test("startBpm = endBpm → all points same BPM", () => {
+    const r = generateTempoRamp({ startBpm: 114, endBpm: 114, totalBars: 8 });
+    expect(r.points.every((p) => p.bpm === 114)).toBe(true);
+  });
+
+  test("shape is reflected in output", () => {
+    expect(generateTempoRamp({ shape: "exponential" }).shape).toBe("exponential");
+    expect(generateTempoRamp({ shape: "linear"      }).shape).toBe("linear");
+  });
+
+  test("bar indices advance from startBar", () => {
+    const r = generateTempoRamp({ startBar: 4, totalBars: 4 });
+    expect(r.points[0].bar).toBe(4);
+    expect(r.points[4].bar).toBe(8);
+  });
+
+  test("output is deterministic", () => {
+    const opts = { startBpm: 110, endBpm: 125, totalBars: 8 };
+    expect(generateTempoRamp(opts)).toEqual(generateTempoRamp(opts));
   });
 });

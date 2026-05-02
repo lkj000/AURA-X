@@ -464,6 +464,26 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── Tempo ramp ───────────────────────────────────────────────────────────────
+
+export type TempoRampShape = "linear" | "exponential";
+
+export interface TempoPoint {
+  bar:  number;   // bar index (integer, 0-based from startBar)
+  tick: number;   // absolute tick position
+  bpm:  number;   // BPM at this point
+}
+
+export interface TempoMap {
+  points:       TempoPoint[];
+  startBpm:     number;
+  endBpm:       number;
+  shape:        TempoRampShape;
+  totalBars:    number;
+  ticksPerBeat: number;
+  beatsPerBar:  number;
+}
+
 // ─── Probabilistic step sequencer ────────────────────────────────────────────
 
 export interface ProbabilisticPattern {

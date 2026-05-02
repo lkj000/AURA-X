@@ -77,6 +77,7 @@ export type {
   CcPoint, CcShape, CcAutomation,
   TapAnalysis,
   ProbabilisticPattern,
+  TempoRampShape, TempoPoint, TempoMap,
 }                                                     from "./types";
 
 export {
@@ -280,6 +281,10 @@ export { analyzeTaps }                                from "./intelligence/tap_a
 // ── Probabilistic step sequencer ──────────────────────────────────────────────
 export { resolveProb }                                from "./groove/prob_sequencer";
 export type { ProbSeqOptions }                        from "./groove/prob_sequencer";
+
+// ── Tempo ramp generator ──────────────────────────────────────────────────────
+export { generateTempoRamp }                          from "./arrangement/tempo_ramp_generator";
+export type { TempoRampOptions }                      from "./arrangement/tempo_ramp_generator";
 
 // ── Quality gate pipeline ─────────────────────────────────────────────────────
 export { runQualityGates }                            from "./pipeline/quality_gate";
