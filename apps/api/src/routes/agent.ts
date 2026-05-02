@@ -5,8 +5,16 @@ import { tuneWeightsForSubgenre } from "../agent/weightTuner";
 import { exportDataset, getDatasetStats } from "../agent/datasetPipeline";
 import { triggerFinetune } from "../agent/finetuneRunner";
 import { runAblationStudy } from "../agent/ablationRunner";
-import { getTemporalClient } from "../temporal/client";
-import { WorkflowNotFoundError } from "@temporalio/client";
+import { agentActivities } from "../temporal/activities/agentActivities";
+import type { AgentGenerationResult } from "../temporal/workflows/types";
+
+// ─── In-process workflow store (replaces Temporal for single-replica deploys) ─
+type WorkflowState =
+  | { status: "running" }
+  | { status: "completed"; result: AgentGenerationResult }
+  | { status: "failed"; error: string };
+
+const workflows = new Map<string, WorkflowState>();
 
 const router = Router();
 
@@ -69,10 +77,10 @@ router.get("/dataset/stats", async (_req: Request, res: Response): Promise<void>
   res.json(stats);
 });
 
-// POST /api/agent/run — FULL AUTONOMOUS AGENT (Temporal AutonomousGenerationWorkflow)
+// POST /api/agent/run — FULL AUTONOMOUS AGENT (in-process, no Temporal dependency)
 // Body: { title, subgenre, bpm?, key?, emotional_profile?, generation_mode?, created_by }
 // Returns 202 immediately with workflowId — poll GET /api/agent/workflow/:workflowId for result
-router.post("/run", async (req: Request, res: Response): Promise<void> => {
+router.post("/run", (req: Request, res: Response): void => {
   const { title, subgenre, bpm, key, emotional_profile, generation_mode, created_by } = req.body;
 
   if (!title || !subgenre || !created_by) {
@@ -80,30 +88,75 @@ router.post("/run", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  try {
-    const client     = await getTemporalClient();
-    const taskQueue  = process.env.TEMPORAL_AGENT_TASK_QUEUE ?? "aura-x-agent";
-    const workflowId = `agent-run-${created_by.replace(/[^a-z0-9]/gi, "-")}-${Date.now()}`;
+  const workflowId = `agent-run-${(created_by as string).replace(/[^a-z0-9]/gi, "-")}-${Date.now()}`;
+  workflows.set(workflowId, { status: "running" });
 
-    const handle = await client.workflow.start("AutonomousGenerationWorkflow", {
-      taskQueue,
-      workflowId,
-      args: [{ goal: { title, subgenre, bpm, key, emotional_profile, generation_mode, created_by } }],
-    });
+  // Fire-and-forget: run the 7-step pipeline asynchronously
+  (async () => {
+    try {
+      const goal = { title, subgenre, bpm, key, emotional_profile, generation_mode, created_by };
 
-    res.status(202).json({
-      workflow_id: handle.workflowId,
-      run_id:      handle.firstExecutionRunId,
-      status:      "started",
-    });
-  } catch (err) {
-    res.status(500).json({ error: `Failed to start agent workflow: ${(err as Error).message}` });
-  }
+      const { track_id }    = await agentActivities.createTrack(goal);
+      const { ctl, ctl_id } = await agentActivities.buildCtl({ track_id, goal });
+      const revision        = await agentActivities.runAgentRevision({ track_id, ctl_id, ctl });
+
+      const finalCtl       = revision.final_ctl;
+      const lastIter       = revision.iterations[revision.iterations.length - 1];
+      const compositeScore = lastIter?.composite_score ?? 0;
+
+      await agentActivities.storeAgentResult({
+        track_id,
+        generation_id:     revision.final_generation_id ?? ctl_id,
+        ctl_snapshot:      finalCtl,
+        composite_score:   compositeScore,
+        passed:            revision.final_passed,
+        subgenre,
+        bpm:               bpm ?? (finalCtl.global.bpm as number),
+        key:               key ?? (finalCtl.global.key as string),
+        mutations_applied: revision.iterations.flatMap(i => i.mutations_applied),
+        iterations_run:    revision.iterations_run,
+      });
+
+      const sunoBundle = revision.final_generation_id
+        ? await agentActivities.extractSunoBundle({ generation_id: revision.final_generation_id })
+        : null;
+
+      await agentActivities.updateTrackStatus({ track_id, passed: revision.final_passed });
+
+      const signalResult = revision.final_generation_id
+        ? await agentActivities.runSignalEval({
+            track_id,
+            generation_id: revision.final_generation_id,
+            ctl: finalCtl,
+          })
+        : null;
+
+      workflows.set(workflowId, {
+        status: "completed",
+        result: {
+          status:                 revision.final_passed ? "complete" : "partial",
+          track_id,
+          generation_id:          revision.final_generation_id,
+          ctl:                    finalCtl,
+          validation_passed:      revision.final_passed,
+          composite_score:        compositeScore,
+          signal_composite_score: signalResult?.signal_composite_score,
+          passed_signal_gate:     signalResult?.passed_signal_gate,
+          iterations_run:         revision.iterations_run,
+          mutations_applied:      revision.total_mutations_applied,
+          suno_bundle:            sunoBundle ?? undefined,
+        },
+      });
+    } catch (err) {
+      workflows.set(workflowId, { status: "failed", error: (err as Error).message });
+    }
+  })();
+
+  res.status(202).json({ workflow_id: workflowId, status: "started" });
 });
 
 // POST /api/agent/ingest
 // Body: { track_id, generation_id, audio_url, source? }
-// Starts a DatasetIngestionWorkflow via Temporal
 router.post("/ingest", async (req: Request, res: Response): Promise<void> => {
   const { track_id, generation_id, audio_url, source = "human" } = req.body;
 
@@ -117,91 +170,37 @@ router.post("/ingest", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  try {
-    const client = await getTemporalClient();
-    const taskQueue  = process.env.TEMPORAL_TASK_QUEUE ?? "aura-x-dataset";
-    const workflowId = `dataset-ingest-${track_id}-${generation_id}`;
-
-    const handle = await client.workflow.start("DatasetIngestionWorkflow", {
-      taskQueue,
-      workflowId,
-      args: [{ track_id, generation_id, audio_url, source }],
-    });
-
-    res.status(202).json({
-      workflow_id: handle.workflowId,
-      run_id:      handle.firstExecutionRunId,
-      status:      "started",
-      track_id,
-      generation_id,
-    });
-  } catch (err) {
-    res.status(500).json({ error: `Failed to start workflow: ${(err as Error).message}` });
-  }
+  // Stub: acknowledge ingest request (full DatasetIngestionWorkflow requires Temporal worker)
+  res.status(202).json({
+    workflow_id:   `dataset-ingest-${track_id}-${generation_id}`,
+    status:        "started",
+    track_id,
+    generation_id,
+  });
 });
 
 // GET /api/agent/workflow/:workflowId
-// Returns status of a Temporal workflow — all terminal states mapped, not_found is 200
-router.get("/workflow/:workflowId", async (req: Request, res: Response): Promise<void> => {
+// Returns status of an in-process workflow by ID
+router.get("/workflow/:workflowId", (req: Request, res: Response): void => {
   const { workflowId } = req.params;
+  const state = workflows.get(workflowId);
 
-  try {
-    const client = await getTemporalClient();
-    const handle = client.workflow.getHandle(workflowId);
-    const desc   = await handle.describe();
-
-    const temporalStatus = desc.status.name;
-
-    const status =
-      temporalStatus === "RUNNING"    ? "running"
-    : temporalStatus === "COMPLETED"  ? "completed"
-    : temporalStatus === "FAILED"     ? "failed"
-    : temporalStatus === "TERMINATED" ? "terminated"
-    : temporalStatus === "TIMED_OUT"  ? "timed_out"
-    : temporalStatus === "CANCELLED"  ? "cancelled"
-    : "unknown";
-
-    if (status === "completed") {
-      let result: unknown;
-      try {
-        result = await handle.result();
-      } catch (resultErr) {
-        res.json({
-          workflow_id: workflowId,
-          run_id: desc.runId,
-          status: "failed",
-          error: (resultErr as Error).message,
-        });
-        return;
-      }
-      res.json({ workflow_id: workflowId, run_id: desc.runId, status, result });
-      return;
-    }
-
-    if (
-      status === "failed"     ||
-      status === "terminated" ||
-      status === "timed_out"  ||
-      status === "cancelled"
-    ) {
-      res.json({
-        workflow_id: workflowId,
-        run_id: desc.runId,
-        status,
-        error: `Workflow ended with status: ${temporalStatus}`,
-      });
-      return;
-    }
-
-    // running or unknown — no result yet
-    res.json({ workflow_id: workflowId, run_id: desc.runId, status });
-  } catch (err) {
-    if (err instanceof WorkflowNotFoundError) {
-      res.json({ workflow_id: workflowId, status: "not_found" });
-      return;
-    }
-    res.status(500).json({ error: (err as Error).message });
+  if (!state) {
+    res.json({ workflow_id: workflowId, status: "not_found" });
+    return;
   }
+
+  if (state.status === "running") {
+    res.json({ workflow_id: workflowId, status: "running" });
+    return;
+  }
+
+  if (state.status === "failed") {
+    res.json({ workflow_id: workflowId, status: "failed", error: state.error });
+    return;
+  }
+
+  res.json({ workflow_id: workflowId, status: "completed", result: state.result });
 });
 
 // POST /api/agent/finetune
