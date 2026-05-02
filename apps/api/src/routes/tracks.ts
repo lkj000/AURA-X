@@ -10,7 +10,7 @@ import {
   exportGrooveToMidi,
 } from "@aura-x/engine";
 import type { Lane } from "@aura-x/engine";
-import { suggestGroove } from "@aura-x/ac-ami";
+import { suggestGroove, planMelody, exportMelodyToMidi } from "@aura-x/ac-ami";
 
 const router = Router();
 
@@ -283,6 +283,44 @@ router.get("/:id/groove-suggest", async (req: Request, res: Response): Promise<v
   });
 
   res.json({ track_id: id, lane: track.subgenre, suggestions });
+});
+
+// GET /api/tracks/:id/melody
+// Query: ?bars=1-32 &density=0-1 &register=low|mid|high &style=stepwise|arpeggiated|mixed
+// Returns a downloadable .mid binary with a pentatonic melody derived from the track's key and lane.
+router.get("/:id/melody", async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+
+  const barsParsed    = parseInt(String(req.query.bars     ?? "4"), 10);
+  const densityParsed = parseFloat(String(req.query.density  ?? "0.5"));
+  const registerRaw   = String(req.query.register ?? "mid");
+  const styleRaw      = String(req.query.style    ?? "mixed");
+
+  const bars     = Math.min(32, Math.max(1, isNaN(barsParsed)    ? 4   : barsParsed));
+  const density  = Math.min(1,  Math.max(0, isNaN(densityParsed) ? 0.5 : densityParsed));
+  const register = (["low", "mid", "high"] as const).includes(registerRaw as "low" | "mid" | "high")
+    ? (registerRaw as "low" | "mid" | "high") : "mid";
+  const style    = (["stepwise", "arpeggiated", "mixed"] as const).includes(styleRaw as "stepwise" | "arpeggiated" | "mixed")
+    ? (styleRaw as "stepwise" | "arpeggiated" | "mixed") : "mixed";
+
+  const { data: track } = await supabase
+    .from("tracks")
+    .select("id, title, subgenre, bpm, key")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!track) { res.status(404).json({ error: "Track not found" }); return; }
+
+  const trackKey = (track.key as string | null) ?? "C";
+
+  const plan   = planMelody(track.subgenre as Lane, trackKey, track.bpm as number, { bars, density, register, style });
+  const result = exportMelodyToMidi(plan);
+
+  const safeTitle = String(track.title ?? id).replace(/[^a-zA-Z0-9_-]/g, "_");
+  res.setHeader("Content-Type", "audio/midi");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}_melody.mid"`);
+  res.setHeader("Content-Length", result.buffer.length);
+  res.send(result.buffer);
 });
 
 export default router;

@@ -65,6 +65,11 @@ export {
 } from "./dj/camelotWheel";
 export type { CamelotCode } from "./dj/camelotWheel";
 
+export { planMelody } from "./melody/melodyPlanner";
+export type { MelodyNote, MelodyPlan, MelodyPlannerOptions } from "./melody/melodyPlanner";
+
+export { exportMelodyToMidi } from "./melody/melodyMidi";
+
 export {
   evaluateSignal,
   scoreBpmAccuracy,

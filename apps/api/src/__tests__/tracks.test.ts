@@ -49,10 +49,14 @@ jest.mock("@aura-x/engine", () => ({
 
 // ─── Mock @aura-x/ac-ami ─────────────────────────────────────────────────────
 
-const mockSuggestGroove = jest.fn();
+const mockSuggestGroove      = jest.fn();
+const mockPlanMelody         = jest.fn();
+const mockExportMelodyToMidi = jest.fn();
 
 jest.mock("@aura-x/ac-ami", () => ({
-  suggestGroove: (...args: unknown[]) => mockSuggestGroove(...args),
+  suggestGroove:      (...args: unknown[]) => mockSuggestGroove(...args),
+  planMelody:         (...args: unknown[]) => mockPlanMelody(...args),
+  exportMelodyToMidi: (...args: unknown[]) => mockExportMelodyToMidi(...args),
 }));
 
 // ─── Mock auth middleware ─────────────────────────────────────────────────────
@@ -739,6 +743,111 @@ describe("GET /api/tracks/:id/groove-suggest", () => {
     expect(mockSuggestGroove).toHaveBeenCalledWith(
       "private_school",
       expect.objectContaining({ maxSuggestions: 10 })
+    );
+  });
+
+});
+
+// ─── GET /api/tracks/:id/melody ───────────────────────────────────────────────
+
+describe("GET /api/tracks/:id/melody", () => {
+
+  const MELODY_MIDI = Buffer.from([0x4d, 0x54, 0x68, 0x64, 0,0,0,6, 0,0, 0,1, 0x01, 0xe0, 0,0]);
+  const FAKE_PLAN   = { lane: "private_school", key: "F#m", bpm: 112, bars: 4, notes: [] };
+
+  function makeTrackQueryMelody(found: boolean) {
+    return {
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({
+            data: found ? TRACK_1 : null,
+            error: null,
+          }),
+        }),
+      }),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPlanMelody.mockReturnValue(FAKE_PLAN);
+    mockExportMelodyToMidi.mockReturnValue({ buffer: MELODY_MIDI });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "tracks") return makeTrackQueryMelody(true);
+      return {};
+    });
+  });
+
+  it("51. Returns 200 with audio/midi content-type", async () => {
+    const res = await request(app).get("/api/tracks/track-aaa-001/melody");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/audio\/midi/);
+  });
+
+  it("52. Content-Disposition contains _melody.mid", async () => {
+    const res = await request(app).get("/api/tracks/track-aaa-001/melody");
+    expect(res.headers["content-disposition"]).toMatch(/_melody\.mid/);
+  });
+
+  it("53. planMelody called with correct lane, key, bpm", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/melody");
+    expect(mockPlanMelody).toHaveBeenCalledWith(
+      "private_school", "F#m", 112,
+      expect.any(Object),
+    );
+  });
+
+  it("54. exportMelodyToMidi called with planMelody result", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/melody");
+    expect(mockExportMelodyToMidi).toHaveBeenCalledWith(FAKE_PLAN);
+  });
+
+  it("55. ?bars=8 passed to planMelody", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/melody?bars=8");
+    expect(mockPlanMelody).toHaveBeenCalledWith(
+      expect.any(String), expect.any(String), expect.any(Number),
+      expect.objectContaining({ bars: 8 }),
+    );
+  });
+
+  it("56. ?density=0.2 passed to planMelody", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/melody?density=0.2");
+    expect(mockPlanMelody).toHaveBeenCalledWith(
+      expect.any(String), expect.any(String), expect.any(Number),
+      expect.objectContaining({ density: 0.2 }),
+    );
+  });
+
+  it("57. ?register=high passed to planMelody", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/melody?register=high");
+    expect(mockPlanMelody).toHaveBeenCalledWith(
+      expect.any(String), expect.any(String), expect.any(Number),
+      expect.objectContaining({ register: "high" }),
+    );
+  });
+
+  it("58. ?style=arpeggiated passed to planMelody", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/melody?style=arpeggiated");
+    expect(mockPlanMelody).toHaveBeenCalledWith(
+      expect.any(String), expect.any(String), expect.any(Number),
+      expect.objectContaining({ style: "arpeggiated" }),
+    );
+  });
+
+  it("59. Track not found → 404", async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "tracks") return makeTrackQueryMelody(false);
+      return {};
+    });
+    const res = await request(app).get("/api/tracks/does-not-exist/melody");
+    expect(res.status).toBe(404);
+  });
+
+  it("60. Invalid register value defaults to mid", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/melody?register=invalid");
+    expect(mockPlanMelody).toHaveBeenCalledWith(
+      expect.any(String), expect.any(String), expect.any(Number),
+      expect.objectContaining({ register: "mid" }),
     );
   });
 

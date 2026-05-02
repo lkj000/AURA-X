@@ -3418,6 +3418,53 @@ SUCCESS CRITERIA
   [x] 15 advisor unit tests (ac-ami), 10 route tests (api), 488 API + 203 ac-ami passing
 
 
+### JOB H-12 — Melody Generator
+---
+
+PROBLEM DEFINITION
+  Tracks had drum and chord MIDI exports but no melodic output. Producers
+  could export a groove or a chord progression but had nothing to scaffold
+  lead-line or hook ideas from the track's key and lane characteristics.
+
+SOLUTION
+  Added `planMelody(lane, key, bpm, opts)` in
+  `packages/ac-ami/src/melody/melodyPlanner.ts`:
+    - Parses key string into root semitone + major/minor flag
+    - Builds 2-octave pentatonic scale (major or minor) at target register
+      (low=octave 4, mid=5, high=6)
+    - Selects rhythm grid per lane (e.g. private_school=16th-step dense,
+      bacardi=quarter-note sparse, mbiraiano=syncopated 3+1 groupings)
+    - density param trims grid (<0.35 half, ≥0.80 augments), controls
+      note duration (3/2/1 steps) and velocity scaling
+    - style controls contour: arpeggiated (index mod scale len), stepwise
+      (ascending in bars 0-7, descending 8-15), mixed (even=arp, odd=step)
+    - All logic is deterministic — no Math.random()
+  Added `exportMelodyToMidi(plan)` in
+  `packages/ac-ami/src/melody/melodyMidi.ts`:
+    - Type-0 MIDI, PPQ=480, STEP_TICKS=120 (16th note)
+    - Inserts tempo meta-event at tick 0
+    - Note-on/off events sorted by tick, delta-encoded with varLen()
+    - Returns { buffer: Buffer }
+  New API route GET /api/tracks/:id/melody:
+    - Fetches track (subgenre, bpm, key) from Supabase
+    - Accepts ?bars=1-32 &density=0-1 &register=low|mid|high
+      &style=stepwise|arpeggiated|mixed
+    - Returns downloadable .mid binary
+
+SUCCESS CRITERIA
+  [x] planMelody returns MelodyPlan with correct lane/key/bpm/bars
+  [x] bars clamped to [1,32], density to [0,1]
+  [x] All pitches valid MIDI (0-127); high register avg > low register avg
+  [x] Steps monotonically non-decreasing; max step < bars * 16
+  [x] Low density → fewer notes and longer durations than high density
+  [x] exportMelodyToMidi buffer starts with MThd magic bytes
+  [x] API returns 200 audio/midi with correct Content-Disposition
+  [x] API passes lane/key/bpm/bars/density/register/style to planMelody
+  [x] Invalid register defaults to "mid"
+  [x] Track not found → 404
+  [x] 15 melody unit tests (ac-ami), 10 route tests (api), 498 API + 218 ac-ami passing
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.
