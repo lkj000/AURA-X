@@ -136,6 +136,6 @@ export function planHarmonyWithVoicings(
   const plan      = planHarmony(ctl, opts);
   const lane      = ctl.global.subgenre as Lane;
   const voicings  = buildChordProgression({ lane });
-  const inversions = voicings.voicings.map((v) => generateInversions({ notes: v.notes }));
+  const inversions = voicings.voicings.map((v: { notes: number[] }) => generateInversions({ notes: v.notes }));
   return { ...plan, voicings, inversions };
 }

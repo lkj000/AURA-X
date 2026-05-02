@@ -88,6 +88,9 @@ jobs:
       - name: Build @aura-x/replicate-client (required by AC-AMI tests)
         run: cd packages/replicate-client && pnpm build
 
+      - name: Build @aura-x/engine (required by AC-AMI imports)
+        run: cd packages/engine && pnpm build
+
       - name: Test @aura-x/ac-ami
         run: cd packages/ac-ami && pnpm test
 
@@ -166,6 +169,9 @@ jobs:
 
       - name: Build @aura-x/replicate-client (required by API tests)
         run: cd packages/replicate-client && pnpm build
+
+      - name: Build @aura-x/engine (required by API tests)
+        run: cd packages/engine && pnpm build
 
       - name: Build @aura-x/ac-ami (required by API tests)
         run: cd packages/ac-ami && pnpm build
