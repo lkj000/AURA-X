@@ -3790,3 +3790,40 @@ SUCCESS CRITERIA
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE I — PRODUCTION HARDENING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+### JOB I-02 — AURA X Web Deploy Hardening
+---
+
+PROBLEM DEFINITION
+  The web app was live under a Railway-generated URL
+  (fearless-presence-production-2d81.up.railway.app) with
+  NEXT_PUBLIC_API_URL pointing to localhost in .env.local.
+  No custom domain was configured, CORS_ORIGIN on the API
+  did not include the production web URL, and required env
+  vars were undocumented — making the Railway environment
+  fragile and the web→API link unverified in production.
+
+SOLUTION
+  1. Created apps/web/.env.example and apps/api/.env.example
+     documenting every Railway env var required for production.
+  2. CORS_ORIGIN on the API already reads from env; Railway var
+     updated to include https://app.okovanggo.ai.
+  3. Railway web service: NEXT_PUBLIC_API_URL set to production
+     API URL; custom domain app.okovanggo.ai added.
+  4. DNS: app.okovanggo.ai CNAME → Railway-provided target.
+
+SUCCESS CRITERIA
+  [ ] apps/web/.env.example committed with NEXT_PUBLIC_API_URL
+  [ ] apps/api/.env.example committed with CORS_ORIGIN and all vars
+  [ ] Railway web service: NEXT_PUBLIC_API_URL=https://aura-x-production.up.railway.app
+  [ ] Railway API service: CORS_ORIGIN includes https://app.okovanggo.ai
+  [ ] Custom domain app.okovanggo.ai resolves to the web service
+  [ ] GET https://app.okovanggo.ai returns 200
+  [ ] POST https://aura-x-production.up.railway.app/api/agent/run
+      succeeds from the web UI at app.okovanggo.ai (no CORS error)
