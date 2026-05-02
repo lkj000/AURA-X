@@ -3080,6 +3080,42 @@ SUCCESS CRITERIA
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## Phase H — Platform Integration
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+---
+### JOB H-01 — Engine Quality Gate Integration
+---
+
+PROBLEM DEFINITION
+  The generation worker's post-download quality check was a 3-signal heuristic:
+  contrastScore = 0.50×bpmScore + 0.30×energyScore + 0.20×onsetScore, threshold 0.6.
+  It required a round-trip to the Python audio service, could be bypassed when the
+  service was unavailable, and evaluated only BPM proximity to 110 — ignoring
+  authenticity, cultural alignment, O.211 perception compliance, producer quality,
+  and stem balance. Tracks with structurally wrong Amapiano character could pass.
+
+SOLUTION
+  Replace step 4a in the generation worker with direct engine evaluation:
+    evaluateBuffer(audioBuffer) → AmapianEvaluation (full engine analysis)
+    runQualityGates(evaluation) → QualityGateReport (5 gates, grade S/A/B/C/F)
+  No audio service round-trip — the WAV buffer downloaded from Replicate is
+  evaluated inline. If the buffer is not parseable as 16-bit PCM WAV the gate
+  is skipped and the generation advances (graceful fallback). Gate failures write
+  status "gate_failed" with a gate_report JSON payload (grade, overallScore,
+  passCount, failingGates, summary) into the generation record metadata column.
+  Passing generations continue to "complete" as before, now carrying grade +
+  overallScore in the worker return value. The legacy mode2QualityGate.ts file
+  is preserved for the pre-generation BPM pre-check (validateMode2Bpm) used
+  in the generation agent.
+
+SUCCESS CRITERIA
+  [x] evaluateBuffer + runQualityGates called on the downloaded audio buffer
+  [x] readyForRelease: false → status "gate_failed", metadata.gate_report populated
+  [x] evaluateBuffer throws → gate skipped → status "complete" (no false negatives)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

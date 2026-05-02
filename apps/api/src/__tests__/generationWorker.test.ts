@@ -16,7 +16,7 @@ jest.mock("bullmq", () => ({
     getCompletedCount: jest.fn().mockResolvedValue(0),
   })),
   Worker: jest.fn().mockImplementation((_name: string, processor: unknown) => ({
-    processor,   // expose so we can call it directly
+    processor,
     on: jest.fn(),
     close: jest.fn(),
   })),
@@ -56,17 +56,23 @@ jest.mock("@aura-x/replicate-client", () => ({
   }),
 }));
 
+// ─── @aura-x/engine mock ─────────────────────────────────────────────────────
+
+const mockEvaluateBuffer  = jest.fn();
+const mockRunQualityGates = jest.fn();
+
+jest.mock("@aura-x/engine", () => ({
+  evaluateBuffer:  (...args: unknown[]) => mockEvaluateBuffer(...args),
+  runQualityGates: (...args: unknown[]) => mockRunQualityGates(...args),
+}));
+
 // ─── axios mock ──────────────────────────────────────────────────────────────
 
-// Default post response: bpm=110, energy=0.75, onset=4.0
-// contrastScore = 0.50*1.0 + 0.30*0.75 + 0.20*1.0 = 0.925 → passes Gate 2
 jest.mock("axios", () => ({
   get: jest.fn().mockResolvedValue({
     data: Buffer.from("fake-audio-data"),
   }),
-  post: jest.fn().mockResolvedValue({
-    data: { bpm: 110, energy_mean: 0.75, onset_density: 4.0 },
-  }),
+  post: jest.fn().mockResolvedValue({ data: {} }),
   default: { get: jest.fn() },
   isAxiosError: jest.fn().mockReturnValue(false),
 }));
@@ -90,22 +96,18 @@ import { Worker } from "bullmq";
 import axios from "axios";
 
 // ─── Extract processor from the mocked generationWorker ─────────────────────
-// Workers.ts constructs Worker(name, processor, opts) — we capture processor via mock
 
 let workerProcessor: (job: { data: Record<string, unknown> }) => Promise<unknown>;
 
-// Import workers.ts which instantiates the Worker mock, capturing the processor
 const { Worker: MockWorker } = jest.requireMock("bullmq");
 
-// We need to import workers after mocks are set up to capture the processor
 import("../queue/workers").then(() => {
-  // The generationWorker is the second Worker instantiation (after audioWorker)
   const calls = (MockWorker as jest.Mock).mock.calls;
   const genCall = calls.find((c: unknown[]) => c[0] === "generation");
   if (genCall) workerProcessor = genCall[1];
 });
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function makeJob(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -132,12 +134,49 @@ function makePrediction(status: string, output?: string[] | null, error?: string
   };
 }
 
+function makePassingGateReport() {
+  return {
+    lane: "private_school",
+    gates: [
+      { name: "authenticity",  passes: true, score: 0.82, threshold: 0.60, weight: 0.30, reasons: ["ok"] },
+      { name: "perception",    passes: true, score: 1.00, threshold: 1.00, weight: 0.25, reasons: ["ok"] },
+      { name: "cultural",      passes: true, score: 0.72, threshold: 0.35, weight: 0.20, reasons: ["ok"] },
+      { name: "quality",       passes: true, score: 0.65, threshold: 0.50, weight: 0.15, reasons: ["ok"] },
+      { name: "stem_balance",  passes: true, score: 0.55, threshold: 0.40, weight: 0.10, reasons: ["ok"] },
+    ],
+    allPass: true,
+    passCount: 5,
+    overallScore: 0.83,
+    grade: "A",
+    readyForRelease: true,
+    summary: "Grade A — private_school passes all gates, strong release candidate.",
+  };
+}
+
+function makeFailingGateReport() {
+  return {
+    lane: "private_school",
+    gates: [
+      { name: "authenticity",  passes: false, score: 0.30, threshold: 0.60, weight: 0.30, reasons: ["Low authenticity"] },
+      { name: "perception",    passes: false, score: 0.50, threshold: 1.00, weight: 0.25, reasons: ["O.211 violation"] },
+      { name: "cultural",      passes: true,  score: 0.60, threshold: 0.35, weight: 0.20, reasons: ["ok"] },
+      { name: "quality",       passes: false, score: 0.40, threshold: 0.50, weight: 0.15, reasons: ["Low producer score"] },
+      { name: "stem_balance",  passes: true,  score: 0.45, threshold: 0.40, weight: 0.10, reasons: ["ok"] },
+    ],
+    allPass: false,
+    passCount: 2,
+    overallScore: 0.48,
+    grade: "F",
+    readyForRelease: false,
+    summary: "Grade F — private_school fails 3 critical gate(s), not ready for release.",
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("Generation Worker", () => {
 
   beforeAll(async () => {
-    // Ensure workers.ts is imported and processor captured
     await import("../queue/workers");
     const calls = (MockWorker as jest.Mock).mock.calls;
     const genCall = calls.find((c: unknown[]) => c[0] === "generation");
@@ -146,7 +185,6 @@ describe("Generation Worker", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Re-apply mock defaults after clearAllMocks
     mockGetPrediction.mockResolvedValue(makePrediction("succeeded", ["https://r2.example.com/audio.wav"]));
     mockFrom.mockReturnValue({ insert: mockInsert, update: mockUpdate });
     mockUpdate.mockReturnValue({ eq: mockEq });
@@ -155,11 +193,10 @@ describe("Generation Worker", () => {
     mockStorageFrom.mockReturnValue({ upload: mockStorageUpload });
     mockStorageUpload.mockResolvedValue({ data: { path: "test/path.wav" }, error: null });
     (axios.get as jest.Mock).mockResolvedValue({ data: Buffer.from("fake-audio-data") });
-    // Default: passing quality gate (contrastScore ≈ 0.925)
-    (axios.post as jest.Mock).mockResolvedValue({
-      data: { bpm: 110, energy_mean: 0.75, onset_density: 4.0 },
-    });
     mockQueueAdd.mockResolvedValue({ id: "job-1" });
+    // Default: passing engine quality gate
+    mockEvaluateBuffer.mockReturnValue({ features: {}, laneScores: {}, quality: {}, groove: {}, perception: {}, stems: {}, cultural: {}, issues: [] });
+    mockRunQualityGates.mockReturnValue(makePassingGateReport());
   });
 
   // ─── Status polling ────────────────────────────────────────────────────────
@@ -240,53 +277,84 @@ describe("Generation Worker", () => {
     );
   });
 
-  // ─── Quality gates (Gate 2: Contrast Score, Gate 3: Subgenre) ────────────
+  // ─── Engine quality gate ───────────────────────────────────────────────────
 
-  it("11. Contrast score below threshold → status: degraded", async () => {
-    // bpm=80: bpmScore=0, energy=0.2, onset=1 → score≈0.11 (below 0.6)
-    (axios.post as jest.Mock).mockResolvedValue({
-      data: { bpm: 80, energy_mean: 0.2, onset_density: 1.0 },
-    });
-    const result = await workerProcessor(makeJob()) as Record<string, unknown>;
-    expect(result.status).toBe("degraded");
+  it("11. evaluateBuffer called with the downloaded audio buffer", async () => {
+    await workerProcessor(makeJob());
+    expect(mockEvaluateBuffer).toHaveBeenCalledWith(
+      expect.any(Buffer)
+    );
   });
 
-  it("12. Contrast score below threshold → contrast_score field in result", async () => {
-    (axios.post as jest.Mock).mockResolvedValue({
-      data: { bpm: 80, energy_mean: 0.2, onset_density: 1.0 },
-    });
-    const result = await workerProcessor(makeJob()) as Record<string, unknown>;
-    expect(typeof result.contrast_score).toBe("number");
-    expect(result.contrast_score as number).toBeLessThan(0.6);
+  it("12. runQualityGates called with the evaluation result", async () => {
+    const fakeEval = { features: {}, laneScores: {}, quality: {}, groove: {}, perception: {}, stems: {}, cultural: {}, issues: [] };
+    mockEvaluateBuffer.mockReturnValue(fakeEval);
+    await workerProcessor(makeJob());
+    expect(mockRunQualityGates).toHaveBeenCalledWith(fakeEval);
   });
 
-  it("13. Contrast score above threshold → status: complete (Gate 2 passes)", async () => {
-    // Default mock: bpm=110, energy=0.75, onset=4 → score≈0.925
-    const result = await workerProcessor(makeJob()) as Record<string, unknown>;
-    expect(result.status).toBe("complete");
-    expect(result.contrast_score as number).toBeGreaterThanOrEqual(0.6);
-  });
-
-  it("14. Audio analysis service throws → graceful fallback, status: complete", async () => {
-    (axios.post as jest.Mock).mockRejectedValue(new Error("Audio service down"));
+  it("13. Gate passes (readyForRelease: true) → status 'complete'", async () => {
+    mockRunQualityGates.mockReturnValue(makePassingGateReport());
     const result = await workerProcessor(makeJob()) as Record<string, unknown>;
     expect(result.status).toBe("complete");
   });
 
-  it("15. Detected BPM in Amapiano range → subgenre_match true", async () => {
-    (axios.post as jest.Mock).mockResolvedValue({
-      data: { bpm: 112, energy_mean: 0.75, onset_density: 4.0 },
-    });
+  it("14. Gate passes → result includes grade and overall_score", async () => {
+    mockRunQualityGates.mockReturnValue(makePassingGateReport());
     const result = await workerProcessor(makeJob()) as Record<string, unknown>;
-    expect(result.subgenre_match).toBe(true);
+    expect(result.grade).toBe("A");
+    expect(typeof result.overall_score).toBe("number");
   });
 
-  it("16. Detected BPM outside Amapiano range → subgenre_match false", async () => {
-    (axios.post as jest.Mock).mockResolvedValue({
-      data: { bpm: 130, energy_mean: 0.75, onset_density: 4.0 },
-    });
+  it("15. Gate fails (readyForRelease: false) → status 'gate_failed'", async () => {
+    mockRunQualityGates.mockReturnValue(makeFailingGateReport());
     const result = await workerProcessor(makeJob()) as Record<string, unknown>;
-    expect(result.subgenre_match).toBe(false);
+    expect(result.status).toBe("gate_failed");
+  });
+
+  it("16. Gate fails → result includes grade, overall_score, failing_gates", async () => {
+    mockRunQualityGates.mockReturnValue(makeFailingGateReport());
+    const result = await workerProcessor(makeJob()) as Record<string, unknown>;
+    expect(result.grade).toBe("F");
+    expect(typeof result.overall_score).toBe("number");
+    const failingGates = result.failing_gates as string[];
+    expect(failingGates).toContain("authenticity");
+    expect(failingGates).toContain("perception");
+    expect(failingGates).toContain("quality");
+  });
+
+  it("17. Gate fails → supabase.update called with status 'gate_failed'", async () => {
+    mockRunQualityGates.mockReturnValue(makeFailingGateReport());
+    await workerProcessor(makeJob());
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "gate_failed" })
+    );
+  });
+
+  it("18. Gate fails → metadata written includes gate_report with grade", async () => {
+    mockRunQualityGates.mockReturnValue(makeFailingGateReport());
+    await workerProcessor(makeJob());
+    const updateCall = (mockUpdate as jest.Mock).mock.calls.find(
+      (c: unknown[]) => (c[0] as Record<string, unknown>).status === "gate_failed"
+    );
+    expect(updateCall).toBeTruthy();
+    const payload = updateCall![0] as Record<string, unknown>;
+    const metadata = payload.metadata as Record<string, unknown>;
+    const gateReport = metadata.gate_report as Record<string, unknown>;
+    expect(gateReport.grade).toBe("F");
+    expect(gateReport.passCount).toBe(2);
+  });
+
+  it("19. evaluateBuffer throws (non-parseable buffer) → gate skipped → status 'complete'", async () => {
+    mockEvaluateBuffer.mockImplementation(() => { throw new Error("Not a WAV file"); });
+    const result = await workerProcessor(makeJob()) as Record<string, unknown>;
+    expect(result.status).toBe("complete");
+  });
+
+  it("20. evaluateBuffer throws → runQualityGates not called", async () => {
+    mockEvaluateBuffer.mockImplementation(() => { throw new Error("parse error"); });
+    await workerProcessor(makeJob());
+    expect(mockRunQualityGates).not.toHaveBeenCalled();
   });
 
 });

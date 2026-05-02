@@ -2,11 +2,7 @@ import { Worker, Job } from "bullmq";
 import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
 import { connection, AudioJobData, GenerationJobData, enqueueAudioAnalysis } from "./index";
-import {
-  contrastScoreFromAnalysis,
-  subgenreMatchesAmapiano,
-  CONTRAST_SCORE_THRESHOLD,
-} from "../generation/mode2QualityGate";
+import { evaluateBuffer, runQualityGates } from "@aura-x/engine";
 
 if (!connection) {
   console.log("[workers] Skipping worker startup — no Redis connection.");
@@ -201,41 +197,46 @@ export const generationWorker = new Worker(
         },
       });
 
-    // ─── 4a. QUALITY GATE: CONTRAST SCORE + SUBGENRE ─
-    const AUDIO_SERVICE_URL = process.env.AUDIO_SERVICE_URL ?? "http://localhost:8000";
-    let contrastScore = CONTRAST_SCORE_THRESHOLD; // default pass when service unavailable
-    let subgenreMatch = true;
-
+    // ─── 4a. QUALITY GATE: ENGINE runQualityGates (5-gate pipeline) ──────────
+    // Evaluate the downloaded WAV buffer directly — no audio service round-trip.
+    // Falls back to pass if the buffer is not parseable (non-PCM format, corrupt).
+    let gateReport: ReturnType<typeof runQualityGates> | null = null;
     try {
-      const qgResp = await axios.post(
-        `${AUDIO_SERVICE_URL}/analysis/analyze`,
-        { audio_file_id: fileId, track_id },
-        { timeout: 120000 }
-      );
-      const qgAnalysis = qgResp.data as {
-        bpm: number;
-        energy_mean: number;
-        onset_density?: number;
-      };
-      contrastScore = contrastScoreFromAnalysis(qgAnalysis);
-      subgenreMatch = subgenreMatchesAmapiano(qgAnalysis.bpm).match;
+      const evaluation = evaluateBuffer(audioBuffer);
+      gateReport = runQualityGates(evaluation);
     } catch {
-      // Audio service unavailable — skip quality gate gracefully
+      // Buffer not parseable as WAV PCM — gate skipped, generation continues
     }
 
-    if (contrastScore < CONTRAST_SCORE_THRESHOLD) {
+    if (gateReport && !gateReport.readyForRelease) {
+      const failingGates = gateReport.gates
+        .filter((g) => !g.passes)
+        .map((g) => g.name);
       await supabase
         .from("generations")
         .update({
-          status: "degraded",
+          status: "gate_failed",
           completed_at: new Date().toISOString(),
+          metadata: {
+            gate_report: {
+              grade:        gateReport.grade,
+              overallScore: gateReport.overallScore,
+              passCount:    gateReport.passCount,
+              failingGates,
+              summary:      gateReport.summary,
+            },
+          },
         })
         .eq("id", generation_id);
+      console.log(
+        `[generation.mode2] Gate failed — grade:${gateReport.grade} score:${gateReport.overallScore.toFixed(3)} failing:[${failingGates.join(",")}]`
+      );
       return {
-        status: "degraded",
+        status: "gate_failed",
         generation_id,
-        contrast_score: contrastScore,
-        subgenre_match: subgenreMatch,
+        grade:         gateReport.grade,
+        overall_score: gateReport.overallScore,
+        failing_gates: failingGates,
       };
     }
 
@@ -256,8 +257,14 @@ export const generationWorker = new Worker(
       format: "wav",
     });
 
-    console.log(`[generation.mode2] ✓ Generation ${generation_id} complete — ${storagePath}`);
-    return { status: "complete", generation_id, audio_file_id: fileId, contrast_score: contrastScore, subgenre_match: subgenreMatch };
+    console.log(`[generation.mode2] ✓ Generation ${generation_id} complete — ${storagePath} grade:${gateReport?.grade ?? "skip"}`);
+    return {
+      status: "complete",
+      generation_id,
+      audio_file_id: fileId,
+      grade:         gateReport?.grade ?? "skip",
+      overall_score: gateReport?.overallScore ?? null,
+    };
   },
   {
     connection,
