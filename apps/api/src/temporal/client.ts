@@ -18,8 +18,14 @@ export async function getTemporalClient(): Promise<Client> {
   const address  = process.env.TEMPORAL_ADDRESS  ?? "localhost:7233";
   const namespace = process.env.TEMPORAL_NAMESPACE ?? "default";
 
-  const clientCert = loadCert("client.pem");
-  const clientKey  = loadCert("client.key");
+  const clientCert = loadCert("client.pem") ??
+    (process.env.TEMPORAL_TLS_CERT
+      ? Buffer.from(process.env.TEMPORAL_TLS_CERT, "base64")
+      : undefined);
+  const clientKey = loadCert("client.key") ??
+    (process.env.TEMPORAL_TLS_KEY
+      ? Buffer.from(process.env.TEMPORAL_TLS_KEY, "base64")
+      : undefined);
 
   const connection = await Connection.connect({
     address,
