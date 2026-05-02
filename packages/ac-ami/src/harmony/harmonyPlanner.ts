@@ -1,5 +1,7 @@
 import { CTLv1, HarmonyProfileSchema } from "@aura-x/ctl";
 import { z } from "zod";
+import { buildChordProgression, generateInversions } from "@aura-x/engine";
+import type { ChordProgression, InversionSet, Lane } from "@aura-x/engine";
 import {
   SUBGENRE_KEY_ZONES,
   SUBGENRE_PROGRESSIONS,
@@ -112,4 +114,28 @@ export function planHarmony(
 /** Returns a new CTL with harmony replaced by the planner output. Immutable. */
 export function applyHarmonyPlan(ctl: CTLv1, opts: HarmonyPlannerOptions = {}): CTLv1 {
   return { ...ctl, harmony: planHarmony(ctl, opts) };
+}
+
+// ── Engine-backed voicing layer ───────────────────────────────────────────────
+
+export type HarmonyPlanWithVoicings = HarmonyPlan & {
+  /** Concrete MIDI voicings for all 4 chords in this lane's progression */
+  voicings:   ChordProgression;
+  /** Root + all valid close-position inversions per voicing */
+  inversions: InversionSet[];
+};
+
+/**
+ * Full harmony pipeline: abstract CTL plan + concrete MIDI voicings + inversions.
+ * planHarmony → buildChordProgression → generateInversions per chord.
+ */
+export function planHarmonyWithVoicings(
+  ctl: CTLv1,
+  opts: HarmonyPlannerOptions = {}
+): HarmonyPlanWithVoicings {
+  const plan      = planHarmony(ctl, opts);
+  const lane      = ctl.global.subgenre as Lane;
+  const voicings  = buildChordProgression({ lane });
+  const inversions = voicings.voicings.map((v) => generateInversions({ notes: v.notes }));
+  return { ...plan, voicings, inversions };
 }

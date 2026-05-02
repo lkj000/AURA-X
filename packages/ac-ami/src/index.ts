@@ -1,5 +1,5 @@
-export { planHarmony, applyHarmonyPlan } from "./harmony/harmonyPlanner";
-export type { HarmonyPlan, HarmonyPlannerOptions } from "./harmony/harmonyPlanner";
+export { planHarmony, applyHarmonyPlan, planHarmonyWithVoicings } from "./harmony/harmonyPlanner";
+export type { HarmonyPlan, HarmonyPlannerOptions, HarmonyPlanWithVoicings } from "./harmony/harmonyPlanner";
 export * from "./harmony/harmonyKnowledge";
 
 export { planGroove, applyGroovePlan } from "./groove/groovePlanner";

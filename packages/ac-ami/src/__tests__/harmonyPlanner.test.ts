@@ -1,4 +1,4 @@
-import { planHarmony, applyHarmonyPlan } from "../harmony/harmonyPlanner";
+import { planHarmony, applyHarmonyPlan, planHarmonyWithVoicings } from "../harmony/harmonyPlanner";
 import {
   privateSchoolPreset,
   bacardiPreset,
@@ -138,6 +138,84 @@ describe("Harmony Planner", () => {
       const plan = planHarmony(preset);
       expect(plan.mode).toBe("aeolian");
     }
+  });
+
+});
+
+describe("planHarmonyWithVoicings", () => {
+
+  it("19. Returns all HarmonyPlan fields alongside voicings + inversions", () => {
+    const result = planHarmonyWithVoicings(privateSchoolPreset);
+    expect(result).toHaveProperty("tonal_center");
+    expect(result).toHaveProperty("mode");
+    expect(result).toHaveProperty("preferred_progressions");
+    expect(result).toHaveProperty("voicings");
+    expect(result).toHaveProperty("inversions");
+  });
+
+  it("20. voicings.lane matches the CTL subgenre", () => {
+    const result = planHarmonyWithVoicings(privateSchoolPreset);
+    expect(result.voicings.lane).toBe("private_school");
+  });
+
+  it("21. voicings contains 4 chord voicings", () => {
+    const result = planHarmonyWithVoicings(privateSchoolPreset);
+    expect(result.voicings.voicings).toHaveLength(4);
+  });
+
+  it("22. Each voicing has rootMidi, notes, chordSymbol, function, tension", () => {
+    const result = planHarmonyWithVoicings(privateSchoolPreset);
+    for (const v of result.voicings.voicings) {
+      expect(typeof v.rootMidi).toBe("number");
+      expect(Array.isArray(v.notes)).toBe(true);
+      expect(v.notes.length).toBeGreaterThanOrEqual(2);
+      expect(typeof v.chordSymbol).toBe("string");
+      expect(typeof v.function).toBe("string");
+      expect(typeof v.tension).toBe("number");
+    }
+  });
+
+  it("23. inversions array length equals number of voicings (one InversionSet per chord)", () => {
+    const result = planHarmonyWithVoicings(privateSchoolPreset);
+    expect(result.inversions).toHaveLength(result.voicings.voicings.length);
+  });
+
+  it("24. Each InversionSet has original notes and at least root inversion", () => {
+    const result = planHarmonyWithVoicings(privateSchoolPreset);
+    for (const invSet of result.inversions) {
+      expect(Array.isArray(invSet.original)).toBe(true);
+      expect(invSet.inversions.length).toBeGreaterThanOrEqual(1);
+      expect(invSet.inversions[0].type).toBe("root");
+    }
+  });
+
+  it("25. All MIDI notes in voicings clamped to [0, 127]", () => {
+    for (const preset of ALL_PRESETS) {
+      const result = planHarmonyWithVoicings(preset);
+      for (const v of result.voicings.voicings) {
+        for (const note of v.notes) {
+          expect(note).toBeGreaterThanOrEqual(0);
+          expect(note).toBeLessThanOrEqual(127);
+        }
+      }
+    }
+  });
+
+  it("26. Works for all 8 presets without throwing", () => {
+    for (const preset of ALL_PRESETS) {
+      expect(() => planHarmonyWithVoicings(preset)).not.toThrow();
+    }
+  });
+
+  it("27. voicings.amapianoStyle is true", () => {
+    const result = planHarmonyWithVoicings(bacardiPreset);
+    expect(result.voicings.amapianoStyle).toBe(true);
+  });
+
+  it("28. forceKey option is honoured — tonal_center still overridden", () => {
+    const result = planHarmonyWithVoicings(privateSchoolPreset, { forceKey: "Gm" });
+    expect(result.tonal_center).toBe("G");
+    expect(result.voicings.lane).toBe("private_school");
   });
 
 });

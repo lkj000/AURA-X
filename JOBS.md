@@ -3173,6 +3173,33 @@ SUCCESS CRITERIA
   [x] 15 prior tracks tests still green (no regressions)
 
 
+---
+### JOB H-04 — Engine Harmony Voicing Integration
+---
+
+PROBLEM DEFINITION
+  The ac-ami harmony planner (planHarmony) produced abstract CTL-level parameters
+  (tonal_center, extension_policy, harmonic_rhythm) but had no path to concrete
+  MIDI note output. Producers received chord names and progression labels but not
+  the actual MIDI voicings they could use in a DAW. The engine's buildChordProgression
+  and generateInversions (E-17 / E-60) were unused by the planning pipeline.
+
+SOLUTION
+  Add planHarmonyWithVoicings(ctl, opts) to packages/ac-ami/src/harmony/harmonyPlanner.ts.
+  The function chains the full pipeline:
+    planHarmony(ctl, opts) → abstract HarmonyPlan (tonal_center, mode, etc.)
+    buildChordProgression({ lane }) → ChordProgression (4 voicings, MIDI notes, tension)
+    generateInversions({ notes }) per voicing → InversionSet (root + close-position inversions)
+  Returns HarmonyPlanWithVoicings — all HarmonyPlan fields plus voicings + inversions[].
+  The CTL subgenre maps 1:1 to the engine Lane type. Added @aura-x/engine as a
+  workspace dependency of @aura-x/ac-ami. Exported from ac-ami/src/index.ts.
+
+SUCCESS CRITERIA
+  [x] planHarmonyWithVoicings returns both abstract plan and 4 concrete MIDI voicings
+  [x] Each voicing has root + valid close-position inversions via generateInversions
+  [x] All 8 presets work without throwing; 18 existing harmony tests unaffected
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.
