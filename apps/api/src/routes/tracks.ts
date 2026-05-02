@@ -1,7 +1,15 @@
 import { Router, Request, Response } from "express";
 import { supabase } from "../lib/supabase";
 import { verifyToken } from "../middleware/auth";
-import { evaluateBuffer, generateProductionReport } from "@aura-x/engine";
+import {
+  evaluateBuffer,
+  generateProductionReport,
+  buildChordProgression,
+  exportChordProgressionToMidi,
+  generateGrooveVariations,
+  exportGrooveToMidi,
+} from "@aura-x/engine";
+import type { Lane } from "@aura-x/engine";
 
 const router = Router();
 
@@ -112,6 +120,54 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     feedback_count,
     feedback_avg,
   });
+});
+
+// GET /api/tracks/:id/midi
+// Query: ?track=drums|chords (default drums), ?bars=1-32 (default 4)
+// Generates a MIDI file from track metadata (subgenre, bpm) — no audio needed.
+// Returns a downloadable .mid binary.
+router.get("/:id/midi", async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const trackParam = String(req.query.track ?? "drums");
+  const barsParsed = parseInt(String(req.query.bars ?? "4"), 10);
+  const barsParam  = Math.min(32, Math.max(1, isNaN(barsParsed) ? 4 : barsParsed));
+
+  if (trackParam !== "drums" && trackParam !== "chords") {
+    res.status(400).json({ error: "?track must be 'drums' or 'chords'" });
+    return;
+  }
+
+  const { data: track } = await supabase
+    .from("tracks")
+    .select("id, title, subgenre, bpm")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!track) { res.status(404).json({ error: "Track not found" }); return; }
+
+  const lane = track.subgenre as Lane;
+  const bpm  = track.bpm as number;
+
+  let midiBuffer: Buffer;
+  let filename:   string;
+  const safeTitle = String(track.title ?? id).replace(/[^a-zA-Z0-9_-]/g, "_");
+
+  if (trackParam === "chords") {
+    const progression = buildChordProgression({ lane });
+    const result      = exportChordProgressionToMidi(progression, { bpm, beatsPerChord: 4, repeat: barsParam });
+    midiBuffer = result.buffer;
+    filename   = `${safeTitle}_chords.mid`;
+  } else {
+    const variationSet = generateGrooveVariations(lane, { bpm });
+    const result       = exportGrooveToMidi(variationSet.main, bpm, barsParam);
+    midiBuffer = Buffer.from(result.buffer);
+    filename   = `${safeTitle}_drums.mid`;
+  }
+
+  res.setHeader("Content-Type", "audio/midi");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Content-Length", midiBuffer.length);
+  res.send(midiBuffer);
 });
 
 // POST /api/tracks/:id/report

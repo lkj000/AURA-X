@@ -28,12 +28,23 @@ jest.mock("../lib/supabase", () => ({
 
 // ─── Mock @aura-x/engine ─────────────────────────────────────────────────────
 
-const mockEvaluateBuffer          = jest.fn();
+const mockEvaluateBuffer           = jest.fn();
 const mockGenerateProductionReport = jest.fn();
+const mockBuildChordProgression    = jest.fn();
+const mockExportChordToMidi        = jest.fn();
+const mockGenerateGrooveVariations = jest.fn();
+const mockExportGrooveToMidi       = jest.fn();
+
+// Minimal valid MIDI header bytes (MThd)
+const FAKE_MIDI_BUFFER = Buffer.from([0x4d, 0x54, 0x68, 0x64, 0,0,0,6, 0,0, 0,1, 0x01, 0xe0]);
 
 jest.mock("@aura-x/engine", () => ({
-  evaluateBuffer:           (...args: unknown[]) => mockEvaluateBuffer(...args),
-  generateProductionReport: (...args: unknown[]) => mockGenerateProductionReport(...args),
+  evaluateBuffer:              (...args: unknown[]) => mockEvaluateBuffer(...args),
+  generateProductionReport:    (...args: unknown[]) => mockGenerateProductionReport(...args),
+  buildChordProgression:       (...args: unknown[]) => mockBuildChordProgression(...args),
+  exportChordProgressionToMidi:(...args: unknown[]) => mockExportChordToMidi(...args),
+  generateGrooveVariations:    (...args: unknown[]) => mockGenerateGrooveVariations(...args),
+  exportGrooveToMidi:          (...args: unknown[]) => mockExportGrooveToMidi(...args),
 }));
 
 // ─── Mock auth middleware ─────────────────────────────────────────────────────
@@ -470,6 +481,119 @@ describe("POST /api/tracks/:id/report", () => {
     await request(app).post("/api/tracks/track-aaa-001/report");
     expect(mockStorageFrom).toHaveBeenCalledWith("aura-x-audio");
     expect(mockDownload).toHaveBeenCalledWith(AUDIO_PATH);
+  });
+
+});
+
+describe("GET /api/tracks/:id/midi", () => {
+
+  const TRACK_META = { id: "track-aaa-001", title: "Johannesburg Rain", subgenre: "private_school", bpm: 112 };
+
+  const FAKE_GROOVE_SET = { main: { lane: "private_school", swing: 0.54, steps: 16, kickPattern: [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0], hatPattern: [], shakerPattern: [], logDrumPattern: [], densityProfile: "medium", microtimingProfile: "forward_shuffle", styleBiasApplied: true, grooveType: "private_school_main" } };
+
+  function makeTrackQuery(found = true) {
+    return {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({ data: found ? TRACK_META : null, error: null }),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "tracks") return makeTrackQuery(true);
+      return { select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis() };
+    });
+
+    mockGenerateGrooveVariations.mockReturnValue(FAKE_GROOVE_SET);
+    mockExportGrooveToMidi.mockReturnValue({ buffer: new Uint8Array(FAKE_MIDI_BUFFER), noteCount: 8, durationTicks: 3840, bars: 4, bpm: 112 });
+    mockBuildChordProgression.mockReturnValue({ lane: "private_school", key: "Am", voicings: [], loopable: true, amapianoStyle: true });
+    mockExportChordToMidi.mockReturnValue({ buffer: FAKE_MIDI_BUFFER, lane: "private_school", bpm: 112, chordCount: 8, totalBars: 8, beatsPerChord: 4 });
+  });
+
+  it("26. GET /api/tracks/:id/midi → 200", async () => {
+    const res = await request(app).get("/api/tracks/track-aaa-001/midi");
+    expect(res.status).toBe(200);
+  });
+
+  it("27. Default track=drums → Content-Type audio/midi", async () => {
+    const res = await request(app).get("/api/tracks/track-aaa-001/midi");
+    expect(res.headers["content-type"]).toMatch(/audio\/midi/);
+  });
+
+  it("28. Content-Disposition contains filename ending in .mid", async () => {
+    const res = await request(app).get("/api/tracks/track-aaa-001/midi");
+    expect(res.headers["content-disposition"]).toMatch(/\.mid"/);
+  });
+
+  it("29. Default track=drums calls generateGrooveVariations with lane and bpm", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/midi");
+    expect(mockGenerateGrooveVariations).toHaveBeenCalledWith("private_school", { bpm: 112 });
+  });
+
+  it("30. Default track=drums calls exportGrooveToMidi with variationSet.main", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/midi");
+    expect(mockExportGrooveToMidi).toHaveBeenCalledWith(FAKE_GROOVE_SET.main, 112, 4);
+  });
+
+  it("31. ?track=drums filename contains _drums.mid", async () => {
+    const res = await request(app).get("/api/tracks/track-aaa-001/midi?track=drums");
+    expect(res.headers["content-disposition"]).toMatch(/_drums\.mid/);
+  });
+
+  it("32. ?track=chords calls buildChordProgression with lane", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/midi?track=chords");
+    expect(mockBuildChordProgression).toHaveBeenCalledWith({ lane: "private_school" });
+  });
+
+  it("33. ?track=chords calls exportChordProgressionToMidi with bpm", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/midi?track=chords");
+    expect(mockExportChordToMidi).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ bpm: 112 })
+    );
+  });
+
+  it("34. ?track=chords filename contains _chords.mid", async () => {
+    const res = await request(app).get("/api/tracks/track-aaa-001/midi?track=chords");
+    expect(res.headers["content-disposition"]).toMatch(/_chords\.mid/);
+  });
+
+  it("35. ?bars=8 passes bars=8 to exportGrooveToMidi", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/midi?bars=8");
+    expect(mockExportGrooveToMidi).toHaveBeenCalledWith(expect.any(Object), 112, 8);
+  });
+
+  it("36. ?bars=0 clamps to 1", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/midi?bars=0");
+    expect(mockExportGrooveToMidi).toHaveBeenCalledWith(expect.any(Object), 112, 1);
+  });
+
+  it("37. ?bars=999 clamps to 32", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/midi?bars=999");
+    expect(mockExportGrooveToMidi).toHaveBeenCalledWith(expect.any(Object), 112, 32);
+  });
+
+  it("38. Track not found → 404", async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "tracks") return makeTrackQuery(false);
+      return { select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis() };
+    });
+    const res = await request(app).get("/api/tracks/does-not-exist/midi");
+    expect(res.status).toBe(404);
+  });
+
+  it("39. ?track=invalid → 400 with error message", async () => {
+    const res = await request(app).get("/api/tracks/track-aaa-001/midi?track=xml");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/drums.*chords/i);
+  });
+
+  it("40. Response body is non-empty binary", async () => {
+    const res = await request(app).get("/api/tracks/track-aaa-001/midi").buffer(true);
+    expect(res.body.length).toBeGreaterThan(0);
   });
 
 });

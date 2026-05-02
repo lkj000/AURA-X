@@ -3229,6 +3229,33 @@ SUCCESS CRITERIA
   [x] kickSwing.tickPositions are non-negative integers; 20 existing tests unaffected
 
 
+---
+### JOB H-06 — MIDI Download Endpoint
+---
+
+PROBLEM DEFINITION
+  The engine's DAW export layer (exportGrooveToMidi, exportChordProgressionToMidi)
+  produced Standard MIDI files but had no API surface. Producers using Mode 1 or
+  Mode 2 generation had no way to download a MIDI file for the track's groove or
+  chord progression without running the engine locally.
+
+SOLUTION
+  Add GET /api/tracks/:id/midi to the tracks router. The endpoint:
+    1. Fetches track metadata (subgenre, bpm) — no audio needed
+    2. Routes on ?track=drums|chords (default drums), ?bars=1-32 (default 4)
+    3. drums: generateGrooveVariations(lane, {bpm}) → exportGrooveToMidi(main, bpm, bars)
+    4. chords: buildChordProgression({lane}) → exportChordProgressionToMidi({bpm, ...})
+    5. Sets Content-Type: audio/midi, Content-Disposition: attachment, sends Buffer
+  Filename sanitized from track.title (non-alphanumeric → underscore).
+  bars param clamped to [1, 32] with isNaN fallback to 4.
+  Invalid ?track value returns 400.
+
+SUCCESS CRITERIA
+  [x] drums + chords paths both return 200 with audio/midi Content-Type
+  [x] bars param clamped correctly; ?track=invalid → 400
+  [x] 25 prior tracks tests still green (no regressions)
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.
