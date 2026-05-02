@@ -3819,11 +3819,11 @@ SOLUTION
   4. DNS: app.okovanggo.ai CNAME → Railway-provided target.
 
 SUCCESS CRITERIA
-  [ ] apps/web/.env.example committed with NEXT_PUBLIC_API_URL
-  [ ] apps/api/.env.example committed with CORS_ORIGIN and all vars
-  [ ] Railway web service: NEXT_PUBLIC_API_URL=https://aura-x-production.up.railway.app
-  [ ] Railway API service: CORS_ORIGIN includes https://app.okovanggo.ai
-  [ ] Custom domain app.okovanggo.ai resolves to the web service
-  [ ] GET https://app.okovanggo.ai returns 200
+  [x] apps/web/.env.example committed with NEXT_PUBLIC_API_URL
+  [x] apps/api/.env.example committed with CORS_ORIGIN and all vars
+  [x] Railway web service: NEXT_PUBLIC_API_URL=https://aura-x-production.up.railway.app
+  [x] Railway API service: CORS_ORIGIN includes https://app.okovanggo.ai
+  [x] Custom domain app.okovanggo.ai resolves to the web service
+  [x] GET https://app.okovanggo.ai returns 200
   [ ] POST https://aura-x-production.up.railway.app/api/agent/run
       succeeds from the web UI at app.okovanggo.ai (no CORS error)
