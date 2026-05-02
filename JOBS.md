@@ -3711,6 +3711,81 @@ SUCCESS CRITERIA
   [x] 15 tests in instrumentation.test.ts; 583 API tests + 228 ac-ami passing
 
 
+### JOB H-19 — Mode 2 Conditioning API
+---
+
+PROBLEM DEFINITION
+  conditionForMode2 compiled the MusicGen prompt, duration, temperature,
+  and CFG from a CTL but had no HTTP surface. The Mode 2 generation flow
+  required embedding the package directly to compute conditioning parameters,
+  and producers had no way to preview what prompt/settings would be sent to
+  Replicate before committing to a generation job.
+
+SOLUTION
+  New route file `apps/api/src/routes/condition.ts`, mounted at /api/tracks.
+
+  POST /api/tracks/:id/condition  (read-only, no auth)
+    - Fetches active CTL; 404 if none
+    - Accepts { targetBars?: 8|16|32, melodyUrl?: string }
+    - Invalid targetBars (not 8/16/32) silently ignored
+    - Calls conditionForMode2(ctl, opts) → { input, prompt, duration, notes }
+    - Returns { track_id, ctl_version, ready:true, prompt, duration, notes, input }
+
+  POST /api/tracks/:id/condition/apply  (requires JWT)
+    - Same conditioning, plus optional persist=true:
+      if persist → inserts a draft generation record (mode=mode_2, status=draft)
+      into the generations table and returns generation_id
+    - Returns { track_id, ctl_version, ready, persisted, generation_id,
+      prompt, duration, notes, input }
+
+SUCCESS CRITERIA
+  [x] 404 on both endpoints when no active CTL exists
+  [x] conditionForMode2 called with correct CTL and parsed options
+  [x] targetBars 8/16/32 forwarded; invalid values ignored
+  [x] melodyUrl forwarded when provided
+  [x] persist:false → no generations insert; persist:true → row created with
+      mode:mode_2, status:draft, generation_id returned
+  [x] 15 tests in condition.test.ts; 613 API tests passing
+
+
+### JOB H-20 — Audio Signal Evaluation API
+---
+
+PROBLEM DEFINITION
+  evaluateSignal and the individual score functions (scoreBpmAccuracy,
+  scoreKeyAccuracy, scoreGrooveDensity, scoreCulturalSignal) were built in
+  ac-ami but inaccessible over HTTP. After a generation was produced, there
+  was no endpoint to score how closely the observed audio features matched
+  what the CTL had specified — the listen→evaluate→mutate loop was broken.
+
+SOLUTION
+  New route file `apps/api/src/routes/signal.ts`, mounted at /api/tracks.
+
+  POST /api/tracks/:id/signal
+    Required body fields: bpm, key, energy_mean, onset_density (400 if missing
+    or non-numeric)
+    Optional: bpm_confidence, mode, key_confidence, energy_peak, duration_sec,
+    low_mid_ratio, spectral_centroid_hz
+    Defaults: bpm_confidence=1, mode="minor", key_confidence=1,
+    energy_peak=energy_mean, duration_sec=30
+    - Fetches active CTL; 404 if none
+    - Builds ObservedFeatures from body (optional fields conditionally included)
+    - Calls evaluateSignal(ctl, observed) → SignalEvaluationResult
+    - Returns { track_id, ctl_version, observed, score_report }
+    score_report includes: bpm_accuracy, key_accuracy, energy_accuracy,
+    groove_density_score, cultural_signal_score, signal_composite_score,
+    bpm_gap, key_match, energy_gap, passed_signal_gate, signal_notes
+
+SUCCESS CRITERIA
+  [x] 400 on missing bpm/key/energy_mean/onset_density with field names
+  [x] 400 on non-numeric bpm/energy_mean/onset_density
+  [x] 404 when no active CTL
+  [x] evaluateSignal called with correct CTL and ObservedFeatures
+  [x] observed echoed back in response; optional fields forwarded when present
+  [x] Defaults applied: bpm_confidence=1, duration_sec=30, energy_peak=energy_mean
+  [x] 15 tests in signal.test.ts; 613 API tests + 228 ac-ami tests passing
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.

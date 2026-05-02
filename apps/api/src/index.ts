@@ -23,6 +23,8 @@ import djRouter from "./routes/dj";
 import mutationRouter from "./routes/mutation";
 import { trackValidateRouter, validateRouter } from "./routes/validate";
 import instrumentationRouter from "./routes/instrumentation";
+import conditionRouter from "./routes/condition";
+import signalRouter from "./routes/signal";
 
 const app = express();
 
@@ -89,6 +91,8 @@ app.use("/api/tracks", mutationRouter);
 app.use("/api/tracks", trackValidateRouter);
 app.use("/api/validate", validateRouter);
 app.use("/api/tracks", instrumentationRouter);
+app.use("/api/tracks", conditionRouter);
+app.use("/api/tracks", signalRouter);
 
 // Start BullMQ workers (side-effect import — only in server process)
 if (require.main === module) {
