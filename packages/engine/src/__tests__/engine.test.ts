@@ -74,6 +74,7 @@ import { generateArpeggio }              from "../groove/arpeggiator";
 import { generateStutter }              from "../groove/note_stutter";
 import { injectGhostNotes }            from "../groove/ghost_note_injector";
 import { generateEcho }               from "../groove/note_echo";
+import { generateInversions }         from "../intelligence/chord_inverter";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -5929,5 +5930,79 @@ describe("73. Note echo", () => {
   test("output is deterministic", () => {
     const opts = { midiNote: 64, velocity: 90, decay: 0.65, repeats: 5 };
     expect(generateEcho(opts)).toEqual(generateEcho(opts));
+  });
+});
+
+// ── 74. Chord inversion generator ────────────────────────────────────────────
+describe("74. Chord inversion generator", () => {
+  const TRIAD = [60, 64, 67]; // C-E-G
+
+  test("root inversion returns notes sorted ascending", () => {
+    const r = generateInversions({ notes: TRIAD, types: ["root"] });
+    expect(r.inversions[0].notes).toEqual([60, 64, 67]);
+  });
+
+  test("first inversion moves lowest note up an octave", () => {
+    const r = generateInversions({ notes: TRIAD, types: ["first"] });
+    expect(r.inversions[0].notes).toEqual([64, 67, 72]);
+    expect(r.inversions[0].bassNote).toBe(64);
+  });
+
+  test("second inversion moves two lowest notes up", () => {
+    const r = generateInversions({ notes: TRIAD, types: ["second"] });
+    expect(r.inversions[0].notes).toEqual([67, 72, 76]);
+    expect(r.inversions[0].bassNote).toBe(67);
+  });
+
+  test("triad generates exactly 3 inversions (root + first + second)", () => {
+    const r = generateInversions({ notes: TRIAD });
+    expect(r.inversions).toHaveLength(3);
+    expect(r.inversions.map((i) => i.type)).toEqual(["root", "first", "second"]);
+  });
+
+  test("third inversion generated for 4-note chord", () => {
+    const r = generateInversions({ notes: [60, 64, 67, 71] });
+    const types = r.inversions.map((i) => i.type);
+    expect(types).toContain("third");
+  });
+
+  test("third inversion skipped for triad", () => {
+    const r = generateInversions({ notes: TRIAD, types: ["third"] });
+    expect(r.inversions).toHaveLength(0);
+  });
+
+  test("span = highest note − lowest note", () => {
+    const r = generateInversions({ notes: TRIAD });
+    r.inversions.forEach((inv) => {
+      const top = inv.notes[inv.notes.length - 1];
+      expect(inv.span).toBe(top - inv.bassNote);
+    });
+  });
+
+  test("types filter restricts output", () => {
+    const r = generateInversions({ notes: TRIAD, types: ["root", "second"] });
+    expect(r.inversions).toHaveLength(2);
+    expect(r.inversions.map((i) => i.type)).toEqual(["root", "second"]);
+  });
+
+  test("empty input returns empty result", () => {
+    const r = generateInversions({ notes: [] });
+    expect(r.original).toHaveLength(0);
+    expect(r.inversions).toHaveLength(0);
+  });
+
+  test("duplicate notes are deduplicated", () => {
+    const r = generateInversions({ notes: [60, 60, 64, 67], types: ["root"] });
+    expect(r.original).toEqual([60, 64, 67]);
+  });
+
+  test("notes clamped to 0-127 (high notes)", () => {
+    const r = generateInversions({ notes: [120, 124, 127], types: ["first"] });
+    r.inversions[0].notes.forEach((n) => expect(n).toBeLessThanOrEqual(127));
+  });
+
+  test("output is deterministic", () => {
+    const opts = { notes: TRIAD };
+    expect(generateInversions(opts)).toEqual(generateInversions(opts));
   });
 });

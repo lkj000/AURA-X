@@ -83,6 +83,7 @@ export type {
   StutterShape, StutterNote, StutterResult,
   GhostNote, GhostNoteResult,
   EchoNote, EchoResult,
+  InversionType, ChordInversion, InversionSet,
 }                                                     from "./types";
 
 export {
@@ -153,6 +154,10 @@ export type { GhostOptions }                          from "./groove/ghost_note_
 // ── Note echo ─────────────────────────────────────────────────────────────────
 export { generateEcho }                               from "./groove/note_echo";
 export type { EchoOptions }                           from "./groove/note_echo";
+
+// ── Chord inversion generator ─────────────────────────────────────────────────
+export { generateInversions }                         from "./intelligence/chord_inverter";
+export type { InversionOptions }                      from "./intelligence/chord_inverter";
 
 // ── High-level convenience API ────────────────────────────────────────────────
 export { evaluateBuffer, buildEnhancement }           from "./pipeline/evaluation";

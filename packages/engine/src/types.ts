@@ -484,6 +484,22 @@ export interface DrumMapResult {
   entries: DrumMapEntry[];
 }
 
+// ─── Chord inversion ─────────────────────────────────────────────────────────
+
+export type InversionType = "root" | "first" | "second" | "third";
+
+export interface ChordInversion {
+  type:     InversionType;
+  notes:    number[];
+  bassNote: number;
+  span:     number;
+}
+
+export interface InversionSet {
+  original:   number[];
+  inversions: ChordInversion[];
+}
+
 // ─── Note echo ───────────────────────────────────────────────────────────────
 
 export interface EchoNote {
