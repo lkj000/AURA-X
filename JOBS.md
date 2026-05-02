@@ -3827,3 +3827,70 @@ SUCCESS CRITERIA
   [x] GET https://app.okovanggo.ai returns 200
   [ ] POST https://aura-x-production.up.railway.app/api/agent/run
       succeeds from the web UI at app.okovanggo.ai (no CORS error)
+
+
+### JOB I-08 — Python Intelligence Engine + TypeScript Integration
+---
+
+PROBLEM DEFINITION
+  All CTL synthesis ran from TypeScript lookup tables and if-else trees.
+  The revision loop evaluated the CTL document, never the audio. The quality
+  gate used the engine's rule-based model, not real audio analysis. No
+  component measured actual acoustic properties of generated audio.
+
+SOLUTION
+  Built packages/aura-engine — Python intelligence engine from first principles:
+    dsp.py:           BPM via autocorrelation R[τ] = Σ x[t]·x[t+τ],
+                      key via Krumhansl-Schmuckler correlation (24 key templates),
+                      B_eff as spectral ratio E(20–300Hz)/E(total),
+                      log drum fingerprinting (fundamental Hz, decay ms,
+                      harmonic ratio, centroid Hz),
+                      groove analysis (swing from IOI ratios, syncopation
+                      from beat grid deviation, microtiming std ms)
+    perception.py:    C1/C2/C3 evaluated from measured audio features.
+                      C3 not-applicable when no log drum fingerprint present.
+                      CTL alignment scoring: BPM drift, key drift, state drift.
+    culture.py:       7-dimensional Mahalanobis distance classification across
+                      8 Amapiano lanes. d_M = sqrt((x-μ)ᵀΣ⁻¹(x-μ)) with
+                      regularised diagonal covariance. Softmin probabilities.
+    ctl_generator.py: Full CTL from audio measurements — every field derived
+                      from signal math. from_goal() uses lane acoustic profile
+                      means for cold-start synthesis without audio.
+    api.py:           FastAPI HTTP API:
+                        POST /analyse          — WAV → full CTL + perception
+                        POST /synthesize-goal  — goal JSON → CTL from priors
+                        POST /ctl/from-goal    — TypeScript agent primary path
+                        POST /signal/score     — WAV + target_lane → scored result
+                        POST /classify-features — 7-feature → lane probabilities
+                        GET  /health
+                      /signal/score returns: composite (35%×perception +
+                      25%×lane + 20%×BPM + 10%×key + 10%×authenticity),
+                      c1/c2/c3 pass flags, bpm_score, key_score, recommendations[]
+  Wired to TypeScript platform:
+    auraEngine.ts:    HTTP client with 15s/30s AbortSignal timeouts.
+                      ctlFromGoal() — POST /ctl/from-goal, returns EngineCtlResult | null
+                      scoreSignal() — POST /signal/score (native FormData + Blob)
+                      perceive()    — POST /perceive
+                      All return null gracefully when engine unavailable.
+    agentActivities:  buildCtl() calls ctlFromGoal() first; falls back to
+                      synthesizeCtlFromGoal() if null. Runs TS perception
+                      optimizer + all 3 ac-ami planners regardless of source.
+                      Logs source (engine | fallback) and quality_score.
+    workers.ts:       scoreSignal() called after Mode 2 audio downloaded.
+                      engineScore fields (composite_score, detected_lane,
+                      perception_state) in completion result and webhook.
+                      Non-critical — engine unavailable → generation proceeds.
+  Railway deployment: packages/aura-engine as standalone Railway service.
+                      railway.json: NIXPACKS builder, /health healthcheck.
+                      nixpacks.toml: PYTHONPATH=., pip install from requirements.txt.
+                      Activate: AURA_ENGINE_URL=https://<engine>.railway.app
+                      on the AURA-X API service.
+
+SUCCESS CRITERIA
+  [x] 56 Python tests passing (packages/aura-engine/tests/test_engine.py)
+  [x] 8 TypeScript tests passing (apps/api/src/__tests__/auraEngine.test.ts)
+  [x] ctlFromGoal falls back to synthesizeCtlFromGoal when engine unavailable
+  [x] scoreSignal returns composite_score + c1/c2/c3 + detected_lane from real audio
+  [x] agentActivities.buildCtl logs source (engine | fallback) and quality_score
+  [x] railway.json + nixpacks.toml + pyproject.toml in packages/aura-engine
+  [x] AURA_ENGINE_URL env var activates engine; absent = silent fallback throughout
