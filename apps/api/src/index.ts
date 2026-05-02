@@ -20,6 +20,7 @@ import earningsRouter from "./routes/earnings";
 import amapianorizeRouter from "./routes/amapianorize";
 import engineRouter from "./routes/engine";
 import djRouter from "./routes/dj";
+import mutationRouter from "./routes/mutation";
 
 const app = express();
 
@@ -82,6 +83,7 @@ app.use("/api/earnings", earningsRouter);
 app.use("/api/amapianorize", amapianorizeRouter);
 app.use("/api/engine", engineRouter);
 app.use("/api/dj", djRouter);
+app.use("/api/tracks", mutationRouter);
 
 // Start BullMQ workers (side-effect import — only in server process)
 if (require.main === module) {

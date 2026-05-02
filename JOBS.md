@@ -3579,6 +3579,51 @@ SUCCESS CRITERIA
   [x] 15 tests in dj.test.ts; 538 API tests + 228 ac-ami tests passing
 
 
+### JOB H-16 — CTL Mutation API
+---
+
+PROBLEM DEFINITION
+  The mutation engine (recommendMutations, applyMutations, repairCTL) was
+  fully built in ac-ami but had no HTTP surface. Producers had no way to ask
+  "what's wrong with my CTL and how do I fix it?" without embedding the
+  package directly. The creative feedback loop was broken: evaluation scores
+  existed, but no path from a failing CTL to a corrected one.
+
+SOLUTION
+  New route file `apps/api/src/routes/mutation.ts`, mounted at /api/tracks
+  (shares the tracks path prefix for natural REST nesting).
+
+  POST /api/tracks/:id/mutate/recommend  (read-only, no auth required)
+    - Fetches active CTL (is_active=true) from ctls table
+    - Calls validateAll(ctl) → issues, recommendMutations(issues) → MutationId[]
+    - Returns { track_id, ctl_version, validation: { passed, issue_count, issues },
+      recommended_mutations }
+    - 404 if no active CTL exists
+
+  POST /api/tracks/:id/mutate/apply  (requires JWT)
+    - Body: { mutations: MutationId[], persist?: boolean }
+    - Validates mutations array non-empty (400 otherwise)
+    - Calls applyMutations(ctl, mutations) → { ctl, log }
+    - If persist=true: deactivates current version, inserts new version at
+      version+1 with is_active=true
+    - Returns { persisted, ctl_version, log, ctl }
+
+  POST /api/tracks/:id/mutate/repair  (requires JWT)
+    - Body: { max_iterations?: number (1-5, default 3), persist?: boolean }
+    - Calls repairCTL(ctl, maxIter) → { ctl, passed, iterations, log }
+    - Same persist path as /apply
+    - Returns { persisted, ctl_version, passed, iterations, log, ctl }
+
+SUCCESS CRITERIA
+  [x] 404 on all endpoints when no active CTL exists
+  [x] validateAll + recommendMutations called with fetched CTL on /recommend
+  [x] 400 on empty/missing mutations array on /apply
+  [x] persist:false → no DB writes, version unchanged
+  [x] persist:true → Supabase insert called, version incremented
+  [x] max_iterations clamped to [1,5]; default 3
+  [x] 15 tests in mutation.test.ts; 553 API tests + 228 ac-ami tests passing
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.
