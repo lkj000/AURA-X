@@ -3624,6 +3624,50 @@ SUCCESS CRITERIA
   [x] 15 tests in mutation.test.ts; 553 API tests + 228 ac-ami tests passing
 
 
+### JOB H-17 — CTL Validation API
+---
+
+PROBLEM DEFINITION
+  The four domain validators (lineage, style, instrumentation, harmony) and
+  validateAll were used internally by H-16's repair loop but had no HTTP
+  surface. Producers could not inspect which domain was failing, and external
+  tools had no pre-flight check before submitting a CTL to the generation
+  pipeline.
+
+SOLUTION
+  New route file `apps/api/src/routes/validate.ts` exporting two Express
+  routers:
+
+  trackValidateRouter — mounted at /api/tracks
+    GET /api/tracks/:id/validate
+      - Fetches active CTL (is_active=true) from ctls table
+      - Runs validateAll + all four domain validators in one pass
+      - Returns { track_id, ctl_version, overall: { passed, issue_count,
+        issues }, domains: { lineage, style, instrumentation, harmony } }
+        where each domain has the same { passed, issue_count, issues } shape
+      - 404 when no active CTL exists; read-only
+
+  validateRouter — mounted at /api/validate
+    POST /api/validate/ctl
+      - Body: { ctl: CTLv1 }
+      - Validates an arbitrary CTL payload — no track ID, no DB access
+      - Returns same { overall, domains } structure (no track_id/ctl_version)
+      - 400 if ctl is missing or not an object
+      - Used for pre-flight checks before submitting generation requests
+
+  shared domainBreakdown(ctl) helper runs all five validators and assembles
+  the response in one place — both endpoints call it identically.
+
+SUCCESS CRITERIA
+  [x] 404 when no active CTL; 400 on missing/non-object ctl body
+  [x] overall and all four domains present in both responses
+  [x] Per-domain failure reflected independently (other domains unaffected)
+  [x] No Supabase calls on POST /api/validate/ctl
+  [x] No track_id/ctl_version fields in standalone validation response
+  [x] validateAll called with the correct CTL object in both routes
+  [x] 15 tests in validate.test.ts; 568 API tests + 228 ac-ami tests passing
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.
