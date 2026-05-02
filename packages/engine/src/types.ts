@@ -484,6 +484,24 @@ export interface DrumMapResult {
   entries: DrumMapEntry[];
 }
 
+// ─── Note stutter ────────────────────────────────────────────────────────────
+
+export type StutterShape = "flat" | "accelerate" | "decelerate" | "crescendo" | "decrescendo";
+
+export interface StutterNote {
+  midiNote:      number;
+  tick:          number;
+  durationTicks: number;
+  velocity:      number;
+}
+
+export interface StutterResult {
+  notes:      StutterNote[];
+  repeats:    number;
+  shape:      StutterShape;
+  windowTicks: number;
+}
+
 // ─── Arpeggiator ─────────────────────────────────────────────────────────────
 
 export type ArpMode = "up" | "down" | "up_down" | "down_up" | "random";

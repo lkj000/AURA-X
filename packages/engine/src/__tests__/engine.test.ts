@@ -71,6 +71,7 @@ import { resolveProb }               from "../groove/prob_sequencer";
 import { generateTempoRamp }         from "../arrangement/tempo_ramp_generator";
 import { buildDrumMap, resolveDrumNote } from "../daw_export/drum_mapper";
 import { generateArpeggio }              from "../groove/arpeggiator";
+import { generateStutter }              from "../groove/note_stutter";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -5732,5 +5733,73 @@ describe("70. MIDI arpeggiator", () => {
       expect(n.midiNote).toBeGreaterThanOrEqual(0);
       expect(n.midiNote).toBeLessThanOrEqual(127);
     });
+  });
+});
+
+// ── 71. Note stutter generator ────────────────────────────────────────────────
+describe("71. Note stutter generator", () => {
+  test("produces the requested repeat count", () => {
+    const r = generateStutter({ repeats: 8 });
+    expect(r.notes).toHaveLength(8);
+    expect(r.repeats).toBe(8);
+  });
+
+  test("all notes have the same midiNote", () => {
+    const r = generateStutter({ midiNote: 36, repeats: 4 });
+    r.notes.forEach((n) => expect(n.midiNote).toBe(36));
+  });
+
+  test("flat shape: all velocities equal", () => {
+    const r = generateStutter({ shape: "flat", velocity: 90, repeats: 6 });
+    r.notes.forEach((n) => expect(n.velocity).toBe(90));
+  });
+
+  test("crescendo shape: velocity increases", () => {
+    const r = generateStutter({ shape: "crescendo", minVelocity: 40, maxVelocity: 120, repeats: 5 });
+    const vels = r.notes.map((n) => n.velocity);
+    expect(vels[0]).toBeLessThan(vels[vels.length - 1]);
+  });
+
+  test("decrescendo shape: velocity decreases", () => {
+    const r = generateStutter({ shape: "decrescendo", minVelocity: 40, maxVelocity: 120, repeats: 5 });
+    const vels = r.notes.map((n) => n.velocity);
+    expect(vels[0]).toBeGreaterThan(vels[vels.length - 1]);
+  });
+
+  test("accelerate shape: tick spacing decreases", () => {
+    const r = generateStutter({ shape: "accelerate", repeats: 4, windowTicks: 480 });
+    const gaps = r.notes.slice(1).map((n, i) => n.tick - r.notes[i].tick);
+    expect(gaps[0]).toBeGreaterThan(gaps[gaps.length - 1]);
+  });
+
+  test("decelerate shape: tick spacing increases", () => {
+    const r = generateStutter({ shape: "decelerate", repeats: 4, windowTicks: 480 });
+    const gaps = r.notes.slice(1).map((n, i) => n.tick - r.notes[i].tick);
+    expect(gaps[0]).toBeLessThan(gaps[gaps.length - 1]);
+  });
+
+  test("startTick offsets first note", () => {
+    const r = generateStutter({ startTick: 1920, repeats: 4 });
+    expect(r.notes[0].tick).toBe(1920);
+  });
+
+  test("flat: notes span approximately the windowTicks", () => {
+    const r = generateStutter({ shape: "flat", repeats: 4, windowTicks: 480 });
+    const last = r.notes[r.notes.length - 1];
+    expect(last.tick + last.durationTicks).toBeLessThanOrEqual(480 + 1);
+  });
+
+  test("windowTicks is reflected in result", () => {
+    expect(generateStutter({ windowTicks: 960 }).windowTicks).toBe(960);
+  });
+
+  test("all durations are positive", () => {
+    const r = generateStutter({ repeats: 16, windowTicks: 480 });
+    r.notes.forEach((n) => expect(n.durationTicks).toBeGreaterThan(0));
+  });
+
+  test("output is deterministic", () => {
+    const opts = { midiNote: 38, repeats: 8, shape: "accelerate" as const };
+    expect(generateStutter(opts)).toEqual(generateStutter(opts));
   });
 });

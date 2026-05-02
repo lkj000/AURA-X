@@ -80,6 +80,7 @@ export type {
   TempoRampShape, TempoPoint, TempoMap,
   DrumPart, DrumLayout, DrumMapEntry, DrumMapResult,
   ArpMode, ArpNote, ArpResult,
+  StutterShape, StutterNote, StutterResult,
 }                                                     from "./types";
 
 export {
@@ -138,6 +139,10 @@ export { buildDrumMap, resolveDrumNote }              from "./daw_export/drum_ma
 // ── Arpeggiator ───────────────────────────────────────────────────────────────
 export { generateArpeggio }                           from "./groove/arpeggiator";
 export type { ArpOptions }                            from "./groove/arpeggiator";
+
+// ── Note stutter ──────────────────────────────────────────────────────────────
+export { generateStutter }                            from "./groove/note_stutter";
+export type { StutterOptions }                        from "./groove/note_stutter";
 
 // ── High-level convenience API ────────────────────────────────────────────────
 export { evaluateBuffer, buildEnhancement }           from "./pipeline/evaluation";
