@@ -79,6 +79,7 @@ export type {
   ProbabilisticPattern,
   TempoRampShape, TempoPoint, TempoMap,
   DrumPart, DrumLayout, DrumMapEntry, DrumMapResult,
+  ArpMode, ArpNote, ArpResult,
 }                                                     from "./types";
 
 export {
@@ -133,6 +134,10 @@ export type { ChordMidiOptions, ChordMidiResult }     from "./daw_export/chord_m
 export { deduplicateMidi }                            from "./daw_export/midi_deduplicator";
 export type { DeduplicateOptions }                    from "./daw_export/midi_deduplicator";
 export { buildDrumMap, resolveDrumNote }              from "./daw_export/drum_mapper";
+
+// ── Arpeggiator ───────────────────────────────────────────────────────────────
+export { generateArpeggio }                           from "./groove/arpeggiator";
+export type { ArpOptions }                            from "./groove/arpeggiator";
 
 // ── High-level convenience API ────────────────────────────────────────────────
 export { evaluateBuffer, buildEnhancement }           from "./pipeline/evaluation";

@@ -484,6 +484,24 @@ export interface DrumMapResult {
   entries: DrumMapEntry[];
 }
 
+// ─── Arpeggiator ─────────────────────────────────────────────────────────────
+
+export type ArpMode = "up" | "down" | "up_down" | "down_up" | "random";
+
+export interface ArpNote {
+  midiNote:      number;
+  tick:          number;
+  durationTicks: number;
+  velocity:      number;
+}
+
+export interface ArpResult {
+  notes:   ArpNote[];
+  mode:    ArpMode;
+  steps:   number;
+  octaves: number;
+}
+
 // ─── Tempo ramp ───────────────────────────────────────────────────────────────
 
 export type TempoRampShape = "linear" | "exponential";

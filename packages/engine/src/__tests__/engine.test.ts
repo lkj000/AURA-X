@@ -70,6 +70,7 @@ import { analyzeTaps }               from "../intelligence/tap_analyzer";
 import { resolveProb }               from "../groove/prob_sequencer";
 import { generateTempoRamp }         from "../arrangement/tempo_ramp_generator";
 import { buildDrumMap, resolveDrumNote } from "../daw_export/drum_mapper";
+import { generateArpeggio }              from "../groove/arpeggiator";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -5641,5 +5642,95 @@ describe("69. MIDI drum mapper", () => {
 
   test("ableton ride differs from gm ride", () => {
     expect(resolveDrumNote("ride", "ableton")).not.toBe(resolveDrumNote("ride", "gm"));
+  });
+});
+
+// ── 70. MIDI Arpeggiator ──────────────────────────────────────────────────────
+describe("70. MIDI arpeggiator", () => {
+  const CHORD = [60, 64, 67]; // C-E-G
+
+  test("up mode produces ascending note order", () => {
+    const r = generateArpeggio({ notes: CHORD, mode: "up", steps: 3 });
+    expect(r.notes.map((n) => n.midiNote)).toEqual([60, 64, 67]);
+  });
+
+  test("down mode produces descending note order", () => {
+    const r = generateArpeggio({ notes: CHORD, mode: "down", steps: 3 });
+    expect(r.notes.map((n) => n.midiNote)).toEqual([67, 64, 60]);
+  });
+
+  test("up_down cycles without repeating endpoints", () => {
+    const r = generateArpeggio({ notes: CHORD, mode: "up_down" });
+    expect(r.notes.map((n) => n.midiNote)).toEqual([60, 64, 67, 64]);
+  });
+
+  test("down_up cycles without repeating endpoints", () => {
+    const r = generateArpeggio({ notes: CHORD, mode: "down_up" });
+    expect(r.notes.map((n) => n.midiNote)).toEqual([67, 64, 60, 64]);
+  });
+
+  test("steps controls total note count", () => {
+    const r = generateArpeggio({ notes: CHORD, mode: "up", steps: 9 });
+    expect(r.notes).toHaveLength(9);
+  });
+
+  test("pattern cycles correctly across steps", () => {
+    const r = generateArpeggio({ notes: CHORD, mode: "up", steps: 6 });
+    expect(r.notes.map((n) => n.midiNote)).toEqual([60, 64, 67, 60, 64, 67]);
+  });
+
+  test("octaves=2 includes notes one octave higher", () => {
+    const r = generateArpeggio({ notes: [60, 64], mode: "up", octaves: 2 });
+    const midiNotes = r.notes.map((n) => n.midiNote);
+    expect(midiNotes).toContain(72);
+    expect(midiNotes).toContain(76);
+  });
+
+  test("startTick offsets all note ticks", () => {
+    const r = generateArpeggio({ notes: CHORD, startTick: 960, ticksPerStep: 120, steps: 3 });
+    expect(r.notes[0].tick).toBe(960);
+    expect(r.notes[1].tick).toBe(1080);
+  });
+
+  test("velocity is applied to every note", () => {
+    const r = generateArpeggio({ notes: CHORD, velocity: 80, steps: 3 });
+    r.notes.forEach((n) => expect(n.velocity).toBe(80));
+  });
+
+  test("durationTicks is 90% of ticksPerStep", () => {
+    const r = generateArpeggio({ notes: CHORD, ticksPerStep: 120, steps: 1 });
+    expect(r.notes[0].durationTicks).toBe(108);
+  });
+
+  test("random mode with same seed is deterministic", () => {
+    const opts = { notes: CHORD, mode: "random" as const, seed: "test" };
+    expect(generateArpeggio(opts).notes.map((n) => n.midiNote))
+      .toEqual(generateArpeggio(opts).notes.map((n) => n.midiNote));
+  });
+
+  test("random mode with different seeds produces different order", () => {
+    const a = generateArpeggio({ notes: [60,62,64,65,67,69,71,72], mode: "random", seed: "s1" }).notes.map((n) => n.midiNote);
+    const b = generateArpeggio({ notes: [60,62,64,65,67,69,71,72], mode: "random", seed: "s2" }).notes.map((n) => n.midiNote);
+    expect(a).not.toEqual(b);
+  });
+
+  test("empty notes returns empty result", () => {
+    const r = generateArpeggio({ notes: [] });
+    expect(r.notes).toHaveLength(0);
+    expect(r.steps).toBe(0);
+  });
+
+  test("duplicate input notes are deduplicated", () => {
+    const r = generateArpeggio({ notes: [60, 60, 64], mode: "up" });
+    const unique = [...new Set(r.notes.map((n) => n.midiNote))];
+    expect(unique.length).toBeLessThanOrEqual(2);
+  });
+
+  test("all generated MIDI notes are in range 0–127", () => {
+    const r = generateArpeggio({ notes: [60, 64, 67], octaves: 4, steps: 32 });
+    r.notes.forEach((n) => {
+      expect(n.midiNote).toBeGreaterThanOrEqual(0);
+      expect(n.midiNote).toBeLessThanOrEqual(127);
+    });
   });
 });
