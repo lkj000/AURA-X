@@ -10,6 +10,31 @@ import {
   BASE_HARMONIC_RHYTHM,
 } from "./harmonyKnowledge";
 
+// ─── Chord transposition utilities ───────────────────────────────────────────
+const CHROMATIC = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"] as const;
+const ENHARMONIC: Record<string, string> = {
+  Db:"C#", Eb:"D#", Fb:"E", Gb:"F#", Ab:"G#", Bb:"A#", Cb:"B",
+};
+
+function noteIndex(note: string): number {
+  const n = ENHARMONIC[note] ?? note;
+  return CHROMATIC.indexOf(n as typeof CHROMATIC[number]);
+}
+
+function transposeChord(chord: string, semitones: number): string {
+  if (semitones === 0) return chord;
+  const m = chord.match(/^([A-G][#b]?)(.*)$/);
+  if (!m) return chord;
+  const idx = noteIndex(m[1]);
+  if (idx < 0) return chord;
+  return CHROMATIC[((idx + semitones) % 12 + 12) % 12] + m[2];
+}
+
+function transposeProgression(prog: string, semitones: number): string {
+  if (semitones === 0) return prog;
+  return prog.split("-").map(c => transposeChord(c, semitones)).join("-");
+}
+
 export type HarmonyPlan = z.infer<typeof HarmonyProfileSchema>;
 
 export type HarmonyPlannerOptions = {
@@ -33,17 +58,19 @@ export function planHarmony(
   let tonicCenter: string;
 
   if (opts.forceKey) {
-    // Strip trailing "m" so tonal_center is always the root letter(s) only
     tonicCenter = opts.forceKey.replace(/m$/, "");
-  } else if (preferredKeys.includes(global.key)) {
+  } else if (global.key) {
+    // Always honour the requested key — preferred zone is for defaults only
     tonicCenter = global.key.replace(/m$/, "");
   } else {
-    // CTL key not in preferred zone — fall back to first preferred
     tonicCenter = preferredKeys[0].replace(/m$/, "");
   }
 
   // ─── 2. PROGRESSION + CHORD DENSITY ─────────────────────────────────────
   const progData = SUBGENRE_PROGRESSIONS[subgenre];
+  // Semitone offset from subgenre home key so exemplar chords transpose correctly
+  const homeRoot  = preferredKeys[0].replace(/m$/, "");
+  const xpose     = (noteIndex(tonicCenter) - noteIndex(homeRoot) + 12) % 12;
   let maxChanges = progData.maxChanges;
 
   // Bacardi inheritance reduces chord density (less movement = more groove)
@@ -103,7 +130,7 @@ export function planHarmony(
     tonal_center:                 tonicCenter,
     mode,
     preferred_progressions:       progData.preferred,
-    exemplar_progressions:        progData.exemplars,
+    exemplar_progressions:        progData.exemplars.map(p => transposeProgression(p, xpose)),
     max_chord_changes_per_4_bars: maxChanges,
     extension_policy:             extensionPolicy,
     voicing_style:                voicingStyle,
