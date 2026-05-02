@@ -3347,6 +3347,42 @@ SUCCESS CRITERIA
   [x] 15 audit tests, 465 total passing
 
 
+---
+
+### JOB H-10 — DNS / SSL Hardening
+---
+
+PROBLEM DEFINITION
+  Railway terminates TLS and injects X-Forwarded-Proto, but the API had no
+  HTTPS enforcement — a plain HTTP request would be served without redirect.
+  Express also didn't trust the reverse proxy, so req.ip / req.protocol were
+  wrong behind Railway. No security response headers (HSTS, X-Frame-Options,
+  etc.) were set, leaving the API vulnerable to downgrade attacks and
+  clickjacking once a custom domain is pointed at the service.
+
+SOLUTION
+  Added `src/middleware/security.ts` with two middleware functions:
+    - httpsRedirect: in production, if X-Forwarded-Proto !== "https" → 301
+      redirect to https:// equivalent. No-op in dev/test.
+    - securityHeaders: sets Strict-Transport-Security (max-age=31536000;
+      includeSubDomains), X-Content-Type-Options: nosniff, X-Frame-Options:
+      DENY, Referrer-Policy: strict-origin-when-cross-origin on every response.
+  In `src/index.ts`:
+    - app.set("trust proxy", 1) — Express trusts Railway's X-Forwarded-* headers
+    - httpsRedirect and securityHeaders applied before all other middleware
+  DNS wiring (once domain is purchased):
+    - CNAME api.okovanggo.ai → aura-x-production.up.railway.app
+    - Set CORS_ORIGIN=https://app.okovanggo.ai in Railway service variables
+
+SUCCESS CRITERIA
+  [x] Plain HTTP in production → 301 to https:// (preserves path + query)
+  [x] HTTPS in production → passes through normally
+  [x] Non-production → no redirect
+  [x] HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy on all responses
+  [x] trust proxy: req.ip reflects X-Forwarded-For
+  [x] 13 security tests, 478 total passing
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.

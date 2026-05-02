@@ -3,6 +3,7 @@ dotenv.config();
 
 import express from "express";
 import { globalLimiter, authLimiter, generationLimiter, evaluateLimiter } from "./middleware/rateLimit";
+import { httpsRedirect, securityHeaders } from "./middleware/security";
 import generateRouter from "./routes/generate";
 import audioRouter from "./routes/audio";
 import queueRouter from "./routes/queue";
@@ -20,6 +21,12 @@ import amapianorizeRouter from "./routes/amapianorize";
 import engineRouter from "./routes/engine";
 
 const app = express();
+
+// Trust Railway's reverse proxy so X-Forwarded-Proto / X-Forwarded-For are correct
+app.set("trust proxy", 1);
+
+app.use(httpsRedirect);
+app.use(securityHeaders);
 
 // CORS — allow the web app and any localhost port in dev
 const allowedOrigins = (process.env.CORS_ORIGIN ?? "").split(",").filter(Boolean);
