@@ -75,6 +75,7 @@ import { generateStutter }              from "../groove/note_stutter";
 import { injectGhostNotes }            from "../groove/ghost_note_injector";
 import { generateEcho }               from "../groove/note_echo";
 import { generateInversions }         from "../intelligence/chord_inverter";
+import { generateVelocityMap }        from "../groove/velocity_accent_map";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -6004,5 +6005,74 @@ describe("74. Chord inversion generator", () => {
   test("output is deterministic", () => {
     const opts = { notes: TRIAD };
     expect(generateInversions(opts)).toEqual(generateInversions(opts));
+  });
+});
+
+// ── 75. Velocity accent map ───────────────────────────────────────────────────
+describe("75. Velocity accent map", () => {
+  test("totalSteps controls output length", () => {
+    expect(generateVelocityMap({ totalSteps: 32 }).steps).toHaveLength(32);
+  });
+
+  test("amapiano preset: step 0 has peak velocity", () => {
+    const r = generateVelocityMap({ preset: "amapiano", peak: 120, floor: 40 });
+    expect(r.steps[0].velocity).toBe(120);
+  });
+
+  test("amapiano preset: step 4 has velocity less than step 0", () => {
+    const r = generateVelocityMap({ preset: "amapiano", peak: 120, floor: 40 });
+    expect(r.steps[4].velocity).toBeLessThan(r.steps[0].velocity);
+  });
+
+  test("flat preset: all velocities equal peak", () => {
+    const r = generateVelocityMap({ preset: "flat", peak: 100, floor: 40 });
+    r.steps.forEach((s) => expect(s.velocity).toBe(100));
+  });
+
+  test("all velocities within [floor, peak]", () => {
+    const r = generateVelocityMap({ peak: 110, floor: 50 });
+    r.steps.forEach((s) => {
+      expect(s.velocity).toBeGreaterThanOrEqual(50);
+      expect(s.velocity).toBeLessThanOrEqual(110);
+    });
+  });
+
+  test("preset cycles when totalSteps > preset length", () => {
+    const r = generateVelocityMap({ preset: "amapiano", totalSteps: 32 });
+    expect(r.steps[0].ratio).toBe(r.steps[16].ratio);
+    expect(r.steps[4].ratio).toBe(r.steps[20].ratio);
+  });
+
+  test("customRatios overrides preset", () => {
+    const r = generateVelocityMap({ customRatios: [1, 0.5], totalSteps: 4, peak: 100, floor: 0 });
+    expect(r.steps[0].velocity).toBe(100);
+    expect(r.steps[1].velocity).toBe(50);
+    expect(r.steps[2].velocity).toBe(100);
+    expect(r.steps[3].velocity).toBe(50);
+  });
+
+  test("customRatios marks preset as 'custom'", () => {
+    expect(generateVelocityMap({ customRatios: [1] }).preset).toBe("custom");
+  });
+
+  test("ratio is reflected in each step", () => {
+    const r = generateVelocityMap({ preset: "amapiano", totalSteps: 1 });
+    expect(r.steps[0].ratio).toBeCloseTo(1.0);
+  });
+
+  test("step indices are sequential 0..totalSteps-1", () => {
+    const r = generateVelocityMap({ totalSteps: 8 });
+    r.steps.forEach((s, i) => expect(s.step).toBe(i));
+  });
+
+  test("peak and floor reflected in result", () => {
+    const r = generateVelocityMap({ peak: 110, floor: 55 });
+    expect(r.peak).toBe(110);
+    expect(r.floor).toBe(55);
+  });
+
+  test("output is deterministic", () => {
+    const opts = { preset: "straight" as const, totalSteps: 16 };
+    expect(generateVelocityMap(opts)).toEqual(generateVelocityMap(opts));
   });
 });

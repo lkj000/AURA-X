@@ -84,6 +84,7 @@ export type {
   GhostNote, GhostNoteResult,
   EchoNote, EchoResult,
   InversionType, ChordInversion, InversionSet,
+  AccentPreset, VelocityMapStep, VelocityMap,
 }                                                     from "./types";
 
 export {
@@ -158,6 +159,10 @@ export type { EchoOptions }                           from "./groove/note_echo";
 // ── Chord inversion generator ─────────────────────────────────────────────────
 export { generateInversions }                         from "./intelligence/chord_inverter";
 export type { InversionOptions }                      from "./intelligence/chord_inverter";
+
+// ── Velocity accent map ───────────────────────────────────────────────────────
+export { generateVelocityMap }                        from "./groove/velocity_accent_map";
+export type { VelocityMapOptions }                    from "./groove/velocity_accent_map";
 
 // ── High-level convenience API ────────────────────────────────────────────────
 export { evaluateBuffer, buildEnhancement }           from "./pipeline/evaluation";

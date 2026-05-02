@@ -484,6 +484,23 @@ export interface DrumMapResult {
   entries: DrumMapEntry[];
 }
 
+// ─── Velocity accent map ─────────────────────────────────────────────────────
+
+export type AccentPreset = "amapiano" | "straight" | "flat";
+
+export interface VelocityMapStep {
+  step:     number;
+  velocity: number;
+  ratio:    number;
+}
+
+export interface VelocityMap {
+  steps:  VelocityMapStep[];
+  preset: AccentPreset | "custom";
+  peak:   number;
+  floor:  number;
+}
+
 // ─── Chord inversion ─────────────────────────────────────────────────────────
 
 export type InversionType = "root" | "first" | "second" | "third";
