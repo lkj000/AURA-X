@@ -62,8 +62,20 @@ const mockEvaluateBuffer  = jest.fn();
 const mockRunQualityGates = jest.fn();
 
 jest.mock("@aura-x/engine", () => ({
-  evaluateBuffer:  (...args: unknown[]) => mockEvaluateBuffer(...args),
-  runQualityGates: (...args: unknown[]) => mockRunQualityGates(...args),
+  evaluateBuffer:        (...args: unknown[]) => mockEvaluateBuffer(...args),
+  runQualityGates:       (...args: unknown[]) => mockRunQualityGates(...args),
+  createMetricsCollector: jest.fn(() => ({
+    record: jest.fn(),
+    snapshot: jest.fn(),
+    reset: jest.fn(),
+    size: 0,
+  })),
+}));
+
+// ─── metricsCollector singleton mock ─────────────────────────────────────────
+
+jest.mock("../lib/metricsCollector", () => ({
+  metricsCollector: { record: jest.fn(), snapshot: jest.fn(), reset: jest.fn(), size: 0 },
 }));
 
 // ─── axios mock ──────────────────────────────────────────────────────────────

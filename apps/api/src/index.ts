@@ -16,6 +16,7 @@ import royaltiesRouter from "./routes/royalties";
 import marketplaceRouter from "./routes/marketplace";
 import earningsRouter from "./routes/earnings";
 import amapianorizeRouter from "./routes/amapianorize";
+import engineRouter from "./routes/engine";
 
 const app = express();
 
@@ -41,7 +42,7 @@ app.get("/", (_req, res) => {
   res.json({
     service: "aura-x-api",
     version: "4.0.0",
-    endpoints: ["/health", "/api/generate", "/api/audio", "/api/queue", "/api/evaluate", "/api/agent", "/api/video", "/api/feedback", "/api/auth", "/api/tracks", "/api/licensing", "/api/royalties", "/api/marketplace", "/api/earnings", "/api/amapianorize"],
+    endpoints: ["/health", "/api/generate", "/api/audio", "/api/queue", "/api/evaluate", "/api/agent", "/api/video", "/api/feedback", "/api/auth", "/api/tracks", "/api/licensing", "/api/royalties", "/api/marketplace", "/api/earnings", "/api/amapianorize", "/api/engine"],
   });
 });
 
@@ -69,6 +70,7 @@ app.use("/api/royalties", royaltiesRouter);
 app.use("/api/marketplace", marketplaceRouter);
 app.use("/api/earnings", earningsRouter);
 app.use("/api/amapianorize", amapianorizeRouter);
+app.use("/api/engine", engineRouter);
 
 // Start BullMQ workers (side-effect import — only in server process)
 if (require.main === module) {

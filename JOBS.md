@@ -3115,6 +3115,36 @@ SUCCESS CRITERIA
   [x] evaluateBuffer throws → gate skipped → status "complete" (no false negatives)
 
 
+---
+### JOB H-02 — MetricsCollector API Endpoint
+---
+
+PROBLEM DEFINITION
+  The engine's MetricsCollector (Phase G, E-63) had no surface in the API —
+  pipeline observability data was trapped inside the worker process with no way
+  to query pass/fail counts, average quality, or recent run history. Operators
+  had no visibility into generation quality trends across the fleet.
+
+SOLUTION
+  Create a process-level singleton MetricsCollector (apps/api/src/lib/metricsCollector.ts)
+  shared by the generation worker and the new engine router. Wire timing + result
+  recording into the worker's step 4a: durationMs covers the evaluateBuffer +
+  runQualityGates call, qualityScore = gateReport.overallScore, passed =
+  gateReport.readyForRelease, lane = gateReport.lane. When the buffer is
+  unparseable, record passed=true with error="buffer_unparseable" (consistent
+  with the skip-on-error fallback). Two endpoints:
+    GET  /api/engine/metrics?limit=N  — MetricsSnapshot (totalRuns, passed,
+                                        failed, avgDurationMs, avgQuality,
+                                        recentRuns[limit])
+    POST /api/engine/metrics/reset    — clear all metrics, 204 No Content
+  limit clamped to [1, 100], NaN falls back to 10.
+
+SUCCESS CRITERIA
+  [x] GET /api/engine/metrics returns correct snapshot shape with all 6 fields
+  [x] limit query param clamped correctly (min 1, max 100, NaN → 10)
+  [x] POST /api/engine/metrics/reset calls collector.reset() and returns 204
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.

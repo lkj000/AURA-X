@@ -3,6 +3,7 @@ import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
 import { connection, AudioJobData, GenerationJobData, enqueueAudioAnalysis } from "./index";
 import { evaluateBuffer, runQualityGates } from "@aura-x/engine";
+import { metricsCollector } from "../lib/metricsCollector";
 
 if (!connection) {
   console.log("[workers] Skipping worker startup — no Redis connection.");
@@ -201,12 +202,20 @@ export const generationWorker = new Worker(
     // Evaluate the downloaded WAV buffer directly — no audio service round-trip.
     // Falls back to pass if the buffer is not parseable (non-PCM format, corrupt).
     let gateReport: ReturnType<typeof runQualityGates> | null = null;
+    const gateStart = Date.now();
     try {
       const evaluation = evaluateBuffer(audioBuffer);
       gateReport = runQualityGates(evaluation);
     } catch {
       // Buffer not parseable as WAV PCM — gate skipped, generation continues
     }
+    metricsCollector.record({
+      durationMs:   Date.now() - gateStart,
+      qualityScore: gateReport?.overallScore ?? 0,
+      passed:       gateReport ? gateReport.readyForRelease : true,
+      lane:         gateReport?.lane,
+      error:        gateReport ? undefined : "buffer_unparseable",
+    });
 
     if (gateReport && !gateReport.readyForRelease) {
       const failingGates = gateReport.gates
