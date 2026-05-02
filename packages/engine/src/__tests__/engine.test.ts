@@ -72,6 +72,7 @@ import { generateTempoRamp }         from "../arrangement/tempo_ramp_generator";
 import { buildDrumMap, resolveDrumNote } from "../daw_export/drum_mapper";
 import { generateArpeggio }              from "../groove/arpeggiator";
 import { generateStutter }              from "../groove/note_stutter";
+import { injectGhostNotes }            from "../groove/ghost_note_injector";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -5801,5 +5802,69 @@ describe("71. Note stutter generator", () => {
   test("output is deterministic", () => {
     const opts = { midiNote: 38, repeats: 8, shape: "accelerate" as const };
     expect(generateStutter(opts)).toEqual(generateStutter(opts));
+  });
+});
+
+// ── 72. Ghost note injector ───────────────────────────────────────────────────
+describe("72. Ghost note injector", () => {
+  test("no ghosts land on occupied steps", () => {
+    const occupied = [0, 4, 8, 12];
+    const r = injectGhostNotes({ totalSteps: 16, occupiedSteps: occupied, density: 1 });
+    const ghostSteps = r.ghosts.map((g) => g.step);
+    occupied.forEach((s) => expect(ghostSteps).not.toContain(s));
+  });
+
+  test("density=0 produces no ghosts", () => {
+    const r = injectGhostNotes({ totalSteps: 16, density: 0 });
+    expect(r.ghosts).toHaveLength(0);
+  });
+
+  test("density=1 fills every empty step", () => {
+    const occupied = [0, 8];
+    const r = injectGhostNotes({ totalSteps: 16, occupiedSteps: occupied, density: 1 });
+    expect(r.ghosts).toHaveLength(14);
+  });
+
+  test("all ghost velocities within [minVelocity, maxVelocity]", () => {
+    const r = injectGhostNotes({ density: 1, minVelocity: 20, maxVelocity: 45, totalSteps: 16 });
+    r.ghosts.forEach((g) => {
+      expect(g.velocity).toBeGreaterThanOrEqual(20);
+      expect(g.velocity).toBeLessThanOrEqual(45);
+    });
+  });
+
+  test("all ghost midiNote values match the configured note", () => {
+    const r = injectGhostNotes({ midiNote: 42, density: 1, totalSteps: 8 });
+    r.ghosts.forEach((g) => expect(g.midiNote).toBe(42));
+  });
+
+  test("tick = startTick + step × ticksPerStep", () => {
+    const r = injectGhostNotes({ density: 1, totalSteps: 4, ticksPerStep: 120, startTick: 240 });
+    r.ghosts.forEach((g) => expect(g.tick).toBe(240 + g.step * 120));
+  });
+
+  test("output is deterministic with same seed", () => {
+    const opts = { totalSteps: 16, density: 0.5, seed: "test" };
+    expect(injectGhostNotes(opts)).toEqual(injectGhostNotes(opts));
+  });
+
+  test("different seeds produce different ghost placements", () => {
+    const a = injectGhostNotes({ totalSteps: 16, density: 0.5, seed: "s1" }).ghosts.map((g) => g.step);
+    const b = injectGhostNotes({ totalSteps: 16, density: 0.5, seed: "s2" }).ghosts.map((g) => g.step);
+    expect(a).not.toEqual(b);
+  });
+
+  test("totalSteps and density are reflected in result", () => {
+    const r = injectGhostNotes({ totalSteps: 32, density: 0.3 });
+    expect(r.totalSteps).toBe(32);
+    expect(r.density).toBeCloseTo(0.3);
+  });
+
+  test("ghost steps are within [0, totalSteps)", () => {
+    const r = injectGhostNotes({ totalSteps: 16, density: 1 });
+    r.ghosts.forEach((g) => {
+      expect(g.step).toBeGreaterThanOrEqual(0);
+      expect(g.step).toBeLessThan(16);
+    });
   });
 });

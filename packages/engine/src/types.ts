@@ -484,6 +484,21 @@ export interface DrumMapResult {
   entries: DrumMapEntry[];
 }
 
+// ─── Ghost note injector ──────────────────────────────────────────────────────
+
+export interface GhostNote {
+  step:     number;
+  tick:     number;
+  midiNote: number;
+  velocity: number;
+}
+
+export interface GhostNoteResult {
+  ghosts:     GhostNote[];
+  density:    number;
+  totalSteps: number;
+}
+
 // ─── Note stutter ────────────────────────────────────────────────────────────
 
 export type StutterShape = "flat" | "accelerate" | "decelerate" | "crescendo" | "decrescendo";

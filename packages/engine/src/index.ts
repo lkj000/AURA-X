@@ -81,6 +81,7 @@ export type {
   DrumPart, DrumLayout, DrumMapEntry, DrumMapResult,
   ArpMode, ArpNote, ArpResult,
   StutterShape, StutterNote, StutterResult,
+  GhostNote, GhostNoteResult,
 }                                                     from "./types";
 
 export {
@@ -143,6 +144,10 @@ export type { ArpOptions }                            from "./groove/arpeggiator
 // ── Note stutter ──────────────────────────────────────────────────────────────
 export { generateStutter }                            from "./groove/note_stutter";
 export type { StutterOptions }                        from "./groove/note_stutter";
+
+// ── Ghost note injector ───────────────────────────────────────────────────────
+export { injectGhostNotes }                           from "./groove/ghost_note_injector";
+export type { GhostOptions }                          from "./groove/ghost_note_injector";
 
 // ── High-level convenience API ────────────────────────────────────────────────
 export { evaluateBuffer, buildEnhancement }           from "./pipeline/evaluation";
