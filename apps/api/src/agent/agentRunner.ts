@@ -99,31 +99,45 @@ export async function runAgent(goal: AgentGoal): Promise<AgentRunResult> {
   const track_id = trackData.id;
   agentLog.push(`[agent] Track created: ${track_id}`);
 
-  // ─── 2. Synthesise CTL via engine cultural intelligence ───────────────────
-  let ctl = buildCtlFromGoal(goal);
-  agentLog.push(`[agent] CTL synthesised: ${goal.subgenre} (engine-native)`);
+  // ─── 2. Synthesise CTL — Python intelligence engine (primary path) ──────────
+  let ctl: CTLv1;
+  let synthSource = "python_intelligence";
 
-  // ─── 3a. Perception optimization (OptimizerLoop) ──────────────────────────
-  const perceptResult = optimizeCTLForHarmonicState(ctl);
-  ctl = perceptResult.ctl;
-  if (perceptResult.converged) {
-    agentLog.push(
-      `[agent] Perception converged to harmonic in ${perceptResult.iterations} iter(s)` +
-      (perceptResult.mutations_applied.length > 0
-        ? `: ${perceptResult.mutations_applied.join("; ")}`
-        : " (no adjustments needed)")
+  try {
+    const pyRes = await axios.post<{ ctl: CTLv1; perception_state: string; converged: boolean; groove_novel: boolean; synthesis_ms: number }>(
+      `${process.env.AUDIO_SERVICE_URL ?? "http://localhost:8000"}/intelligence/synthesize`,
+      {
+        title:            goal.title,
+        lane:             goal.subgenre,
+        bpm:              goal.bpm,
+        key:              goal.key,
+        emotional_profile: goal.emotional_profile,
+        created_by:       goal.created_by,
+        generation_mode:  goal.generation_mode ?? "mode_1_suno",
+        temperature:      0.4,
+      },
+      { timeout: 8_000 },
     );
-  } else {
+    ctl = pyRes.data.ctl as CTLv1;
     agentLog.push(
-      `[agent] Perception optimizer: non-converged after ${perceptResult.iterations} iter(s), ` +
-      `state=${perceptResult.final_state.state} — proceeding with best effort`
+      `[agent] Python engine: ${goal.subgenre} | ` +
+      `state=${pyRes.data.perception_state} | ` +
+      `groove_novel=${pyRes.data.groove_novel} | ` +
+      `${pyRes.data.synthesis_ms}ms | ` +
+      `converged=${pyRes.data.converged}`
     );
+  } catch {
+    // Fallback: TypeScript engine (Python service unavailable)
+    synthSource = "ts_engine_fallback";
+    ctl = buildCtlFromGoal(goal);
+    const perceptResult = optimizeCTLForHarmonicState(ctl);
+    ctl = perceptResult.ctl;
+    ctl = applyHarmonyPlan(ctl);
+    ctl = applyGroovePlan(ctl);
+    ctl = applyInstrumentationPlan(ctl);
+    agentLog.push(`[agent] Python engine unavailable — fell back to TypeScript engine`);
   }
-
-  ctl = applyHarmonyPlan(ctl);
-  ctl = applyGroovePlan(ctl);
-  ctl = applyInstrumentationPlan(ctl);
-  agentLog.push(`[agent] Planners applied: harmony + groove + instrumentation`);
+  agentLog.push(`[agent] CTL ready (${synthSource})`);
 
   // ─── 3. Write CTL record ──────────────────────────
   const { data: ctlData, error: ctlError } = await supabase
