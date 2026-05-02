@@ -3465,6 +3465,41 @@ SUCCESS CRITERIA
   [x] 15 melody unit tests (ac-ami), 10 route tests (api), 498 API + 218 ac-ami passing
 
 
+### JOB H-13 — Multi-track MIDI Export
+---
+
+PROBLEM DEFINITION
+  Drums, chords, and melody were each available as separate .mid downloads
+  requiring three requests. Producers loading a project into a DAW had to
+  manually import three files with no guarantee of bar alignment between them.
+
+SOLUTION
+  Added `mergeToMultiTrackMidi(tracks)` in
+  `packages/ac-ami/src/midi/midiMerger.ts`:
+    - Accepts an array of Type-0 MIDI buffers (each beginning with MThd)
+    - Extracts the MTrk chunk from each (bytes 14 onward)
+    - Writes a new MThd with format=1 (multi-track) and numTracks=n
+    - Concatenates MThd + all MTrk chunks into a single Type-1 MIDI binary
+  New API route GET /api/tracks/:id/midi/full:
+    - Fetches track (subgenre, bpm, key) in one Supabase query
+    - Generates drums via generateGrooveVariations + exportGrooveToMidi
+    - Generates chords via buildChordProgression + exportChordProgressionToMidi
+    - Generates melody via planMelody + exportMelodyToMidi
+    - Merges all three with mergeToMultiTrackMidi
+    - Returns binary with Content-Type audio/midi, filename: {title}_full.mid
+    - Route registered before /:id/midi to prevent Express route shadowing
+    - ?bars=1-32 clamped, null key defaults to "C"
+
+SUCCESS CRITERIA
+  [x] Output starts with MThd, format=1, numTracks=3, PPQ=480
+  [x] Total buffer size = 14 + sum of all three MTrk chunk sizes
+  [x] mergeToMultiTrackMidi throws on empty array
+  [x] API returns 200 audio/midi with _full.mid in Content-Disposition
+  [x] All three generators called with correct lane/bpm/key/bars
+  [x] Track not found → 404; null key defaults to "C"; bars clamped to 32
+  [x] 10 merger unit tests (ac-ami), 10 route tests (api), 508 API + 228 ac-ami passing
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.

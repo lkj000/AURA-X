@@ -49,14 +49,16 @@ jest.mock("@aura-x/engine", () => ({
 
 // ─── Mock @aura-x/ac-ami ─────────────────────────────────────────────────────
 
-const mockSuggestGroove      = jest.fn();
-const mockPlanMelody         = jest.fn();
-const mockExportMelodyToMidi = jest.fn();
+const mockSuggestGroove           = jest.fn();
+const mockPlanMelody              = jest.fn();
+const mockExportMelodyToMidi      = jest.fn();
+const mockMergeToMultiTrackMidi   = jest.fn();
 
 jest.mock("@aura-x/ac-ami", () => ({
-  suggestGroove:      (...args: unknown[]) => mockSuggestGroove(...args),
-  planMelody:         (...args: unknown[]) => mockPlanMelody(...args),
-  exportMelodyToMidi: (...args: unknown[]) => mockExportMelodyToMidi(...args),
+  suggestGroove:          (...args: unknown[]) => mockSuggestGroove(...args),
+  planMelody:             (...args: unknown[]) => mockPlanMelody(...args),
+  exportMelodyToMidi:     (...args: unknown[]) => mockExportMelodyToMidi(...args),
+  mergeToMultiTrackMidi:  (...args: unknown[]) => mockMergeToMultiTrackMidi(...args),
 }));
 
 // ─── Mock auth middleware ─────────────────────────────────────────────────────
@@ -848,6 +850,140 @@ describe("GET /api/tracks/:id/melody", () => {
     expect(mockPlanMelody).toHaveBeenCalledWith(
       expect.any(String), expect.any(String), expect.any(Number),
       expect.objectContaining({ register: "mid" }),
+    );
+  });
+
+});
+
+// ─── GET /api/tracks/:id/midi/full ────────────────────────────────────────────
+
+describe("GET /api/tracks/:id/midi/full", () => {
+
+  // Minimal valid Type-1 MIDI: MThd(format=1,3 tracks) + 3 MTrk stubs
+  const FULL_MIDI = Buffer.from([
+    0x4d, 0x54, 0x68, 0x64, 0,0,0,6, 0,1, 0,3, 0x01, 0xe0,
+  ]);
+
+  function makeTrackQueryFull(found: boolean) {
+    return {
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({
+            data: found ? TRACK_1 : null,
+            error: null,
+          }),
+        }),
+      }),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGenerateGrooveVariations.mockReturnValue({ main: { steps: [] } });
+    mockExportGrooveToMidi.mockReturnValue({ buffer: FAKE_MIDI_BUFFER });
+    mockBuildChordProgression.mockReturnValue([]);
+    mockExportChordToMidi.mockReturnValue({ buffer: FAKE_MIDI_BUFFER });
+    mockPlanMelody.mockReturnValue({ lane: "private_school", key: "F#m", bpm: 112, bars: 4, notes: [] });
+    mockExportMelodyToMidi.mockReturnValue({ buffer: FAKE_MIDI_BUFFER });
+    mockMergeToMultiTrackMidi.mockReturnValue({ buffer: FULL_MIDI });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "tracks") return makeTrackQueryFull(true);
+      return {};
+    });
+  });
+
+  it("61. Returns 200 with audio/midi content-type", async () => {
+    const res = await request(app).get("/api/tracks/track-aaa-001/midi/full");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/audio\/midi/);
+  });
+
+  it("62. Content-Disposition contains _full.mid", async () => {
+    const res = await request(app).get("/api/tracks/track-aaa-001/midi/full");
+    expect(res.headers["content-disposition"]).toMatch(/_full\.mid/);
+  });
+
+  it("63. mergeToMultiTrackMidi called with 3 track buffers", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/midi/full");
+    expect(mockMergeToMultiTrackMidi).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ buffer: expect.any(Buffer) }),
+        expect.objectContaining({ buffer: expect.any(Buffer) }),
+        expect.objectContaining({ buffer: expect.any(Buffer) }),
+      ]),
+    );
+    const call = (mockMergeToMultiTrackMidi as jest.Mock).mock.calls[0][0];
+    expect(call).toHaveLength(3);
+  });
+
+  it("64. planMelody called with track lane, key, bpm", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/midi/full");
+    expect(mockPlanMelody).toHaveBeenCalledWith(
+      "private_school", "F#m", 112,
+      expect.any(Object),
+    );
+  });
+
+  it("65. generateGrooveVariations called with lane and bpm", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/midi/full");
+    expect(mockGenerateGrooveVariations).toHaveBeenCalledWith(
+      "private_school",
+      expect.objectContaining({ bpm: 112 }),
+    );
+  });
+
+  it("66. buildChordProgression called with lane", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/midi/full");
+    expect(mockBuildChordProgression).toHaveBeenCalledWith(
+      expect.objectContaining({ lane: "private_school" }),
+    );
+  });
+
+  it("67. ?bars=8 forwarded to planMelody and exportGrooveToMidi", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/midi/full?bars=8");
+    expect(mockPlanMelody).toHaveBeenCalledWith(
+      expect.any(String), expect.any(String), expect.any(Number),
+      expect.objectContaining({ bars: 8 }),
+    );
+    expect(mockExportGrooveToMidi).toHaveBeenCalledWith(
+      expect.anything(), expect.any(Number), 8,
+    );
+  });
+
+  it("68. Track not found → 404", async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "tracks") return makeTrackQueryFull(false);
+      return {};
+    });
+    const res = await request(app).get("/api/tracks/does-not-exist/midi/full");
+    expect(res.status).toBe(404);
+  });
+
+  it("69. Track with null key defaults to C", async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "tracks") return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () => Promise.resolve({
+              data: { ...TRACK_1, key: null },
+              error: null,
+            }),
+          }),
+        }),
+      };
+      return {};
+    });
+    await request(app).get("/api/tracks/track-aaa-001/midi/full");
+    expect(mockPlanMelody).toHaveBeenCalledWith(
+      expect.any(String), "C", expect.any(Number), expect.any(Object),
+    );
+  });
+
+  it("70. ?bars=999 clamped to 32", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/midi/full?bars=999");
+    expect(mockPlanMelody).toHaveBeenCalledWith(
+      expect.any(String), expect.any(String), expect.any(Number),
+      expect.objectContaining({ bars: 32 }),
     );
   });
 

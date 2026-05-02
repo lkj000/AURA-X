@@ -10,7 +10,7 @@ import {
   exportGrooveToMidi,
 } from "@aura-x/engine";
 import type { Lane } from "@aura-x/engine";
-import { suggestGroove, planMelody, exportMelodyToMidi } from "@aura-x/ac-ami";
+import { suggestGroove, planMelody, exportMelodyToMidi, mergeToMultiTrackMidi } from "@aura-x/ac-ami";
 
 const router = Router();
 
@@ -121,6 +121,55 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     feedback_count,
     feedback_avg,
   });
+});
+
+// GET /api/tracks/:id/midi/full
+// Query: ?bars=1-32 (default 4)
+// Returns a Type-1 MIDI file with three tracks: drums (ch 10), chords (ch 0),
+// melody (ch 1) — all derived from track metadata, no audio needed.
+router.get("/:id/midi/full", async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const barsParsed = parseInt(String(req.query.bars ?? "4"), 10);
+  const bars       = Math.min(32, Math.max(1, isNaN(barsParsed) ? 4 : barsParsed));
+
+  const { data: track } = await supabase
+    .from("tracks")
+    .select("id, title, subgenre, bpm, key")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!track) { res.status(404).json({ error: "Track not found" }); return; }
+
+  const lane      = track.subgenre as Lane;
+  const bpm       = track.bpm       as number;
+  const trackKey  = (track.key as string | null) ?? "C";
+  const safeTitle = String(track.title ?? id).replace(/[^a-zA-Z0-9_-]/g, "_");
+
+  // Drums
+  const variationSet = generateGrooveVariations(lane, { bpm });
+  const drumsMidi    = exportGrooveToMidi(variationSet.main, bpm, bars);
+  const drumsBuffer  = Buffer.from(drumsMidi.buffer);
+
+  // Chords
+  const progression  = buildChordProgression({ lane });
+  const chordsMidi   = exportChordProgressionToMidi(progression, { bpm, beatsPerChord: 4, repeat: bars });
+  const chordsBuffer = chordsMidi.buffer;
+
+  // Melody
+  const melodyPlan   = planMelody(lane, trackKey, bpm, { bars });
+  const melodyMidi   = exportMelodyToMidi(melodyPlan);
+  const melodyBuffer = melodyMidi.buffer;
+
+  const { buffer } = mergeToMultiTrackMidi([
+    { buffer: drumsBuffer  },
+    { buffer: chordsBuffer },
+    { buffer: melodyBuffer },
+  ]);
+
+  res.setHeader("Content-Type", "audio/midi");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}_full.mid"`);
+  res.setHeader("Content-Length", buffer.length);
+  res.send(buffer);
 });
 
 // GET /api/tracks/:id/midi

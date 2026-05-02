@@ -65,6 +65,9 @@ export {
 } from "./dj/camelotWheel";
 export type { CamelotCode } from "./dj/camelotWheel";
 
+export { mergeToMultiTrackMidi } from "./midi/midiMerger";
+export type { TrackBuffer } from "./midi/midiMerger";
+
 export { planMelody } from "./melody/melodyPlanner";
 export type { MelodyNote, MelodyPlan, MelodyPlannerOptions } from "./melody/melodyPlanner";
 
