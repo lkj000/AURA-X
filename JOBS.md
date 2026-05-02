@@ -3668,6 +3668,49 @@ SUCCESS CRITERIA
   [x] 15 tests in validate.test.ts; 568 API tests + 228 ac-ami tests passing
 
 
+### JOB H-18 — Instrumentation Planner API
+---
+
+PROBLEM DEFINITION
+  planInstrumentation and applyInstrumentationPlan were built in ac-ami but
+  had no HTTP surface. Producers could not generate or overwrite the
+  instrumentation layer of a CTL (log drum patch, keyboard family, pad warmth,
+  mbira presence) without embedding the package directly or going through
+  the repair loop.
+
+SOLUTION
+  New route file `apps/api/src/routes/instrumentation.ts`, mounted at
+  /api/tracks.
+
+  POST /api/tracks/:id/instrumentation/plan  (read-only, no auth)
+    - Fetches active CTL (is_active=true) from ctls table
+    - Accepts options via query string or request body:
+        intensity, warmth, rawness   → float [0,1], clamped
+        vocalMode                    → "chant" | "melodic" | "none" (invalid ignored)
+        includeMbira                 → boolean, parsed from string "true"/"false"
+    - Calls planInstrumentation(ctl, opts) → Instrument[]
+    - Returns { track_id, ctl_version, options, instruments }
+    - 404 if no active CTL
+
+  POST /api/tracks/:id/instrumentation/apply  (requires JWT)
+    - Same option parsing from request body
+    - Calls applyInstrumentationPlan(ctl, opts) → new CTLv1
+    - If persist=true: deactivates current CTL version, inserts new at version+1
+    - Returns { track_id, ctl_version, persisted, options, ctl }
+
+  Shared parseOpts() helper normalises numeric params from query/body
+  and filters out invalid vocalMode values.
+
+SUCCESS CRITERIA
+  [x] 404 on both endpoints when no active CTL exists
+  [x] planInstrumentation / applyInstrumentationPlan called with correct CTL
+  [x] warmth, rawness, vocalMode, includeMbira correctly parsed and forwarded
+  [x] Invalid vocalMode value silently ignored (not passed in opts)
+  [x] persist:false → no insert, version unchanged; persist:true → version+1
+  [x] Updated CTL instrumentation matches applyInstrumentationPlan output
+  [x] 15 tests in instrumentation.test.ts; 583 API tests + 228 ac-ami passing
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.
