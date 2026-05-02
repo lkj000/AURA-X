@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import Link from "next/link";
 import { getTrack, getGenerationStatus, getSignedUrl, recordSunoResult, type TrackDetail } from "@/lib/api";
 import { SUBGENRE_LABELS, fmt, scoreColor, cn } from "@/lib/utils";
@@ -39,7 +39,8 @@ function Stars({ value }: { value: number }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function TrackDetailPage({ params }: { params: { trackId: string } }) {
+export default function TrackDetailPage({ params }: { params: Promise<{ trackId: string }> }) {
+  const { trackId } = use(params);
   const [track, setTrack]           = useState<TrackDetail | null>(null);
   const [audioUrl, setAudioUrl]     = useState<string | null>(null);
   const [loading, setLoading]       = useState(true);
@@ -54,7 +55,7 @@ export default function TrackDetailPage({ params }: { params: { trackId: string 
       setLoading(true);
       setError(null);
       try {
-        const t = await getTrack(params.trackId);
+        const t = await getTrack(trackId);
         setTrack(t);
 
         // Try to load audio if a generation exists
@@ -77,7 +78,7 @@ export default function TrackDetailPage({ params }: { params: { trackId: string 
       }
     }
     load();
-  }, [params.trackId]);
+  }, [trackId]);
 
   if (loading) {
     return (

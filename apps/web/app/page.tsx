@@ -46,7 +46,7 @@ export default async function DashboardPage() {
         />
         <StatCard
           label="Agent level"
-          value={agent ? `Level ${agent.agent_level}` : "—"}
+          value={agent ? `Level ${agent.level}` : "—"}
           sub={agent ? `${agent.capabilities.length} capabilities` : undefined}
         />
         <StatCard

@@ -151,9 +151,9 @@ export const getSignedUrl = (audioFileId: string) =>
 // ── Agent status ─────────────────────────────────────────────────────────────
 
 export interface AgentStatus {
-  agent_level: number;
+  level: number;
   capabilities: string[];
-  revision_loop: { enabled: boolean; max_iterations: number };
+  revision_loop?: { enabled?: boolean; max_iterations?: number };
 }
 
 export const getAgentStatus = () =>
