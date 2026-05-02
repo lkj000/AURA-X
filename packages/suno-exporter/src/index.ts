@@ -29,8 +29,8 @@ export function exportForSuno(ctl: CTLv1): SunoBundle {
   const style_prompt = compileStylePrompt(ctl);
   const lyrics_prompt = compileLyricsPrompt(ctl);
 
-  if (style_prompt.length > 1200) {
-    warnings.push(`Style prompt is ${style_prompt.length} chars — Suno recommends under 1200`);
+  if (style_prompt.length > 1000) {
+    warnings.push(`Style prompt is ${style_prompt.length} chars — Suno recommends under 1000`);
   }
   if (lyrics_prompt.length > 3000) {
     warnings.push(`Lyrics prompt is ${lyrics_prompt.length} chars — Suno recommends under 3000`);

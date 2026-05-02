@@ -133,6 +133,17 @@ describe("Suno Exporter", () => {
     expect(bundle.lyrics_prompt).toContain("instrumental, no vocals");
   });
 
+  it("14b. style_prompt stays within Suno 1000-char limit", () => {
+    const bundle = exportForSuno(privateSchool());
+    expect(bundle.style_prompt.length).toBeLessThanOrEqual(1000);
+  });
+
+  it("14c. lyrics_prompt contains Suno section metatags in uppercase brackets", () => {
+    const bundle = exportForSuno(privateSchool());
+    // Sections should use [TAG] format
+    expect(bundle.lyrics_prompt).toMatch(/\[[A-Z]+\]/);
+  });
+
   // ── Mode and warning tests ────────────────────────────
 
   it("15. warns when generation_mode is not mode_1_suno", () => {
