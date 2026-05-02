@@ -3290,6 +3290,35 @@ SUCCESS CRITERIA
   [x] 434 tests passing, audio.test.ts pre-existing failures unchanged
 
 
+---
+
+### JOB H-08 — Rate Limiting Hardening
+---
+
+PROBLEM DEFINITION
+  The API had no rate limiting — every endpoint was unthrottled. An attacker or
+  runaway client could flood POST /api/generate with AI inference requests, brute-
+  force POST /api/auth/login with OTP attempts, or hammer the evaluation pipeline,
+  causing cost overruns and availability issues.
+
+SOLUTION
+  Added `express-rate-limit` (v8) with four tiered limiters in
+  `src/middleware/rateLimit.ts`, wired into `src/index.ts`:
+    - globalLimiter:     120 req / 15 min  — all routes (automatic scanning defence)
+    - authLimiter:        10 req / 15 min  — /api/auth (brute-force OTP protection)
+    - generationLimiter:  10 req / min     — /api/generate (AI inference cost guard)
+    - evaluateLimiter:    20 req / min     — /api/evaluate (CPU-bound WAV analysis)
+  All limiters use `standardHeaders: "draft-7"` (RateLimit + RateLimit-Policy) and
+  `legacyHeaders: false` (no X-RateLimit-* headers). 429 body is `{ error: "..." }`.
+
+SUCCESS CRITERIA
+  [x] globalLimiter applied before all route handlers
+  [x] authLimiter, generationLimiter, evaluateLimiter applied per-route
+  [x] Request beyond max → 429 with error JSON body
+  [x] draft-7 RateLimit headers present; legacy X-RateLimit-* absent
+  [x] 15 rate-limit tests, 450 total passing
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.
