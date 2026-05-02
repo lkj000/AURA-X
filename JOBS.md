@@ -3319,6 +3319,34 @@ SUCCESS CRITERIA
   [x] 15 rate-limit tests, 450 total passing
 
 
+---
+
+### JOB H-09 — RLS Audit
+---
+
+PROBLEM DEFINITION
+  Five tables added in migrations 003–006 had no Row Level Security enabled.
+  While the API uses the service_role key (which bypasses RLS), an attacker or
+  misconfigured client with an anon/authenticated key could read or write
+  gold_standard_generations, producer_feedback, artists (including password_hash),
+  track_licenses, and royalty_splits without restriction.
+
+SOLUTION
+  Added `supabase/migrations/008_rls_audit.sql` which:
+    1. Enables RLS on all 5 missing tables
+    2. Adds service-all policies (`using (true) with check (true)`) consistent
+       with the pattern from 001_initial_schema.sql
+    3. Documents the full table-by-table audit in SQL comments
+  The API client (lib/supabase.ts) correctly uses SUPABASE_SERVICE_ROLE_KEY
+  which bypasses RLS at query time — the policies close the direct-access gap.
+
+SUCCESS CRITERIA
+  [x] 008_rls_audit.sql adds ENABLE ROW LEVEL SECURITY for all 5 affected tables
+  [x] All 12 known tables now have RLS enabled and at least one policy
+  [x] lib/supabase.ts confirmed to use SERVICE_ROLE_KEY (not anon key)
+  [x] 15 audit tests, 465 total passing
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.
