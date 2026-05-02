@@ -484,6 +484,37 @@ export interface DrumMapResult {
   entries: DrumMapEntry[];
 }
 
+// ─── Stream analyzer ─────────────────────────────────────────────────────────
+
+export interface StreamFrame {
+  frameIndex:  number;
+  rmsEnergy:   number;
+  bpmEstimate: number | null;
+  centroidHz:  number | null;
+  timestamp:   number;
+}
+
+// ─── Engine metrics ───────────────────────────────────────────────────────────
+
+export interface PipelineMetric {
+  runId:        string;
+  timestamp:    number;
+  durationMs:   number;
+  qualityScore: number;
+  passed:       boolean;
+  lane?:        string;
+  error?:       string;
+}
+
+export interface MetricsSnapshot {
+  totalRuns:    number;
+  passed:       number;
+  failed:       number;
+  avgDurationMs: number;
+  avgQuality:   number;
+  recentRuns:   PipelineMetric[];
+}
+
 // ─── Velocity accent map ─────────────────────────────────────────────────────
 
 export type AccentPreset = "amapiano" | "straight" | "flat";

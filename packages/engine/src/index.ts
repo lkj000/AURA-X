@@ -85,6 +85,8 @@ export type {
   EchoNote, EchoResult,
   InversionType, ChordInversion, InversionSet,
   AccentPreset, VelocityMapStep, VelocityMap,
+  StreamFrame,
+  PipelineMetric, MetricsSnapshot,
 }                                                     from "./types";
 
 export {
@@ -163,6 +165,14 @@ export type { InversionOptions }                      from "./intelligence/chord
 // ── Velocity accent map ───────────────────────────────────────────────────────
 export { generateVelocityMap }                        from "./groove/velocity_accent_map";
 export type { VelocityMapOptions }                    from "./groove/velocity_accent_map";
+
+// ── Stream analyzer ───────────────────────────────────────────────────────────
+export { StreamAnalyzer, createStreamAnalyzer }       from "./pipeline/stream_analyzer";
+export type { StreamOptions }                         from "./pipeline/stream_analyzer";
+
+// ── Engine metrics collector ──────────────────────────────────────────────────
+export { MetricsCollector, createMetricsCollector }   from "./pipeline/metrics_collector";
+export type { RecordInput }                           from "./pipeline/metrics_collector";
 
 // ── High-level convenience API ────────────────────────────────────────────────
 export { evaluateBuffer, buildEnhancement }           from "./pipeline/evaluation";

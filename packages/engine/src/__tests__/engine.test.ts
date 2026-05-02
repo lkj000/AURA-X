@@ -76,6 +76,8 @@ import { injectGhostNotes }            from "../groove/ghost_note_injector";
 import { generateEcho }               from "../groove/note_echo";
 import { generateInversions }         from "../intelligence/chord_inverter";
 import { generateVelocityMap }        from "../groove/velocity_accent_map";
+import { StreamAnalyzer, createStreamAnalyzer } from "../pipeline/stream_analyzer";
+import { MetricsCollector, createMetricsCollector } from "../pipeline/metrics_collector";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -6074,5 +6076,186 @@ describe("75. Velocity accent map", () => {
   test("output is deterministic", () => {
     const opts = { preset: "straight" as const, totalSteps: 16 };
     expect(generateVelocityMap(opts)).toEqual(generateVelocityMap(opts));
+  });
+});
+
+// ── 76. Stream analyzer ───────────────────────────────────────────────────────
+describe("76. Stream analyzer", () => {
+  // 16 frames × 1 024 samples = 16 384 samples → 32 energy frames → BPM valid
+  const WIN_FRAMES = 16;
+  const FRAME_SIZE = 1024;
+
+  function silence(): Float32Array { return new Float32Array(FRAME_SIZE); }
+  function noise(): Float32Array {
+    return Float32Array.from({ length: FRAME_SIZE }, (_, i) => Math.sin(i * 0.1) * 0.5);
+  }
+
+  test("pushFrame returns a StreamFrame", () => {
+    const sa = new StreamAnalyzer({ bpmWindowFrames: WIN_FRAMES, frameSize: FRAME_SIZE });
+    const f = sa.pushFrame(silence());
+    expect(f).toMatchObject({ frameIndex: 0, rmsEnergy: expect.any(Number), timestamp: expect.any(Number) });
+  });
+
+  test("frameIndex increments per frame", () => {
+    const sa = new StreamAnalyzer({ bpmWindowFrames: WIN_FRAMES, frameSize: FRAME_SIZE });
+    expect(sa.pushFrame(silence()).frameIndex).toBe(0);
+    expect(sa.pushFrame(silence()).frameIndex).toBe(1);
+  });
+
+  test("timestamp increases monotonically", () => {
+    const sa = new StreamAnalyzer({ bpmWindowFrames: WIN_FRAMES, frameSize: FRAME_SIZE });
+    const f0 = sa.pushFrame(silence());
+    const f1 = sa.pushFrame(silence());
+    expect(f1.timestamp).toBeGreaterThan(f0.timestamp);
+  });
+
+  test("rmsEnergy is 0 for silent frame", () => {
+    const sa = new StreamAnalyzer({ bpmWindowFrames: WIN_FRAMES, frameSize: FRAME_SIZE });
+    expect(sa.pushFrame(silence()).rmsEnergy).toBeCloseTo(0);
+  });
+
+  test("rmsEnergy > 0 for non-silent frame", () => {
+    const sa = new StreamAnalyzer({ bpmWindowFrames: WIN_FRAMES, frameSize: FRAME_SIZE });
+    expect(sa.pushFrame(noise()).rmsEnergy).toBeGreaterThan(0);
+  });
+
+  test("bpmEstimate is null before window fills", () => {
+    const sa = new StreamAnalyzer({ bpmWindowFrames: WIN_FRAMES, frameSize: FRAME_SIZE });
+    const f = sa.pushFrame(noise());
+    expect(f.bpmEstimate).toBeNull();
+  });
+
+  test("bpmEstimate is a number after window fills", () => {
+    const sa = new StreamAnalyzer({ bpmWindowFrames: WIN_FRAMES, frameSize: FRAME_SIZE });
+    let lastFrame = sa.pushFrame(noise());
+    for (let i = 1; i < WIN_FRAMES; i++) lastFrame = sa.pushFrame(noise());
+    expect(typeof lastFrame.bpmEstimate).toBe("number");
+  });
+
+  test("centroidHz is null before window fills", () => {
+    const sa = new StreamAnalyzer({ bpmWindowFrames: WIN_FRAMES, frameSize: FRAME_SIZE });
+    expect(sa.pushFrame(noise()).centroidHz).toBeNull();
+  });
+
+  test("centroidHz is a number after window fills", () => {
+    const sa = new StreamAnalyzer({ bpmWindowFrames: WIN_FRAMES, frameSize: FRAME_SIZE });
+    let f = sa.pushFrame(noise());
+    for (let i = 1; i < WIN_FRAMES; i++) f = sa.pushFrame(noise());
+    expect(typeof f.centroidHz).toBe("number");
+  });
+
+  test("frameCount reflects pushed frames", () => {
+    const sa = new StreamAnalyzer({ bpmWindowFrames: WIN_FRAMES, frameSize: FRAME_SIZE });
+    sa.pushFrame(noise()); sa.pushFrame(noise());
+    expect(sa.frameCount).toBe(2);
+  });
+
+  test("reset() clears state", () => {
+    const sa = new StreamAnalyzer({ bpmWindowFrames: WIN_FRAMES, frameSize: FRAME_SIZE });
+    for (let i = 0; i < WIN_FRAMES; i++) sa.pushFrame(noise());
+    sa.reset();
+    expect(sa.frameCount).toBe(0);
+    expect(sa.pushFrame(noise()).bpmEstimate).toBeNull();
+  });
+
+  test("flush() returns a final frame", () => {
+    const sa = new StreamAnalyzer({ bpmWindowFrames: WIN_FRAMES, frameSize: FRAME_SIZE });
+    for (let i = 0; i < WIN_FRAMES; i++) sa.pushFrame(noise());
+    const f = sa.flush();
+    expect(typeof f.bpmEstimate).toBe("number");
+  });
+
+  test("createStreamAnalyzer() returns a working instance", () => {
+    const sa = createStreamAnalyzer({ bpmWindowFrames: WIN_FRAMES, frameSize: FRAME_SIZE });
+    expect(sa.pushFrame(noise()).frameIndex).toBe(0);
+  });
+});
+
+// ── 77. Engine metrics collector ─────────────────────────────────────────────
+describe("77. Engine metrics collector", () => {
+  test("record() returns a metric with runId and timestamp", () => {
+    const mc = new MetricsCollector();
+    const m = mc.record({ durationMs: 50, qualityScore: 0.8, passed: true });
+    expect(typeof m.runId).toBe("string");
+    expect(typeof m.timestamp).toBe("number");
+  });
+
+  test("size increments after record", () => {
+    const mc = new MetricsCollector();
+    mc.record({ durationMs: 10, qualityScore: 0.9, passed: true });
+    mc.record({ durationMs: 20, qualityScore: 0.7, passed: false });
+    expect(mc.size).toBe(2);
+  });
+
+  test("snapshot totalRuns is correct", () => {
+    const mc = new MetricsCollector();
+    mc.record({ durationMs: 10, qualityScore: 0.9, passed: true });
+    mc.record({ durationMs: 20, qualityScore: 0.7, passed: true });
+    expect(mc.snapshot().totalRuns).toBe(2);
+  });
+
+  test("passed and failed counts are correct", () => {
+    const mc = new MetricsCollector();
+    mc.record({ durationMs: 10, qualityScore: 0.9, passed: true });
+    mc.record({ durationMs: 20, qualityScore: 0.4, passed: false });
+    mc.record({ durationMs: 15, qualityScore: 0.8, passed: true });
+    const s = mc.snapshot();
+    expect(s.passed).toBe(2);
+    expect(s.failed).toBe(1);
+  });
+
+  test("avgDurationMs computed correctly", () => {
+    const mc = new MetricsCollector();
+    mc.record({ durationMs: 100, qualityScore: 0.8, passed: true });
+    mc.record({ durationMs: 200, qualityScore: 0.8, passed: true });
+    expect(mc.snapshot().avgDurationMs).toBeCloseTo(150);
+  });
+
+  test("avgQuality computed correctly", () => {
+    const mc = new MetricsCollector();
+    mc.record({ durationMs: 10, qualityScore: 0.6, passed: true });
+    mc.record({ durationMs: 10, qualityScore: 0.8, passed: true });
+    expect(mc.snapshot().avgQuality).toBeCloseTo(0.7);
+  });
+
+  test("recentRuns limited by limit parameter", () => {
+    const mc = new MetricsCollector();
+    for (let i = 0; i < 20; i++) mc.record({ durationMs: i, qualityScore: 0.5, passed: true });
+    expect(mc.snapshot(5).recentRuns).toHaveLength(5);
+  });
+
+  test("reset() clears all metrics", () => {
+    const mc = new MetricsCollector();
+    mc.record({ durationMs: 10, qualityScore: 0.8, passed: true });
+    mc.reset();
+    expect(mc.size).toBe(0);
+    expect(mc.snapshot().totalRuns).toBe(0);
+  });
+
+  test("empty collector snapshot has all zeros", () => {
+    const snap = new MetricsCollector().snapshot();
+    expect(snap.totalRuns).toBe(0);
+    expect(snap.passed).toBe(0);
+    expect(snap.failed).toBe(0);
+    expect(snap.avgDurationMs).toBe(0);
+    expect(snap.avgQuality).toBe(0);
+  });
+
+  test("metric with error is stored", () => {
+    const mc = new MetricsCollector();
+    const m = mc.record({ durationMs: 5, qualityScore: 0, passed: false, error: "timeout" });
+    expect(m.error).toBe("timeout");
+  });
+
+  test("lane is stored on metric", () => {
+    const mc = new MetricsCollector();
+    const m = mc.record({ durationMs: 10, qualityScore: 0.9, passed: true, lane: "sgija" });
+    expect(m.lane).toBe("sgija");
+  });
+
+  test("createMetricsCollector() returns a working instance", () => {
+    const mc = createMetricsCollector();
+    mc.record({ durationMs: 10, qualityScore: 0.8, passed: true });
+    expect(mc.size).toBe(1);
   });
 });

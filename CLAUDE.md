@@ -179,7 +179,7 @@ The agent autonomously:
   POST /api/agent/synthesize  — IPA transcription + VITS2 inference
   ac_ami_lift field = % improvement full_stack over prompt_only
 
-### Final test count:
+### Final test count (Phase 08):
   api:               250
   ctl:                39
   suno-exporter:      16
@@ -187,3 +187,59 @@ The agent autonomously:
   replicate-client:   12
   ───────────────────────
   Total:             485 (+ 42 Python)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## @aura-x/engine — packages/engine
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Superior TypeScript Amapiano intelligence engine.  Zero runtime dependencies.
+Replaces and far eclipses the Python aura-x-engine used in Phase 01-08.
+
+### Dev commands
+  Test:   cd packages/engine && npx jest --no-coverage
+  Build:  cd packages/engine && npx tsc --build
+  Watch:  cd packages/engine && npx jest --no-coverage --watch
+
+### Test count (current)
+  engine: 912 tests, 912 passing — packages/engine/src/__tests__/engine.test.ts
+
+### Engine phases — ALL COMPLETE
+  Phase A ✓  Audio Foundation  — 8 subgenres, perception model, virtual stems, cultural encoding
+  Phase B ✓  CTL-Aware         — CTL spec synthesis, full analysis pipeline + route upgrade
+  Phase C ✓  Generation Wiring — arrangement arc, mix spec, sidechain, MIDI export suite
+  Phase D ✓  Evaluation        — comparative eval, quality gate, tension scorer, drift detector
+  Phase E ✓  Learning Layer    — adaptive policy (EMA, alpha=0.25), ConvergenceTracker, refinement
+  Phase F ✓  Streaming         — StreamAnalyzer (frame-by-frame BPM + energy, rolling window)
+  Phase G ✓  Observability     — MetricsCollector (pass/fail, avgDuration, avgQuality, snapshot)
+
+### Engine jobs: E-01 through E-63 (all complete — see JOBS.md for P/S/C on every job)
+
+### Module map
+  packages/engine/src/
+  ├── _audio_io.ts              WAV parser (mono, 16-bit PCM)
+  ├── _dsp.ts                   FFT, BPM, chroma, RMS, onset envelope
+  ├── _utils.ts                 clamp, gaussScore, softmax, hashString, hammingDistance
+  ├── types.ts                  All types and constants (~100 exported interfaces)
+  ├── index.ts                  Full public API surface
+  ├── audio_intelligence/       Feature extraction, authenticity scoring, lane quality, groove extraction
+  ├── ctl_synthesis/            CTL spec synthesis from analysis
+  ├── cultural/                 Cultural encoding + 8 geographic profiles
+  ├── daw_export/               MIDI export, chord MIDI, CC automation, drum mapper, note quantizer
+  ├── evaluation/               Comparative evaluation
+  ├── groove/                   20 groove modules (arpeggiator, stutter, ghost notes, euclidean, etc.)
+  ├── high_end_engine/          Groove transfer, render evaluator, convergence, refinement
+  ├── intelligence/             10 intelligence modules (voicing, tension, scale, transposer, etc.)
+  ├── arrangement/              7 arrangement modules (arc, gains, filters, width, mutes, fills)
+  ├── mix/                      Mix spec, reverb, compressor, EQ
+  ├── ml_engine/                Adaptive action learning (EMA policy)
+  ├── perception/               O.211 perception model, virtual stem decomposition
+  └── pipeline/                 Full session, analysis pipeline, quality gate, production report,
+                                stream analyzer, metrics collector, drift detector, structure validator
+
+### Key invariants
+  - All tick arithmetic via buildTickMap (packages/engine/src/daw_export/bar_tick_converter.ts)
+  - All deterministic randomness via hashString(seed) from _utils.ts
+  - All MIDI note values clamped to [0, 127]
+  - All velocity values clamped to [1, 127]
+  - estimateBpm requires ≥ 30 energy frames (≥ 15 360 samples at 44 100 Hz)

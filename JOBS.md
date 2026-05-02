@@ -1730,6 +1730,1356 @@ SUCCESS CRITERIA
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ENGINE PACKAGE — @aura-x/engine
+(packages/engine — TypeScript, zero runtime deps)
+Each E-job: one module, one export, tests green, tsc clean, one commit.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+E-01 — 8-SUBGENRE EXPANSION
+─────────────────────────────────────────
+Phase:  Engine — Phase A (Audio Foundation)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Engine recognised 4 lanes only. stixx_sgija, mbiraiano, three_step,
+    gqom_fusion, and hybrid_rnb_amapiano had no scoring, grammar, or
+    thresholds — evaluations on those subgenres returned garbage scores.
+  → Every producer working outside the 4-lane set hit incorrect lane scores.
+  → Without all 8 lanes, the cultural encoding layer had incomplete coverage.
+
+SOLUTION
+  → Added all 8 lanes to LANES, LANE_GRAMMARS, LANE_TARGETS, LANE_WEIGHTS,
+    and ELITE_THRESHOLDS. Each lane got a calibrated Gaussian target and
+    weight vector grounded in sub-genre DSP characteristics.
+  → scoreAuthenticityLanes now returns a valid score for every subgenre.
+  → Why 8 and not extensible: the 8 lanes are the defined taxonomy; adding
+    more is a future schema change, not a runtime concern.
+
+SUCCESS CRITERIA
+  [x] All 8 lanes present in LANES array and exported from types.ts
+  [x] scoreAuthenticityLanes returns a non-zero score for every lane
+  [x] Tests cover all 8 subgenres
+
+
+E-02 — O.211 PERCEPTION MODEL
+─────────────────────────────────────────
+Phase:  Engine — Phase A (Audio Foundation)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Authenticity scoring treated all frequency bands equally. Low-end
+    masking and psychoacoustic density were ignored, producing evaluations
+    that disagreed with human listeners on Amapiano material.
+  → B_eff (effective bass energy) was not modelled; sub-bass and bass
+    collisions produced inflated scores.
+  → No density labelling existed for the 4-tier sparse/moderate/dense/
+    overloaded perceptual scale.
+
+SOLUTION
+  → Implemented O.211 perceptual model: B_eff with Bark-scale masking,
+    perceptual density labelling, and a 3-anchor quality gate.
+  → applyPerceptionModel, computeBEff, computePerceptualDensity, barkScale
+    all exported.
+  → Bark scale chosen over ERB because it maps more cleanly to the 20–300 Hz
+    region dominant in Amapiano production.
+
+SUCCESS CRITERIA
+  [x] barkScale returns 24 Bark bands
+  [x] computeBEff returns value in [0, 1]
+  [x] computePerceptualDensity returns a DensityLabel
+
+
+E-03 — VIRTUAL STEM DECOMPOSITION
+─────────────────────────────────────────
+Phase:  Engine — Phase A (Audio Foundation)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → The engine could not separate a mixed buffer into stem contributions
+    without running Demucs (Python, slow). A lightweight spectral proxy
+    was needed for fast per-stem analysis in the TypeScript pipeline.
+  → Lane quality scoring needed per-stem energy estimates it did not have.
+  → No tonality or transience scores existed for individual stems.
+
+SOLUTION
+  → decomposeStems: 5-band FFT decomposition (sub-bass, bass, mid, high-mid,
+    air) with per-band energy, tonality (harmonic ratio), and transience
+    (onset sharpness) scores. Returns a VirtualStem per named stem.
+  → Purely spectral — no source separation; fast enough for real-time use.
+
+SUCCESS CRITERIA
+  [x] decomposeStems returns 5 VirtualStem objects
+  [x] Each stem has energy, tonality, transience in [0, 1]
+  [x] log_drum stem has highest sub-bass energy on a test log-drum signal
+
+
+E-04 — CULTURAL ENCODING LAYER
+─────────────────────────────────────────
+Phase:  Engine — Phase A (Audio Foundation)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → The engine scored audio quality but had no representation of cultural
+    authenticity — geographic origin, language context, diaspora reach.
+    Evaluations were culturally blind: a South African and a Dutch producer
+    making the same track received the same score.
+  → CULTURAL_PROFILES did not exist; there was no preset vocabulary.
+
+SOLUTION
+  → computeCulturalAlignment: maps CulturalProfile + CtlConditioning to a
+    CulturalAlignment score with sub-scores for geographic match, language
+    fit, and diaspora accessibility.
+  → CULTURAL_PROFILES provides 8 presets covering ZA, NG, GH, KE, ZW, UG,
+    diaspora-EU, diaspora-US.
+
+SUCCESS CRITERIA
+  [x] computeCulturalAlignment returns score in [0, 1]
+  [x] ZA profile scores higher for private_school than diaspora-US profile
+  [x] CULTURAL_PROFILES has entries for all 8 subgenres
+
+
+E-05 — CTL SPEC SYNTHESIS
+─────────────────────────────────────────
+Phase:  Engine — Phase B (CTL-Aware)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → The engine evaluated audio but could not produce a CTL_v1 document from
+    its analysis. There was no bridge from audio features back to the
+    structured creative language the rest of the platform runs on.
+  → Every post-analysis step (generation, revision) had to construct CTL
+    manually from the evaluation output — error-prone and inconsistent.
+
+SOLUTION
+  → synthesizeCtl: takes AudioFeatures + lane + GrooveProfile and produces
+    a CTLv1 document with bpm, key, subgenre, groove template, and
+    instrument conditioning fields fully populated from the analysis.
+  → Closes the analysis → generation loop without manual CTL authoring.
+
+SUCCESS CRITERIA
+  [x] synthesizeCtl returns a valid CTLv1 object
+  [x] bpm field matches input features.bpm within ±2
+  [x] subgenre field matches the requested lane
+
+
+E-06 — FULL ANALYSIS PIPELINE + ROUTE UPGRADE
+─────────────────────────────────────────
+Phase:  Engine — Phase B (CTL-Aware)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → All engine modules were independently callable but there was no single-
+    call path from raw audio features to a complete analysis plan.
+  → The /api/amapianorize route still called lib/audio-analysis (legacy),
+    not the engine — defeating the purpose of having built the engine.
+
+SOLUTION
+  → analyzeAndPlan: feature extraction → lane scoring → groove extraction →
+    CTL synthesis → sample plan → groove plan in one call.
+  → Route apps/api/src/routes/amapianorize.ts now calls evaluateBuffer +
+    buildEnhancement from packages/engine, replacing the legacy library.
+
+SUCCESS CRITERIA
+  [x] analyzeAndPlan returns an AnalysisPlan for a synthetic WAV
+  [x] /api/amapianorize route uses engine (not lib/audio-analysis)
+  [x] Response includes ctl, groovePlan, laneScores
+
+
+E-07 — GROOVE VARIATION ENGINE
+─────────────────────────────────────────
+Phase:  Engine — Phase A (Audio Foundation)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → The engine could analyse a groove but could not generate variations.
+    Producers needed fills, breakdowns, and alternative patterns derived
+    from a seed groove plan — not just a static evaluation.
+  → No GrooveVariationSet type or variation taxonomy existed.
+
+SOLUTION
+  → generateGrooveVariations: takes a GroovePlan and produces a
+    GrooveVariationSet with main/variation/fill/breakdown/build variants.
+    Each variant mutates density, velocity profile, or pattern selection
+    using hashString-seeded determinism.
+
+SUCCESS CRITERIA
+  [x] Returns all 5 variation types
+  [x] Each variant has the same totalBars as the original
+  [x] Same seed always produces the same set
+
+
+E-08 — COMPARATIVE EVALUATION ENGINE
+─────────────────────────────────────────
+Phase:  Engine — Phase D (Audio-CTL Alignment)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Single-point evaluation scores gave no relative signal. Producers needed
+    to compare two renders and know which was better and by how much, but
+    there was no comparison primitive.
+
+SOLUTION
+  → compareEvaluations / compareBuffers: takes two AmapianEvaluation objects
+    or two WAV buffers and returns a ComparisonReport with per-dimension
+    deltas, winner field, and improvementPct.
+
+SUCCESS CRITERIA
+  [x] compareEvaluations returns winner: "a" | "b" | "tie"
+  [x] dimensionDeltas has an entry for every scored lane
+  [x] improvementPct is positive when b > a
+
+
+E-09 — PATTERN FINGERPRINTING & SIMILARITY
+─────────────────────────────────────────
+Phase:  Engine — Phase D (Audio-CTL Alignment)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → No way to detect if two groove plans were structurally similar.
+    Duplicate patterns produced identical outputs silently and the
+    variation engine could not measure its own diversity.
+
+SOLUTION
+  → fingerprintGroovePlan: step-density vector + Hamming-distance-ready
+    hash → PatternFingerprint. comparePatterns: PatternSimilarity score
+    in [0, 1] via normalised Hamming distance.
+
+SUCCESS CRITERIA
+  [x] Same plan produces identical fingerprint
+  [x] comparePatterns returns 1.0 for identical, < 1.0 for different plans
+  [x] Hamming distance is symmetric
+
+
+E-10 — ARRANGEMENT ARC PLANNER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Groove plans had no macro structure. No concept of intro, drop,
+    breakdown, or outro existed — every render was a flat 8-bar loop
+    with no energy arc or section identity.
+
+SOLUTION
+  → planArrangementArc: takes totalBars + ArcOptions and returns an
+    ArrangementArc with 6 named sections (intro/build/drop1/breakdown/
+    drop2/outro), bar ranges, and energy targets per section.
+
+SUCCESS CRITERIA
+  [x] All 6 section types present in the default arc
+  [x] Sections are contiguous and non-overlapping
+  [x] Total bars equals sum of all section lengths
+
+
+E-11 — MIX SPEC GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Render-to-render quality variation was uncontrolled because no
+    adaptive mix spec existed. Gains, sends, and bus routing were
+    hardcoded regardless of what the audio analysis showed.
+
+SOLUTION
+  → generateMixSpec: derives a MixSpec (per-stem gain, pan, send levels,
+    master chain) from GroovePlan + AudioFeatures. Values calibrated to
+    Amapiano production standards.
+
+SUCCESS CRITERIA
+  [x] MixSpec has an entry for all 6 stem types
+  [x] All gain values in [-18, 0] dBFS range
+  [x] Master chain includes limiter threshold
+
+
+E-12 — SAMPLE RECOMMENDATION ENGINE
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → The engine analysed what was there but never suggested what was
+    missing. Producers had no guidance on which sample types to layer
+    over a generated track.
+
+SOLUTION
+  → recommendSamples: takes GroovePlan + AudioFeatures and returns a
+    SamplePack with ranked SampleRecommendation entries (role, description,
+    priority, reason) based on lane and spectral gap analysis.
+
+SUCCESS CRITERIA
+  [x] Returns at least 3 recommendations for any input
+  [x] log_drum always recommended when missing
+  [x] Recommendations sorted by priority desc
+
+
+E-13 — TEMPO HUMANIZER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Groove patterns had perfectly quantised timing. Human drummers apply
+    micro-timing variation; without it, generated patterns sound mechanical
+    and fail Amapiano feel tests.
+
+SOLUTION
+  → humanizePattern: applies per-hit timing jitter (±jitterMs) and velocity
+    scatter using hashString-seeded PRNG, producing a HumanizedPattern from
+    a GroovePlan.
+
+SUCCESS CRITERIA
+  [x] Output tick values differ from input by at most jitterMs in ticks
+  [x] Same seed always produces same humanization
+  [x] Different seeds produce different results
+
+
+E-14 — QUALITY GATE PIPELINE
+─────────────────────────────────────────
+Phase:  Engine — Phase D (Audio-CTL Alignment)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Individual quality metrics existed but no unified pass/fail gate could
+    block a render from advancing to distribution if it failed minimum
+    Amapiano standards.
+
+SOLUTION
+  → runQualityGates: evaluates a render against 6 gates (BPM range, log drum
+    presence, perceptual density, lane score, harmonic tension, groove
+    consistency) and returns a QualityGateReport with per-gate GateResult and
+    overall pass boolean and GradeLabel.
+
+SUCCESS CRITERIA
+  [x] Report contains all 6 gate names
+  [x] Overall pass is false if any gate fails
+  [x] GradeLabel assigned per gate (S/A/B/C/F)
+
+
+E-15 — GROOVE INTERPOLATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Transitioning between two groove patterns required an abrupt cut.
+    There was no way to blend patterns gradually across a number of bars,
+    which sounded unnatural at section boundaries.
+
+SOLUTION
+  → interpolateGrooves: blends two GroovePlan instances over nBars using
+    linear, ease-in, ease-out, or crossfade weighting. Returns a
+    GrooveInterpolation with a per-bar blended pattern.
+
+SUCCESS CRITERIA
+  [x] Output has nBars entries
+  [x] First bar matches source at t=0
+  [x] Last bar matches target at t=1
+
+
+E-16 — PRODUCTION REPORT GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase G (Observability)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → After a full session there was no structured summary a producer or
+    monitoring system could read to understand what happened: which lane
+    won, what score was reached, what enhancements were applied.
+
+SOLUTION
+  → generateProductionReport: takes a FullSession and returns a
+    ProductionReport with summary (lane, score, tier, iterations),
+    enhancement list, gate results, and a human-readable verdict string.
+
+SUCCESS CRITERIA
+  [x] Report contains lane, score, tier, iterations
+  [x] Verdict string is non-empty
+  [x] enhancements list matches session enhancements
+
+
+E-17 — CHORD VOICING ENGINE
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → The engine described chord functions in CTL but could not materialise
+    MIDI note arrays from them. Harmony planners had no concrete output.
+
+SOLUTION
+  → buildChordProgression: takes root, scale, and ChordFunction sequence and
+    returns a ChordProgression with voiced MIDI notes, tension labels, and
+    suggested durations for each chord.
+
+SUCCESS CRITERIA
+  [x] All chords have 3–4 notes in valid MIDI range
+  [x] Tension labels match ChordFunction semantics
+  [x] Progression length matches requested chord count
+
+
+E-18 — SESSION DRIFT DETECTOR
+─────────────────────────────────────────
+Phase:  Engine — Phase G (Observability)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Across revision iterations, quality scores could drift in unpredictable
+    directions with no alarm. Refinement could make a track worse while the
+    system kept iterating without flagging it.
+
+SOLUTION
+  → detectDrift: analyses a SignalTrace (series of quality scores over
+    iterations) and returns a DriftReport with trend classification
+    (improving/stable/degrading/volatile), magnitude, and a stop signal.
+
+SUCCESS CRITERIA
+  [x] Returns "improving" when scores increase monotonically
+  [x] Returns "degrading" when scores decrease monotonically
+  [x] Returns "volatile" when scores alternate
+
+
+E-19 — CHORD-TO-MIDI EXPORTER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → The chord voicing engine produced ChordProgression objects but there
+    was no path to export them as playable MIDI files for DAW import.
+
+SOLUTION
+  → exportChordProgressionToMidi: takes ChordProgression + ChordMidiOptions
+    and writes a Type-0 MIDI buffer with note-on/note-off per chord note,
+    respecting velocity and duration from the voicing.
+
+SUCCESS CRITERIA
+  [x] Output buffer starts with MIDI header bytes 4D 54 68 64
+  [x] Note count matches sum of notes across all chords
+  [x] Duration follows ChordMidiOptions.ticksPerChord
+
+
+E-20 — FULL SESSION ENGINE
+─────────────────────────────────────────
+Phase:  Engine — Phase F (Production Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Individual pipeline stages existed but there was no single entry point
+    that ran the full end-to-end session: analyse → plan → vary → gate →
+    humanize → export. Integration had to be assembled manually each time.
+
+SOLUTION
+  → runFullSession: orchestrates all pipeline stages from WAV buffer +
+    FullSessionOptions to a FullSession result containing evaluation,
+    enhancement, groove variations, quality gate report, and MIDI export.
+
+SUCCESS CRITERIA
+  [x] Returns a FullSession for a synthetic WAV
+  [x] qualityGateReport is present and has all gates
+  [x] midiBuffer is a non-empty Buffer
+
+
+E-21 — LANE SIMILARITY MATRIX
+─────────────────────────────────────────
+Phase:  Engine — Phase D (Audio-CTL Alignment)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Selecting related lanes for blending required manual knowledge of which
+    subgenres are sonically close. No data structure existed for pairwise
+    lane similarity.
+
+SOLUTION
+  → computeLaneSimilarityMatrix: symmetric 8×8 cosine similarity matrix
+    over LANE_WEIGHTS feature vectors. Returns a LaneSimilarityMatrix with
+    all 28 unique pairs.
+
+SUCCESS CRITERIA
+  [x] Matrix is symmetric
+  [x] Diagonal entries are 1.0
+  [x] All 8×8 entries present
+
+
+E-22 — GROOVE COMPLEXITY SCORER
+─────────────────────────────────────────
+Phase:  Engine — Phase D (Audio-CTL Alignment)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Producers had no objective measure of groove complexity. Fills and
+    variations were added without knowing whether the pattern was already
+    dense, leading to overcrowded arrangements.
+
+SOLUTION
+  → scoreGrooveComplexity: voice-level complexity analysis (density,
+    syncopation, polyrhythm) returning GrooveComplexityScore with an
+    overall ComplexityTier (minimal/sparse/moderate/complex/dense).
+
+SUCCESS CRITERIA
+  [x] Returns a tier for any GroovePlan
+  [x] Denser pattern scores higher tier
+  [x] All VoiceComplexity scores in [0, 1]
+
+
+E-23 — KEY TRANSPOSER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → ChordProgressions were generated in a fixed key with no utility to
+    shift them to a target key for remixing or vocal matching.
+
+SOLUTION
+  → transposeProgression: shifts all MIDI notes by the semitone delta
+    between source and target key names. Returns TransposeResult with
+    transposed progression and delta.
+
+SUCCESS CRITERIA
+  [x] All notes shifted by correct semitone count
+  [x] C→G transposes by +7 semitones
+  [x] Notes clamped to [0, 127]
+
+
+E-24 — STEM GAIN AUTOMATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Mix specs had static stem gains. There was no way to automate gain
+    changes across the arrangement arc — building the log drum through a
+    breakdown, dropping it in the outro.
+
+SOLUTION
+  → automateGains: maps ArrangementArc + MixSpec to GainAutomation with a
+    StemGainCurve per stem. GainPoints at section boundaries derived from
+    arc energy targets.
+
+SUCCESS CRITERIA
+  [x] Every stem in MixSpec gets a curve
+  [x] GainPoints at section boundary ticks
+  [x] Drop sections have highest gain
+
+
+E-25 — SIDECHAIN PATTERN GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → No sidechain curve matched the kick pattern. The pumping feel
+    characteristic of Amapiano bass lines was unrepresentable in
+    the engine's MIDI/automation output.
+
+SOLUTION
+  → generateSidechain: kick step array + SidechainOptions (attack, release,
+    depth, ticksPerStep) → SidechainCurve with gain control points timed
+    to each kick hit.
+
+SUCCESS CRITERIA
+  [x] One gain dip per kick hit
+  [x] Recovery reaches 1.0 before next kick
+  [x] Depth parameter controls dip magnitude
+
+
+E-26 — FILTER AUTOMATION GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Arrangement arcs changed energy targets but had no effect on filter
+    state. Builds and breakdowns sounded flat without automated filter sweeps.
+
+SOLUTION
+  → generateFilterAutomation: ArrangementArc → FilterAutomation with
+    FilterPoints at each section boundary. Build sweeps cutoff up;
+    breakdowns sweep down; drops open fully.
+
+SUCCESS CRITERIA
+  [x] FilterPoints at every section boundary
+  [x] Drop section has highest cutoff
+  [x] Breakdown section has lowest cutoff
+
+
+E-27 — REVERB TAIL CALCULATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Reverb settings were hardcoded regardless of audio features or lane,
+    leading to reverb that clashed with the dry/wet balance of the material.
+
+SOLUTION
+  → calculateReverb: derives ReverbParams (roomSize, preDelayMs, decayS,
+    wetDry, earlyReflections) from AudioFeatures + lane with Amapiano
+    standards encoded as calibrated defaults.
+
+SUCCESS CRITERIA
+  [x] Returns valid ReverbSpec for any lane
+  [x] preDelayMs in [0, 50]
+  [x] decayS shorter for percussive lanes
+
+
+E-28 — COMPRESSOR SETTINGS GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Compressor thresholds and ratios were hardcoded per stem with no
+    adaptation to the actual dynamics of the audio being processed.
+
+SOLUTION
+  → generateCompressorSpec: derives CompressorParams (threshold, ratio,
+    attack, release, knee, makeupGain) per stem from RMS energy and lane.
+    Returns a CompressorSpec for all stems.
+
+SUCCESS CRITERIA
+  [x] All stems have valid compressor params
+  [x] Ratio in [1.5, 20] for all stems
+  [x] Attack faster for percussive stems
+
+
+E-29 — EQ CURVE GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → The engine identified tonal imbalances from spectral analysis but had
+    no module that translated those findings into EQ band settings.
+
+SOLUTION
+  → generateEqSpec: derives per-stem StemEq (up to 6 EqBand entries:
+    highpass, low-shelf, parametric ×2, high-shelf, lowpass) from
+    AudioFeatures and lane. Returns EqSpec for all stems.
+
+SUCCESS CRITERIA
+  [x] Each stem has at least a highpass and one parametric band
+  [x] All frequency values in [20, 20000] Hz
+  [x] Gain values in [-18, +12] dB
+
+
+E-30 — VOCAL CHOP SCHEDULER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → No system existed for scheduling vocal chop events against a groove
+    grid. Vocal phrases were placed manually with no regard for groove
+    density, section type, or rhythmic feel.
+
+SOLUTION
+  → scheduleVocalChops: GroovePlan + ChopOptions (density, length, seed) →
+    VocalChopPattern with ChopEvent entries on valid 16th-note grid
+    positions via hashString-seeded selection.
+
+SUCCESS CRITERIA
+  [x] All chop events land on valid 16th-note positions
+  [x] Same seed produces same schedule
+  [x] density parameter controls event count
+
+
+E-31 — STEREO WIDTH AUTOMATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Stereo width was fixed per stem regardless of section. Builds and drops
+    sounded identically wide, removing a key spatial production tool.
+
+SOLUTION
+  → generateWidthAutomation: ArrangementArc → WidthAutomation with
+    WidthPoints at section boundaries. Drops widest; intros and breakdowns
+    narrower for contrast.
+
+SUCCESS CRITERIA
+  [x] WidthPoints at all section boundaries
+  [x] Drop section width >= breakdown section width
+  [x] All width values in [0, 1]
+
+
+E-32 — SCALE QUANTIZER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → MIDI notes from the arpeggiator and chord engines could land outside
+    the target scale, producing dissonant output that passed quality gates
+    but offended melodic expectations.
+
+SOLUTION
+  → quantizeToScale: snaps each MIDI note to the nearest in-scale note
+    (13 built-in scales via SCALE_INTERVALS). Returns ScaleQuantizeResult
+    with original and quantized arrays.
+
+SUCCESS CRITERIA
+  [x] All output notes are valid scale degrees
+  [x] Notes never moved by more than 6 semitones
+  [x] SCALE_INTERVALS covers major, minor, pentatonic, dorian, phrygian
+
+
+E-33 — HARMONIC TENSION SCORER
+─────────────────────────────────────────
+Phase:  Engine — Phase D (Audio-CTL Alignment)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Chord progressions had voicing and duration but no tension arc.
+    There was no signal for when a progression was harmonically stale
+    vs. building toward a resolution.
+
+SOLUTION
+  → scoreTension: assigns TensionLabel (low/medium/high/peak) and numeric
+    tension score [0,1] per chord based on interval dissonance, voice
+    leading distance, and ChordFunction. Returns TensionArc.
+
+SUCCESS CRITERIA
+  [x] Dominant chords score higher tension than tonic
+  [x] Tension arc has one entry per chord
+  [x] Final chord resolves to lower tension
+
+
+E-34 — SONG STRUCTURE VALIDATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase D (Audio-CTL Alignment)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Arrangement arcs could be generated with structural violations: sections
+    too short, drops missing, outro absent. No gatekeeper enforced minimum
+    Amapiano structure rules before export.
+
+SOLUTION
+  → validateStructure: evaluates ArrangementArc against StructureRules
+    (min/max section lengths, required sections, ordering) and returns
+    StructureValidation with per-rule pass/fail and remediation suggestions.
+
+SUCCESS CRITERIA
+  [x] Flags arc missing a drop section
+  [x] Flags arc with intro shorter than 4 bars
+  [x] Overall valid is false if any rule fails
+
+
+E-35 — CALL-AND-RESPONSE GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Groove plans were monophonic — one pattern repeated. Amapiano is
+    structurally built on call-and-response; there was no engine primitive
+    for the conversational phrase form that defines the genre.
+
+SOLUTION
+  → generateCallResponse: takes a call GroovePlan and generates a response
+    pattern sharing rhythmic DNA but introducing variation through inversion,
+    displacement, or density reduction.
+
+SUCCESS CRITERIA
+  [x] Response has same totalBars as call
+  [x] Response is not identical to call
+  [x] Both call and response are valid GroovePlans
+
+
+E-36 — MIDI NOTE DEDUPLICATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Layering groove patterns and chord exports produced duplicate MIDI note
+    events at the same tick and pitch. DAWs either ignored duplicates or
+    produced double-triggered notes with velocity artefacts.
+
+SOLUTION
+  → deduplicateMidi: removes events where tick + midiNote are identical,
+    keeping the higher-velocity duplicate. Returns DeduplicateResult with
+    deduplicated array and removed count.
+
+SUCCESS CRITERIA
+  [x] Output has no duplicate tick+note pairs
+  [x] Higher-velocity duplicate is kept
+  [x] removedCount = input.length − output.length
+
+
+E-37 — PATTERN VELOCITY SHAPER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → MIDI exports had flat velocity across all steps. There was no module
+    that applied a velocity shape (ramp, arc, wave) to an existing note
+    array — the accent map only covered groove plans.
+
+SOLUTION
+  → shapeVelocities: applies VelocityShape (ramp_up/ramp_down/arch/valley/
+    flat) to a MidiNoteEvent array, scaling each event's velocity by the
+    shape value at that position.
+
+SUCCESS CRITERIA
+  [x] ramp_up produces monotonically increasing velocities
+  [x] arch produces a bell-curve profile
+  [x] All output velocities clamped to [1, 127]
+
+
+E-38 — GROOVE SWING QUANTIZER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Quantised patterns were perfectly on-grid. Amapiano's feel depends on
+    16th-note swing variation that could not be applied after the fact to
+    an existing MIDI event array.
+
+SOLUTION
+  → quantizeSwing: displaces every odd-position 16th note forward in time.
+    swingRatio = 0.5 + (pct/100)×0.25, mapping swing percentage to the
+    [0.5, 0.75] tick ratio range.
+
+SUCCESS CRITERIA
+  [x] 50% swing produces no displacement
+  [x] 100% swing displaces odd notes by 0.25 × ticksPerBeat
+  [x] Even-position notes are not moved
+
+
+E-39 — STEM MUTE AUTOMATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Arrangement arcs specified energy levels per section but stems played
+    continuously. There was no automated mute schedule that silenced stems
+    in appropriate sections (sub_bass in intro, etc.).
+
+SOLUTION
+  → generateMuteSchedule: maps stems + ArrangementArc to MuteSchedule with
+    StemMuteEvent entries (stem, startTick, endTick). Amapiano-standard
+    rules: log_drum never muted; sub_bass muted in intro/breakdown/outro.
+
+SUCCESS CRITERIA
+  [x] log_drum has zero mute events
+  [x] sub_bass is muted in intro section
+  [x] All events have startTick < endTick
+
+
+E-40 — GROOVE DENSITY NORMALIZER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Groove complexity scores could flag patterns as too dense or too sparse,
+    but there was no module to automatically adjust note density to a target
+    level without changing the essential pattern character.
+
+SOLUTION
+  → normalizeDensity: if density > target, removes hits (seeded); if <
+    target, adds hits at empty steps. Returns DensityNormalizeResult with
+    adjusted plan and actual density achieved.
+
+SUCCESS CRITERIA
+  [x] Output density within ±0.1 of target
+  [x] Same seed produces same normalization
+  [x] Essential hits (kick on beat 1) preserved
+
+
+E-41 — BAR-TO-TICK CONVERTER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Multiple modules computed ticks independently using different local
+    formulas. Inconsistent ticksPerBeat defaults produced MIDI files where
+    events from different modules were out of sync.
+
+SOLUTION
+  → buildTickMap: given totalBars, ticksPerBeat, beatsPerBar, returns a
+    TickMap with SectionTickRange for every bar. Single source of truth
+    for all tick arithmetic in the pipeline.
+
+SUCCESS CRITERIA
+  [x] bar=0, beat=0 → tick=0
+  [x] bar=1, beat=0 → tick=ticksPerBeat×beatsPerBar
+  [x] All section ranges non-overlapping and contiguous
+
+
+E-42 — PATTERN RETROGRADE
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Variation generation used forward-only mutations. Retrograde
+    (time-reversal) is a classical technique that produces dramatically
+    different feel from the same rhythmic material — it was missing.
+
+SOLUTION
+  → retrogradePattern: reverses the step sequence of a GroovePlan's hit
+    array while preserving totalBars and ticksPerBar. Returns RetrogradResult.
+
+SUCCESS CRITERIA
+  [x] Output step array is exact reverse of input
+  [x] totalBars unchanged
+  [x] Applying retrograde twice returns the original
+
+
+E-43 — EUCLIDEAN RHYTHM GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Groove patterns were hand-authored or library-selected. No algorithmic
+    generator could produce rhythmically even, culturally authentic patterns
+    from just a hit count and step count.
+
+SOLUTION
+  → generateEuclidean: Bjorklund algorithm distributes hits as evenly as
+    possible across steps. Returns EuclideanResult with a (0|1)[] pattern.
+
+SUCCESS CRITERIA
+  [x] E(3,8) = [1,0,0,1,0,0,1,0]
+  [x] Sum of pattern equals hits
+  [x] Pattern length equals steps
+
+
+E-44 — POLYRHYTHM LAYER GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → The engine generated single-rhythm patterns. Amapiano's signature feel
+    comes from layering conflicting subdivisions (3-against-4, 5-against-8)
+    — there was no module that created and merged polyrhythm layers.
+
+SOLUTION
+  → generatePolyrhythm: takes PolyrhythmLayer array (each with hits+steps),
+    combines over LCM grid length, returns PolyrhythmResult with each
+    layer's expanded pattern and merged output.
+
+SUCCESS CRITERIA
+  [x] Merged pattern length equals LCM of all step values
+  [x] Each layer's hits are present in the merged output
+  [x] [3,8]×[4,8] produces correct 8-step merged grid
+
+
+E-45 — GROOVE PATTERN COMBINER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Patterns from different sources could not be merged without manual
+    step-by-step work. No clean combine utility existed with defined
+    conflict-resolution semantics.
+
+SOLUTION
+  → combinePatterns: takes two (0|1)[] arrays and CombineMode (or/and/xor).
+    Returns CombineResult with combined array and hit-count stats.
+
+SUCCESS CRITERIA
+  [x] OR of [1,0,1,0] and [0,1,0,1] = [1,1,1,1]
+  [x] AND of [1,1,0,0] and [1,0,1,0] = [1,0,0,0]
+  [x] XOR of [1,1,0,0] and [1,0,1,0] = [0,1,1,0]
+
+
+E-46 — NOTE QUANTIZER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → MIDI events from humanization and variation had fractional tick positions.
+    DAWs that require strict grid quantization rejected or misread these files.
+
+SOLUTION
+  → quantizeNotes: snaps MidiNoteEvent tick values to the nearest multiple
+    of a QuantizeResolution (1/4, 1/8, 1/16, 1/32 note in ticks). Returns
+    QuantizeNoteResult with quantized events and displacement stats.
+
+SUCCESS CRITERIA
+  [x] All output ticks are multiples of the resolution
+  [x] Maximum tick displacement ≤ resolution/2
+  [x] Note order preserved
+
+
+E-47 — CHORD STAB PATTERN GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → The chord voicing engine produced progressions but had no rhythmic
+    placement concept. Piano and organ stabs in Amapiano have specific
+    off-beat placement patterns that needed a dedicated generator.
+
+SOLUTION
+  → generateChordStab: chord (MIDI notes) + StabOptions (pattern type,
+    velocity, duration, ticksPerStep) → StabPattern with MidiNoteEvent
+    entries at stab rhythmic positions.
+
+SUCCESS CRITERIA
+  [x] Stab positions are on valid off-beat steps
+  [x] All chord notes present at each stab position
+  [x] Velocity and duration match StabOptions
+
+
+E-48 — GROOVE ENERGY PROFILE
+─────────────────────────────────────────
+Phase:  Engine — Phase D (Audio-CTL Alignment)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → The arrangement arc defined target energy per section but there was no
+    per-section readout of actual energy contribution from groove elements.
+    Producers could not verify whether a breakdown had actually dropped energy.
+
+SOLUTION
+  → computeEnergyProfile: GroovePlan + ArrangementArc → EnergyProfile with
+    an EnergyLayer per stem per section. Energy = hit density × velocity product.
+
+SUCCESS CRITERIA
+  [x] Profile covers all sections in the arc
+  [x] Drop section has highest energy layer sum
+  [x] Breakdown section lower than drop
+
+
+E-49 — SECTION TRANSITION FILL GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Section transitions were abrupt. No transition fill generator could
+    place a 1–2 bar drum fill or riser at the exact boundary between
+    sections.
+
+SOLUTION
+  → generateTransitionFill: source section + target section + lane +
+    FillOptions (fillBars, seed) → TransitionFill with hit pattern
+    appropriate for the transition type.
+
+SUCCESS CRITERIA
+  [x] Fill length equals fillBars
+  [x] build_to_drop fills are denser than breakdown_to_build
+  [x] Same seed produces same fill
+
+
+E-50 — PITCH BEND CURVE GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Melodic MIDI exports had no pitch bend events. Log drum glide — a
+    defining Amapiano timbral feature — required pitch bend automation
+    that no module could produce.
+
+SOLUTION
+  → generatePitchBend: PitchBendShape (glide_up/glide_down/wobble/vibrato)
+    + PitchBendOptions (durationTicks, depth, resolution) → PitchBendCurve
+    with PitchBendPoint entries.
+
+SUCCESS CRITERIA
+  [x] glide_up produces monotonically increasing bend values
+  [x] wobble produces a sinusoidal curve
+  [x] All bend values in [-8192, 8191]
+
+
+E-51 — MIDI CC AUTOMATION GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → MIDI exports had note events only. Filter sweeps, modulation, and
+    expression changes required CC automation events the engine could not
+    generate.
+
+SOLUTION
+  → generateCcAutomation: CcShape (ramp_up/ramp_down/swell/dip/flat) +
+    CcAutomationOptions (durationTicks, minValue, maxValue, resolution, CC
+    number) → CcAutomation with CcPoint entries.
+
+SUCCESS CRITERIA
+  [x] ramp_up produces monotonically increasing CC values
+  [x] swell peaks at mid-point
+  [x] All CC values in [0, 127]
+
+
+E-52 — BPM TAP ANALYZER
+─────────────────────────────────────────
+Phase:  Engine — Phase D (Audio-CTL Alignment)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → There was no way to derive BPM from a human tap sequence. Live
+    production workflows require tap-in BPM alongside audio-analysis BPM
+    for reconciliation and manual override.
+
+SOLUTION
+  → analyzeTaps: array of tap timestamps (ms) → TapAnalysis with estimated
+    BPM, inter-tap interval stats (mean, stddev, cv), and confidence score
+    based on tap regularity.
+
+SUCCESS CRITERIA
+  [x] 4 taps at 500 ms intervals → BPM = 120
+  [x] Irregular taps produce low confidence
+  [x] confidence in [0, 1]
+
+
+E-53 — PROBABILISTIC STEP SEQUENCER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Groove patterns were deterministic. Amapiano performance introduces
+    controlled randomness — a hit that fires 70% of the time feels organic
+    in a way a fixed pattern cannot replicate.
+
+SOLUTION
+  → resolveProb: ProbabilisticPattern (step probability array [0,1]) + seed
+    → concrete (0|1)[] step pattern by comparing each probability against a
+    hashString-derived value.
+
+SUCCESS CRITERIA
+  [x] Steps with probability 1.0 always fire
+  [x] Steps with probability 0.0 never fire
+  [x] Same seed produces same pattern
+
+
+E-54 — TEMPO RAMP GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → MIDI exports had no tempo automation. Gradual BPM ramps (common in
+    live Amapiano DJ sets and producer builds) were impossible to represent
+    in the exported TempoMap.
+
+SOLUTION
+  → generateTempoRamp: TempoMap with one TempoPoint per bar, interpolating
+    startBpm → endBpm using linear or exponential shapes.
+    tick(bar) = (startBar + bar) × ticksPerBeat × beatsPerBar.
+
+SUCCESS CRITERIA
+  [x] linear ramp: BPM increases uniformly
+  [x] exponential ramp: BPM follows power curve
+  [x] startBpm=endBpm → all points same BPM
+
+
+E-55 — MIDI DRUM MAPPER
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Groove plan drum hits referenced logical parts (kick, snare, log_drum)
+    but MIDI export required concrete note numbers. Different DAWs and drum
+    machines use different mappings — no lookup table existed.
+
+SOLUTION
+  → buildDrumMap: DrumMapResult (14 parts × MIDI note + name) for requested
+    layout (gm/tr808/tr909/ableton). resolveDrumNote: single lookup for a
+    specific part+layout.
+
+SUCCESS CRITERIA
+  [x] GM kick = note 36
+  [x] TR-909 tom_high = note 48
+  [x] All 4 layouts map all 14 parts
+
+
+E-56 — MIDI ARPEGGIATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → No module converted a chord into a time-sequenced arpeggio. Piano and
+    synth leads in Amapiano frequently use arpeggiated patterns the engine
+    could not generate.
+
+SOLUTION
+  → generateArpeggio: chord (MIDI notes) + mode (up/down/up_down/down_up/
+    random) + steps + octaves + timing options → ArpResult with ArpNote
+    events at calculated tick positions.
+
+SUCCESS CRITERIA
+  [x] up mode produces ascending note order
+  [x] up_down cycles without repeating endpoints
+  [x] octaves=2 includes notes one octave higher
+
+
+E-57 — NOTE STUTTER GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → No way to generate a rapid-fire repeat (stutter/roll) of a single note
+    within a tick window. This effect is central to Amapiano log drum fills
+    and transition moments.
+
+SOLUTION
+  → generateStutter: midiNote repeated N times within windowTicks using
+    StutterShape (flat/accelerate/decelerate/crescendo/decrescendo) to
+    control both spacing and velocity over the window.
+
+SUCCESS CRITERIA
+  [x] accelerate: spacing decreases toward window end
+  [x] crescendo: velocity increases across repeats
+  [x] All durationTicks positive
+
+
+E-58 — GHOST NOTE INJECTOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Drum patterns had only main hits. Ghost notes (low-velocity snare/hat
+    hits between main beats) give Amapiano grooves their felt texture —
+    there was no module to insert them.
+
+SOLUTION
+  → injectGhostNotes: scans empty steps, selects a density fraction via
+    hashString-seeded PRNG, places ghost notes with velocity in
+    [minVelocity, maxVelocity].
+
+SUCCESS CRITERIA
+  [x] density=1 fills every empty step
+  [x] density=0 produces no ghosts
+  [x] No ghost lands on an occupied step
+
+
+E-59 — NOTE ECHO
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → MIDI exports had no delay-effect representation. Echo repeats with
+    velocity decay — a staple of Amapiano mixing — could not be encoded
+    in the exported MIDI.
+
+SOLUTION
+  → generateEcho: N echo repeats at delayTicks intervals.
+    velocity of echo i = round(initVelocity × decay^i).
+    Stops early when velocity < minVelocity.
+
+SUCCESS CRITERIA
+  [x] velocity decreases with each repeat
+  [x] decay=1 keeps velocity constant
+  [x] stops early below minVelocity threshold
+
+
+E-60 — CHORD INVERSION GENERATOR
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → The chord voicing engine returned root-position chords only. Voice
+    leading between chords required inversions, but no module generated
+    all valid close-position inversions.
+
+SOLUTION
+  → generateInversions: n successive bass-note octave-shifts to produce
+    root/first/second/third inversions. Only generates inversions valid
+    for the chord size (triad → 3 max).
+
+SUCCESS CRITERIA
+  [x] Triad generates exactly root + first + second
+  [x] Third inversion only for 4-note chords
+  [x] types filter restricts output to requested inversions
+
+
+E-61 — VELOCITY ACCENT MAP
+─────────────────────────────────────────
+Phase:  Engine — Phase C (Generation Wiring)
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → MIDI patterns had flat velocity across all steps. Applying accent
+    patterns manually to every new pattern was repetitive and inconsistent
+    across producers and sessions.
+
+SOLUTION
+  → generateVelocityMap: maps N steps to velocities using a repeating ratio
+    cycle. Presets: amapiano (1.00/0.85/0.65/0.50), straight (4/4 downbeat),
+    flat (uniform). velocity = round(floor + ratio × (peak − floor)).
+
+SUCCESS CRITERIA
+  [x] amapiano step 0 has peak velocity
+  [x] flat preset produces identical velocity on all steps
+  [x] customRatios overrides preset and marks result as "custom"
+
+
+E-62 — STREAM ANALYZER
+─────────────────────────────────────────
+Phase:  Engine — Phase F (Streaming Analysis) — CLOSES PHASE F
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → The engine only analysed complete audio buffers. Real-time production
+    workflows — live monitoring, DJ performance, recording sessions —
+    require frame-by-frame analysis without waiting for a full buffer.
+  → Phase F was partially addressed by runFullSession; this closes the
+    streaming dimension that remained open.
+
+SOLUTION
+  → StreamAnalyzer class: pushFrame() accepts fixed-size frames, maintains a
+    rolling sample window, computes RMS energy per frame, and estimates BPM +
+    spectral centroid from the window once filled. flush() forces a final
+    estimate from whatever audio has accumulated.
+
+SUCCESS CRITERIA
+  [x] bpmEstimate is null before window fills, number after
+  [x] rmsEnergy is 0 for silent frames, > 0 for non-silent
+  [x] reset() clears all state and restores null estimates
+
+
+E-63 — ENGINE METRICS COLLECTOR
+─────────────────────────────────────────
+Phase:  Engine — Phase G (Observability) — CLOSES PHASE G
+Status: [x] Complete
+
+PROBLEM DEFINITION
+  → Engine pipeline runs produced results but no structured telemetry.
+    There was no way to observe pass rates, average quality scores, or
+    latency trends across a session without manual logging.
+  → Phase G was partially addressed by drift detector + production report;
+    this closes the metrics/observability dimension that remained open.
+
+SOLUTION
+  → MetricsCollector class: record() stores durationMs, qualityScore,
+    passed, lane, error with auto-generated runId and timestamp.
+    snapshot() returns totalRuns, passed, failed, avgDurationMs, avgQuality,
+    recentRuns sorted by timestamp. reset() clears all metrics.
+
+SUCCESS CRITERIA
+  [x] snapshot() counts pass/fail correctly
+  [x] avgDurationMs and avgQuality computed correctly
+  [x] recentRuns sorted desc, limited by limit param
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
