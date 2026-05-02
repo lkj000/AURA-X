@@ -3145,6 +3145,34 @@ SUCCESS CRITERIA
   [x] POST /api/engine/metrics/reset calls collector.reset() and returns 204
 
 
+---
+### JOB H-03 — Production Report Endpoint
+---
+
+PROBLEM DEFINITION
+  The engine's generateProductionReport (E-16) — which orchestrates quality
+  gates, mix spec, sample recommendations, and arrangement arc into a single
+  consolidated report — had no API surface. Producers had no way to request
+  an actionable breakdown of a track's production quality without running the
+  engine locally.
+
+SOLUTION
+  Add POST /api/tracks/:id/report to the tracks router. The handler:
+    1. Confirms the track exists (404 if not)
+    2. Fetches the latest raw_generation audio file from audio_files (422 if none)
+    3. Downloads the WAV buffer from Supabase storage aura-x-audio bucket
+    4. Calls evaluateBuffer(buffer) → AmapianEvaluation
+    5. Calls generateProductionReport(evaluation) → ProductionReport
+    6. Returns the full report as JSON
+  Non-WAV / unparseable buffers return 422. Storage failures return 500.
+  No auth required (read-only, compute-only — no writes).
+
+SUCCESS CRITERIA
+  [x] 200 + full ProductionReport JSON when track + audio exist
+  [x] 404/422/500 guard cases all handled and tested
+  [x] 15 prior tracks tests still green (no regressions)
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { supabase } from "../lib/supabase";
 import { verifyToken } from "../middleware/auth";
+import { evaluateBuffer, generateProductionReport } from "@aura-x/engine";
 
 const router = Router();
 
@@ -111,6 +112,50 @@ router.get("/:id", async (req: Request, res: Response): Promise<void> => {
     feedback_count,
     feedback_avg,
   });
+});
+
+// POST /api/tracks/:id/report
+// Downloads the latest raw_generation audio for the track, runs the full
+// engine evaluation stack, and returns a ProductionReport (grade, mix spec,
+// sample recommendations, arrangement arc, ranked recommendations).
+router.post("/:id/report", async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+
+  const { data: track } = await supabase.from("tracks").select("id").eq("id", id).maybeSingle();
+  if (!track) { res.status(404).json({ error: "Track not found" }); return; }
+
+  const { data: audioFile } = await supabase
+    .from("audio_files")
+    .select("storage_path")
+    .eq("track_id", id)
+    .eq("file_type", "raw_generation")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!audioFile) {
+    res.status(422).json({ error: "No audio available for this track — generate first" });
+    return;
+  }
+
+  const { data: blob, error: dlError } = await supabase.storage
+    .from("aura-x-audio")
+    .download(audioFile.storage_path);
+
+  if (dlError || !blob) {
+    res.status(500).json({ error: "Failed to retrieve audio file" });
+    return;
+  }
+
+  const audioBuffer = Buffer.from(await (blob as Blob).arrayBuffer());
+
+  try {
+    const evaluation = evaluateBuffer(audioBuffer);
+    const report     = generateProductionReport(evaluation);
+    res.json(report);
+  } catch {
+    res.status(422).json({ error: "Audio could not be analysed — WAV 16-bit PCM required" });
+  }
 });
 
 // POST /api/tracks/:id/suno-result  (requires JWT)

@@ -15,10 +15,25 @@ const TRACK_2 = {
   status: "draft", generation_mode: "mode_1_suno", updated_at: "2026-04-29T10:00:00Z",
 };
 
-const mockFrom = jest.fn();
+const mockFrom        = jest.fn();
+const mockDownload    = jest.fn();
+const mockStorageFrom = jest.fn().mockReturnValue({ download: mockDownload });
 
 jest.mock("../lib/supabase", () => ({
-  supabase: { from: (...args: unknown[]) => mockFrom(...args) },
+  supabase: {
+    from:    (...args: unknown[]) => mockFrom(...args),
+    storage: { from: (...args: unknown[]) => mockStorageFrom(...args) },
+  },
+}));
+
+// ─── Mock @aura-x/engine ─────────────────────────────────────────────────────
+
+const mockEvaluateBuffer          = jest.fn();
+const mockGenerateProductionReport = jest.fn();
+
+jest.mock("@aura-x/engine", () => ({
+  evaluateBuffer:           (...args: unknown[]) => mockEvaluateBuffer(...args),
+  generateProductionReport: (...args: unknown[]) => mockGenerateProductionReport(...args),
 }));
 
 // ─── Mock auth middleware ─────────────────────────────────────────────────────
@@ -319,6 +334,142 @@ describe("POST /api/tracks/:id/suno-result", () => {
       .set("Authorization", "Bearer test-token")
       .send({ approved: true });
     expect(res.status).toBe(404);
+  });
+
+});
+
+describe("POST /api/tracks/:id/report", () => {
+
+  const AUDIO_PATH = "track-aaa-001/raw_generation/file-123.wav";
+
+  const FAKE_EVAL = { features: {}, laneScores: { bestFitLane: "private_school" }, quality: {}, groove: {}, perception: {}, stems: {}, cultural: {}, issues: [] };
+
+  const FAKE_REPORT = {
+    summary:         { lane: "private_school", bpm: 112, key: "F#m", passesThreshold: true, grade: "A", readyForRelease: true, overallScore: 0.83 },
+    qualityGate:     { grade: "A", allPass: true, passCount: 5, overallScore: 0.83, gates: [], readyForRelease: true, summary: "Grade A" },
+    mixSpec:         { masterVolume: -6, tracks: [] },
+    samplePack:      { lane: "private_school", samples: [] },
+    arrangement:     { sections: [] },
+    recommendations: ["Add log drum on beats 2 and 4"],
+    generatedAt:     "2026-05-01T10:00:00Z",
+  };
+
+  function makeTrackMock(found = true) {
+    return {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({ data: found ? { id: "track-aaa-001" } : null, error: null }),
+    };
+  }
+
+  function makeAudioFileMock(found = true) {
+    return {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      order: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: found ? { storage_path: AUDIO_PATH } : null,
+        error: null,
+      }),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    // Default supabase mock: track found, audio file found
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "tracks") return makeTrackMock(true);
+      if (table === "audio_files") return makeAudioFileMock(true);
+      return { select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis() };
+    });
+
+    // Default storage mock: download succeeds
+    const fakeBlob = { arrayBuffer: jest.fn().mockResolvedValue(Buffer.from("fake-wav").buffer) };
+    mockStorageFrom.mockReturnValue({ download: mockDownload });
+    mockDownload.mockResolvedValue({ data: fakeBlob, error: null });
+
+    // Default engine mocks: evaluation + report succeed
+    mockEvaluateBuffer.mockReturnValue(FAKE_EVAL);
+    mockGenerateProductionReport.mockReturnValue(FAKE_REPORT);
+  });
+
+  it("16. POST /api/tracks/:id/report → 200 with report shape", async () => {
+    const res = await request(app).post("/api/tracks/track-aaa-001/report");
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      summary:         expect.any(Object),
+      qualityGate:     expect.any(Object),
+      mixSpec:         expect.any(Object),
+      samplePack:      expect.any(Object),
+      arrangement:     expect.any(Object),
+      recommendations: expect.any(Array),
+      generatedAt:     expect.any(String),
+    });
+  });
+
+  it("17. evaluateBuffer called with a Buffer", async () => {
+    await request(app).post("/api/tracks/track-aaa-001/report");
+    expect(mockEvaluateBuffer).toHaveBeenCalledWith(expect.any(Buffer));
+  });
+
+  it("18. generateProductionReport called with evaluation result", async () => {
+    await request(app).post("/api/tracks/track-aaa-001/report");
+    expect(mockGenerateProductionReport).toHaveBeenCalledWith(FAKE_EVAL);
+  });
+
+  it("19. summary.grade and summary.lane present in response", async () => {
+    const res = await request(app).post("/api/tracks/track-aaa-001/report");
+    expect(res.body.summary.grade).toBe("A");
+    expect(res.body.summary.lane).toBe("private_school");
+  });
+
+  it("20. recommendations is a non-empty array", async () => {
+    const res = await request(app).post("/api/tracks/track-aaa-001/report");
+    expect(res.body.recommendations).toHaveLength(1);
+    expect(res.body.recommendations[0]).toMatch(/log drum/i);
+  });
+
+  it("21. Track not found → 404", async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "tracks") return makeTrackMock(false);
+      return { select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis() };
+    });
+    const res = await request(app).post("/api/tracks/does-not-exist/report");
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not found/i);
+  });
+
+  it("22. No audio file for track → 422 with message", async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "tracks") return makeTrackMock(true);
+      if (table === "audio_files") return makeAudioFileMock(false);
+      return { select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis() };
+    });
+    const res = await request(app).post("/api/tracks/track-aaa-001/report");
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/generate first/i);
+  });
+
+  it("23. Storage download fails → 500", async () => {
+    mockDownload.mockResolvedValue({ data: null, error: { message: "object not found" } });
+    const res = await request(app).post("/api/tracks/track-aaa-001/report");
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/Failed to retrieve/i);
+  });
+
+  it("24. evaluateBuffer throws → 422 with message", async () => {
+    mockEvaluateBuffer.mockImplementation(() => { throw new Error("Not a WAV"); });
+    const res = await request(app).post("/api/tracks/track-aaa-001/report");
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/WAV/i);
+  });
+
+  it("25. storage.from called with 'aura-x-audio'", async () => {
+    await request(app).post("/api/tracks/track-aaa-001/report");
+    expect(mockStorageFrom).toHaveBeenCalledWith("aura-x-audio");
+    expect(mockDownload).toHaveBeenCalledWith(AUDIO_PATH);
   });
 
 });
