@@ -3540,6 +3540,45 @@ SUCCESS CRITERIA
   [x] 523 API tests + 228 ac-ami tests passing
 
 
+### JOB H-15 — DJ Set Planner API
+---
+
+PROBLEM DEFINITION
+  The ac-ami package contained a fully built DJ set planner (planSet,
+  planTransition, Camelot wheel, mix scoring) but these functions had no
+  HTTP surface. Producers and integrators had no way to generate Amapiano-
+  aware set plans or score track compatibility without embedding the package
+  directly.
+
+SOLUTION
+  New route file `apps/api/src/routes/dj.ts`, mounted at /api/dj.
+
+  POST /api/dj/set-plan
+    - Validates track_ids array (min 2); 422 with missing[] on DB misses
+    - Fetches tracks (subgenre, bpm, key) + evaluations (composite_score)
+    - Builds SetTrack[] with energy_mean from evaluation, duration_sec=300
+      default, camelot_code from getCamelotCode()
+    - Calls planSet(setTracks, { title, target_duration_min }) where
+      target_duration_min is clamped to [10, 180]
+    - Returns full SetPlan (energy_arc, ordered tracks, transitions, set_notes)
+
+  GET /api/dj/mix-score?track_a=<id>&track_b=<id>
+    - Fetches both tracks in parallel via Promise.all
+    - Computes harmonicCompatibilityScore (via Camelot codes), bpmCompatibilityScore,
+      mixCompatibilityScore (65% harmonic + 35% BPM)
+    - Returns { track_a, track_b, bpm_score, harmonic_score, overall_score,
+      compatible_keys } with scores rounded to 3 d.p.
+
+SUCCESS CRITERIA
+  [x] 400 on missing/invalid track_ids; 400 on missing track_a/track_b params
+  [x] 422 with missing[] when any track_id not in DB
+  [x] 404 when mix-score track not found (separate errors for a vs b)
+  [x] planSet called with correct SetTrack array; evaluation scores wired in
+  [x] target_duration_min clamped to [10, 180]; defaults to 45
+  [x] Camelot codes in mix-score response; compatible_keys array returned
+  [x] 15 tests in dj.test.ts; 538 API tests + 228 ac-ami tests passing
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.
