@@ -3500,6 +3500,46 @@ SUCCESS CRITERIA
   [x] 10 merger unit tests (ac-ami), 10 route tests (api), 508 API + 228 ac-ami passing
 
 
+### JOB H-14 — Producer Feedback Loop
+---
+
+PROBLEM DEFINITION
+  `POST /api/feedback/rate` existed but the feedback data was a write-only
+  sink — there was no way to query what the gold-standard corpus had learned
+  about which lanes, keys, and BPM ranges consistently received high ratings.
+  Producers had no visibility into aggregate taste signals, and no API to
+  browse the gold library for reference generations.
+
+SOLUTION
+  Extended `apps/api/src/routes/feedback.ts` with two new endpoints:
+
+  GET /api/feedback/insights
+    - Fetches all gold_standard_generations (subgenre, key, bpm, producer_score)
+    - Aggregates in-process (no raw SQL needed):
+      · top_lanes: [{lane, avg_score, count}] sorted by avg_score desc
+      · top_keys:  [{key,  avg_score, count}] sorted by avg_score desc
+      · bpm_distribution: {min, max, mean} across gold BPM values,
+        or null when the gold table is empty
+      · total_gold: count of all gold-standard records
+    - This closes the feedback loop: producer taste → gold corpus → insights
+      → can inform future groove/chord/melody generation tuning
+
+  GET /api/feedback/gold
+    - Paginated list of gold_standard_generations (default 20, max 50)
+    - Ordered by composite_score desc
+    - Optional ?subgenre= filter
+    - Returns { gold, total, page, limit }
+
+SUCCESS CRITERIA
+  [x] top_lanes and top_keys sorted by avg_score descending
+  [x] bpm_distribution.min <= mean <= max
+  [x] Empty gold table → empty arrays, null bpm_distribution
+  [x] Supabase error → 500 on both endpoints
+  [x] Gold list: pagination (page/limit) correct, limit clamped to 50
+  [x] 15 new tests (insights 11-20, gold 21-25) + existing 10 = 25 total
+  [x] 523 API tests + 228 ac-ami tests passing
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.

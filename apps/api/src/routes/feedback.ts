@@ -88,4 +88,92 @@ router.post("/rate", async (req: Request, res: Response): Promise<void> => {
   res.json({ feedback_id: fbData.id, promoted_to_gold });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+
+function round2(v: number): number {
+  return parseFloat(v.toFixed(2));
+}
+
+type GoldRecord = { subgenre: string; key: string; bpm: number | string; producer_score: number };
+
+// GET /api/feedback/insights
+// Returns aggregate statistics derived from gold-standard generations:
+//   top_lanes, top_keys (by avg producer_score), bpm_distribution, total_gold.
+router.get("/insights", async (_req: Request, res: Response): Promise<void> => {
+  const { data: gold, error } = await supabase
+    .from("gold_standard_generations")
+    .select("subgenre, key, bpm, producer_score");
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+  const records = (gold ?? []) as GoldRecord[];
+  const total_gold = records.length;
+
+  const laneMap: Record<string, { total: number; count: number }> = {};
+  const keyMap:  Record<string, { total: number; count: number }> = {};
+  const bpms: number[] = [];
+
+  for (const r of records) {
+    if (!laneMap[r.subgenre]) laneMap[r.subgenre] = { total: 0, count: 0 };
+    laneMap[r.subgenre].total += r.producer_score;
+    laneMap[r.subgenre].count++;
+
+    if (!keyMap[r.key]) keyMap[r.key] = { total: 0, count: 0 };
+    keyMap[r.key].total += r.producer_score;
+    keyMap[r.key].count++;
+
+    bpms.push(Number(r.bpm));
+  }
+
+  const top_lanes = Object.entries(laneMap)
+    .map(([lane, { total, count }]) => ({ lane, avg_score: round2(total / count), count }))
+    .sort((a, b) => b.avg_score - a.avg_score);
+
+  const top_keys = Object.entries(keyMap)
+    .map(([key, { total, count }]) => ({ key, avg_score: round2(total / count), count }))
+    .sort((a, b) => b.avg_score - a.avg_score);
+
+  const bpm_distribution = bpms.length > 0 ? {
+    min:  Math.min(...bpms),
+    max:  Math.max(...bpms),
+    mean: round2(bpms.reduce((s, v) => s + v, 0) / bpms.length),
+  } : null;
+
+  res.json({ total_gold, top_lanes, top_keys, bpm_distribution });
+});
+
+// GET /api/feedback/gold
+// Query: ?subgenre= &page= &limit= (default limit 20, max 50)
+// Returns paginated list of gold-standard generations ordered by composite_score desc.
+router.get("/gold", async (req: Request, res: Response): Promise<void> => {
+  const subgenre  = req.query.subgenre as string | undefined;
+  const pageNum   = Math.max(1, parseInt(req.query.page  as string) || 1);
+  const limitNum  = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
+  const from = (pageNum - 1) * limitNum;
+  const to   = from + limitNum - 1;
+
+  let query = supabase
+    .from("gold_standard_generations")
+    .select(
+      "id, track_id, generation_id, subgenre, bpm, key, composite_score, producer_score, created_at",
+      { count: "exact" },
+    )
+    .order("composite_score", { ascending: false })
+    .range(from, to);
+
+  if (subgenre) query = query.eq("subgenre", subgenre);
+
+  const { data, count, error } = await query;
+
+  if (error) {
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+  res.json({ gold: data ?? [], total: count ?? 0, page: pageNum, limit: limitNum });
+});
+
 export default router;
