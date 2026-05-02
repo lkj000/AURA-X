@@ -104,22 +104,33 @@ export const agentActivities = {
       generation_mode:   goal.generation_mode,
     });
 
+    // Always build a valid CTL_v1 base — guarantees all required array fields are present
+    const baseCtl = synthesizeCtlFromGoal({
+      title:            goal.title,
+      subgenre:         goal.subgenre as Lane,
+      bpm:              goal.bpm,
+      key:              goal.key,
+      emotionalProfile: goal.emotional_profile,
+      createdBy:        goal.created_by,
+    });
+
     if (engineResult) {
-      ctl = engineResult.ctl as CTLv1;
+      // Overlay engine acoustic measurements onto the properly-shaped base CTL.
+      // instrumentation stays as baseCtl array — applyInstrumentationPlan overwrites it anyway.
+      const eng = engineResult.ctl as Record<string, unknown>;
+      ctl = {
+        ...baseCtl,
+        global:          { ...baseCtl.global, ...(eng.global as object ?? {}) },
+        groove_patterns: (eng.groove_patterns as CTLv1["groove_patterns"]) ?? baseCtl.groove_patterns,
+        harmony:         (eng.harmony as CTLv1["harmony"]) ?? baseCtl.harmony,
+        sections:        (eng.sections as CTLv1["sections"]) ?? baseCtl.sections,
+      };
       console.log(
         `[buildCtl] Engine CTL: lane=${ctl.global?.subgenre} ` +
         `source=${engineResult.generation_source} quality=${engineResult.quality_score}`
       );
     } else {
-      // Fallback: TypeScript synthesizeCtlFromGoal
-      ctl = synthesizeCtlFromGoal({
-        title:            goal.title,
-        subgenre:         goal.subgenre as Lane,
-        bpm:              goal.bpm,
-        key:              goal.key,
-        emotionalProfile: goal.emotional_profile,
-        createdBy:        goal.created_by,
-      });
+      ctl = baseCtl;
       console.log(`[buildCtl] TypeScript fallback CTL: lane=${ctl.global?.subgenre}`);
     }
 
