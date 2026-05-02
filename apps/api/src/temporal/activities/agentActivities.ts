@@ -8,7 +8,7 @@ import {
   ObservedFeatures,
 } from "@aura-x/ac-ami";
 import type { CTLv1 } from "@aura-x/ctl";
-import { synthesizeCtlFromGoal } from "@aura-x/engine";
+import { synthesizeCtlFromGoal, optimizeCTLForHarmonicState } from "@aura-x/engine";
 import type { Lane } from "@aura-x/engine";
 import { runRevisionLoop } from "../../agent/revisionLoop";
 import { storeResult } from "../../agent/resultsStore";
@@ -108,6 +108,9 @@ export const agentActivities = {
         created_at:      new Date().toISOString(),
       },
     };
+
+    const perceptResult = optimizeCTLForHarmonicState(ctl);
+    ctl = perceptResult.ctl;
 
     ctl = applyHarmonyPlan(ctl);
     ctl = applyGroovePlan(ctl);

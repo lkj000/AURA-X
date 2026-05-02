@@ -80,6 +80,17 @@ import { StreamAnalyzer, createStreamAnalyzer } from "../pipeline/stream_analyze
 import { MetricsCollector, createMetricsCollector } from "../pipeline/metrics_collector";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
+import {
+  extractCTLPerceptionParams,
+  predictCTLPerceptionState,
+  C1_B_EFF_HARMONIC_MAX,
+  C1_B_EFF_PERCUSSION_MIN,
+  C2_MAX_TRANSIENTS,
+  C3_MIN_LD_DENSITY,
+} from "../perception/ctl_perception_bridge";
+import { optimizeCTLForHarmonicState } from "../perception/ctl_optimizer";
+import { privateSchoolPreset, sgijaPreset } from "@aura-x/ctl";
+import type { CTLv1 } from "@aura-x/ctl";
 
 // ── WAV builder ───────────────────────────────────────────────────────────────
 // Generates a synthetic percussive WAV at ~114 BPM with a 110 Hz log-drum-like tone.
@@ -6341,5 +6352,244 @@ describe("77. Engine metrics collector", () => {
     const mc = createMetricsCollector();
     mc.record({ durationMs: 10, qualityScore: 0.8, passed: true });
     expect(mc.size).toBe(1);
+  });
+});
+
+// ── 78. CTL Perception Bridge — extractCTLPerceptionParams ───────────────────
+describe("78. CTL Perception Bridge — extractCTLPerceptionParams", () => {
+  test("alpha_B is between 0 and 1 for privateSchoolPreset", () => {
+    const p = extractCTLPerceptionParams(privateSchoolPreset);
+    expect(p.alpha_B).toBeGreaterThanOrEqual(0);
+    expect(p.alpha_B).toBeLessThanOrEqual(1);
+  });
+
+  test("gain_ld equals the log_drum instrument body_weight", () => {
+    const p = extractCTLPerceptionParams(privateSchoolPreset);
+    const logDrum = privateSchoolPreset.instrumentation.find(i => i.family === "log_drum");
+    expect(p.gain_ld).toBeCloseTo(logDrum?.body_weight ?? 0);
+  });
+
+  test("b_eff equals alpha_B times gain_ld", () => {
+    const p = extractCTLPerceptionParams(privateSchoolPreset);
+    expect(p.b_eff).toBeCloseTo(p.alpha_B * p.gain_ld, 5);
+  });
+
+  test("transient_density counts K and L tokens per bar", () => {
+    const p = extractCTLPerceptionParams(privateSchoolPreset);
+    expect(p.transient_density).toBeGreaterThanOrEqual(0);
+  });
+
+  test("anchor_continuous is a boolean", () => {
+    const p = extractCTLPerceptionParams(privateSchoolPreset);
+    expect(typeof p.anchor_continuous).toBe("boolean");
+  });
+
+  test("b_eff is 0 when no bass-family instruments present", () => {
+    const noBass = {
+      ...privateSchoolPreset,
+      instrumentation: privateSchoolPreset.instrumentation.filter(
+        i => i.family !== "log_drum" && i.family !== "bass" && i.family !== "kick"
+      ),
+    };
+    const p = extractCTLPerceptionParams(noBass);
+    expect(p.b_eff).toBe(0);
+  });
+
+  test("anchor_continuous is false when log_drum_density has a zero point", () => {
+    const dropped = {
+      ...privateSchoolPreset,
+      curves: {
+        ...privateSchoolPreset.curves,
+        log_drum_density: privateSchoolPreset.curves.log_drum_density.map((pt, i) =>
+          i === 0 ? { ...pt, value: 0 } : pt
+        ),
+      },
+    };
+    const p = extractCTLPerceptionParams(dropped);
+    expect(p.anchor_continuous).toBe(false);
+  });
+
+  test("sgijaPreset params are non-negative", () => {
+    const p = extractCTLPerceptionParams(sgijaPreset);
+    expect(p.alpha_B).toBeGreaterThanOrEqual(0);
+    expect(p.gain_ld).toBeGreaterThanOrEqual(0);
+    expect(p.b_eff).toBeGreaterThanOrEqual(0);
+    expect(p.transient_density).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ── 79. CTL Perception Bridge — predictCTLPerceptionState ────────────────────
+describe("79. CTL Perception Bridge — predictCTLPerceptionState", () => {
+  test("returns an object with state, c1_pass, c2_pass, c3_pass, violations", () => {
+    const r = predictCTLPerceptionState(privateSchoolPreset);
+    expect(typeof r.state).toBe("string");
+    expect(typeof r.c1_pass).toBe("boolean");
+    expect(typeof r.c2_pass).toBe("boolean");
+    expect(typeof r.c3_pass).toBe("boolean");
+    expect(Array.isArray(r.violations)).toBe(true);
+  });
+
+  test("state is one of harmonic | ambiguous | percussion", () => {
+    const r = predictCTLPerceptionState(privateSchoolPreset);
+    expect(["harmonic", "ambiguous", "percussion"]).toContain(r.state);
+  });
+
+  test("harmonic state has empty violations array", () => {
+    const ctl = synthesizeCtlFromGoal({
+      title: "Test Track",
+      subgenre: "private_school",
+      bpm: 114,
+      key: "F#m",
+      createdBy: "test",
+    });
+    const optimized = optimizeCTLForHarmonicState(ctl);
+    if (optimized.converged) {
+      const r = predictCTLPerceptionState(optimized.ctl);
+      expect(r.state).toBe("harmonic");
+      expect(r.violations).toHaveLength(0);
+    }
+  });
+
+  test("C1 failure is reflected in c1_pass=false and violations", () => {
+    const highBass = {
+      ...privateSchoolPreset,
+      instrumentation: privateSchoolPreset.instrumentation.map(i =>
+        i.family === "log_drum" ? { ...i, body_weight: 0.99 } : i
+      ),
+    };
+    const r = predictCTLPerceptionState(highBass);
+    if (!r.c1_pass) {
+      expect(r.violations.some(v => v.includes("B_eff") || v.includes("b_eff") || v.includes("C1"))).toBe(true);
+    }
+  });
+
+  test("C3 failure reported when log_drum_density has a zero point", () => {
+    const noAnchor = {
+      ...privateSchoolPreset,
+      curves: {
+        ...privateSchoolPreset.curves,
+        log_drum_density: privateSchoolPreset.curves.log_drum_density.map((pt, i) =>
+          i === 1 ? { ...pt, value: 0 } : pt
+        ),
+      },
+    };
+    const r = predictCTLPerceptionState(noAnchor);
+    expect(r.c3_pass).toBe(false);
+    expect(r.violations.length).toBeGreaterThan(0);
+  });
+
+  test("params field is present and contains b_eff", () => {
+    const r = predictCTLPerceptionState(sgijaPreset);
+    expect(typeof r.params.b_eff).toBe("number");
+  });
+});
+
+// ── 80. CTL Perception Optimizer — optimizeCTLForHarmonicState ───────────────
+describe("80. CTL Perception Optimizer — optimizeCTLForHarmonicState", () => {
+  test("does not throw for any built-in lane", () => {
+    const lanes: Array<"private_school" | "sgija" | "bacardi" | "stixx_sgija" | "mbiraiano" | "three_step" | "gqom_fusion" | "hybrid_rnb_amapiano"> = [
+      "private_school", "sgija", "bacardi", "stixx_sgija",
+      "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano",
+    ];
+    for (const lane of lanes) {
+      const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: lane, createdBy: "test" });
+      expect(() => optimizeCTLForHarmonicState(ctl)).not.toThrow();
+    }
+  });
+
+  test("result has correct shape: ctl, converged, iterations, mutations_applied", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "private_school", createdBy: "test" });
+    const r = optimizeCTLForHarmonicState(ctl);
+    expect(typeof r.converged).toBe("boolean");
+    expect(typeof r.iterations).toBe("number");
+    expect(Array.isArray(r.mutations_applied)).toBe(true);
+    expect(r.ctl).toBeDefined();
+  });
+
+  test("already-harmonic CTL returns 0 iterations and empty mutations", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "private_school", createdBy: "test" });
+    const first = optimizeCTLForHarmonicState(ctl);
+    if (first.converged) {
+      const second = optimizeCTLForHarmonicState(first.ctl);
+      expect(second.iterations).toBe(0);
+      expect(second.mutations_applied).toHaveLength(0);
+    }
+  });
+
+  test("C1 fix reduces b_eff on a high-bass CTL", () => {
+    const highBass = {
+      ...privateSchoolPreset,
+      instrumentation: privateSchoolPreset.instrumentation.map(i =>
+        i.family === "log_drum" ? { ...i, body_weight: 0.95 } : i
+      ),
+    };
+    const before = extractCTLPerceptionParams(highBass).b_eff;
+    const r = optimizeCTLForHarmonicState(highBass);
+    const after = extractCTLPerceptionParams(r.ctl).b_eff;
+    expect(after).toBeLessThanOrEqual(before);
+  });
+
+  test("C2 fix reduces transient density on a kick-heavy CTL", () => {
+    const kickHeavy = {
+      ...privateSchoolPreset,
+      groove_patterns: privateSchoolPreset.groove_patterns.map(p => ({
+        ...p,
+        steps: ["K","K","K","K","K","K","K","K","K","K","K","K","K","K","K","K"] as CTLv1["groove_patterns"][0]["steps"],
+      })),
+    };
+    const before = extractCTLPerceptionParams(kickHeavy).transient_density;
+    const r = optimizeCTLForHarmonicState(kickHeavy);
+    const after = extractCTLPerceptionParams(r.ctl).transient_density;
+    if (before > C2_MAX_TRANSIENTS) {
+      expect(after).toBeLessThanOrEqual(before);
+    }
+  });
+
+  test("C3 fix raises all log_drum_density points to floor", () => {
+    const noAnchor = {
+      ...privateSchoolPreset,
+      curves: {
+        ...privateSchoolPreset.curves,
+        log_drum_density: privateSchoolPreset.curves.log_drum_density.map(pt => ({ ...pt, value: 0 })),
+      },
+    };
+    const r = optimizeCTLForHarmonicState(noAnchor);
+    const allAboveFloor = r.ctl.curves.log_drum_density.every(pt => pt.value >= C3_MIN_LD_DENSITY);
+    expect(allAboveFloor).toBe(true);
+  });
+
+  test("initial_state and final_state are present", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "sgija", createdBy: "test" });
+    const r = optimizeCTLForHarmonicState(ctl);
+    expect(r.initial_state).toBeDefined();
+    expect(r.final_state).toBeDefined();
+    expect(typeof r.initial_state.state).toBe("string");
+    expect(typeof r.final_state.state).toBe("string");
+  });
+
+  test("mutations_applied contains non-empty strings when changes made", () => {
+    const highBass = {
+      ...privateSchoolPreset,
+      instrumentation: privateSchoolPreset.instrumentation.map(i =>
+        i.family === "log_drum" ? { ...i, body_weight: 0.95 } : i
+      ),
+    };
+    const r = optimizeCTLForHarmonicState(highBass);
+    for (const m of r.mutations_applied) {
+      expect(typeof m).toBe("string");
+      expect(m.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("synthesizeCtlFromGoal + optimizeCTLForHarmonicState converges for all lanes", () => {
+    const lanes: Array<"private_school" | "sgija" | "bacardi" | "stixx_sgija" | "mbiraiano" | "three_step" | "gqom_fusion" | "hybrid_rnb_amapiano"> = [
+      "private_school", "sgija", "bacardi", "stixx_sgija",
+      "mbiraiano", "three_step", "gqom_fusion", "hybrid_rnb_amapiano",
+    ];
+    for (const lane of lanes) {
+      const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: lane, createdBy: "test" });
+      const r = optimizeCTLForHarmonicState(ctl);
+      expect(r.converged).toBe(true);
+    }
   });
 });

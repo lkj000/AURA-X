@@ -7,7 +7,7 @@ import {
   evaluateSignal,
   ObservedFeatures,
 } from "@aura-x/ac-ami";
-import { synthesizeCtlFromGoal } from "@aura-x/engine";
+import { synthesizeCtlFromGoal, optimizeCTLForHarmonicState } from "@aura-x/engine";
 import type { Lane } from "@aura-x/engine";
 import { runRevisionLoop } from "./revisionLoop";
 import { storeResult } from "./resultsStore";
@@ -102,6 +102,23 @@ export async function runAgent(goal: AgentGoal): Promise<AgentRunResult> {
   // ─── 2. Synthesise CTL via engine cultural intelligence ───────────────────
   let ctl = buildCtlFromGoal(goal);
   agentLog.push(`[agent] CTL synthesised: ${goal.subgenre} (engine-native)`);
+
+  // ─── 3a. Perception optimization (OptimizerLoop) ──────────────────────────
+  const perceptResult = optimizeCTLForHarmonicState(ctl);
+  ctl = perceptResult.ctl;
+  if (perceptResult.converged) {
+    agentLog.push(
+      `[agent] Perception converged to harmonic in ${perceptResult.iterations} iter(s)` +
+      (perceptResult.mutations_applied.length > 0
+        ? `: ${perceptResult.mutations_applied.join("; ")}`
+        : " (no adjustments needed)")
+    );
+  } else {
+    agentLog.push(
+      `[agent] Perception optimizer: non-converged after ${perceptResult.iterations} iter(s), ` +
+      `state=${perceptResult.final_state.state} — proceeding with best effort`
+    );
+  }
 
   ctl = applyHarmonyPlan(ctl);
   ctl = applyGroovePlan(ctl);

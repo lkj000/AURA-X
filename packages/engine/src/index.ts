@@ -120,6 +120,26 @@ export {
 }                                                     from "./perception/perception_model";
 export { decomposeStems }                             from "./perception/stem_decomposer";
 
+// ── CTL perception bridge (forward prediction — no audio required) ────────────
+export {
+  extractCTLPerceptionParams,
+  predictCTLPerceptionState,
+  C1_B_EFF_HARMONIC_MAX,
+  C1_B_EFF_PERCUSSION_MIN,
+  C1_OPTIMAL_ALPHA_B,
+  C2_MAX_TRANSIENTS,
+  C3_MIN_LD_DENSITY,
+}                                                     from "./perception/ctl_perception_bridge";
+export type {
+  PerceptionState,
+  CTLPerceptionParams,
+  CTLPerceptionReport,
+}                                                     from "./perception/ctl_perception_bridge";
+
+// ── CTL perception optimizer (OptimizerLoop) ─────────────────────────────────
+export { optimizeCTLForHarmonicState }                from "./perception/ctl_optimizer";
+export type { PerceptionOptimizationResult }          from "./perception/ctl_optimizer";
+
 // ── Cultural encoding ─────────────────────────────────────────────────────────
 export { computeCulturalAlignment }                   from "./cultural/cultural_encoder";
 export { CULTURAL_PROFILES }                          from "./cultural/cultural_profiles";
