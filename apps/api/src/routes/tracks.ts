@@ -10,6 +10,7 @@ import {
   exportGrooveToMidi,
 } from "@aura-x/engine";
 import type { Lane } from "@aura-x/engine";
+import { suggestGroove } from "@aura-x/ac-ami";
 
 const router = Router();
 
@@ -240,6 +241,48 @@ router.post("/:id/suno-result", verifyToken, async (req: Request, res: Response)
   if (!data)  { res.status(404).json({ error: "Track not found" }); return; }
 
   res.json(data);
+});
+
+// GET /api/tracks/:id/groove-suggest
+// Query: ?intensity=0-1 &variation_level=0-1 &max=1-10
+// Returns ranked groove pattern suggestions adapted to the track's lane and
+// the latest evaluation scores (groove_clarity, composite).
+router.get("/:id/groove-suggest", async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+
+  const intensityRaw     = parseFloat(String(req.query.intensity      ?? "0.6"));
+  const variationRaw     = parseFloat(String(req.query.variation_level ?? "0.3"));
+  const maxRaw           = parseInt(String(req.query.max               ?? "5"), 10);
+
+  const intensity      = isNaN(intensityRaw) ? 0.6 : Math.min(1, Math.max(0, intensityRaw));
+  const variationLevel = isNaN(variationRaw) ? 0.3 : Math.min(1, Math.max(0, variationRaw));
+  const maxSuggestions = isNaN(maxRaw)       ? 5   : Math.min(10, Math.max(1, maxRaw));
+
+  const { data: track } = await supabase
+    .from("tracks")
+    .select("id, subgenre")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!track) { res.status(404).json({ error: "Track not found" }); return; }
+
+  const { data: evaluation } = await supabase
+    .from("evaluations")
+    .select("groove_clarity_score, composite_score")
+    .eq("track_id", id)
+    .order("composite_score", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const suggestions = suggestGroove(track.subgenre as Lane, {
+    grooveClarityScore: evaluation?.groove_clarity_score ?? undefined,
+    compositeScore:     evaluation?.composite_score     ?? undefined,
+    intensity,
+    variationLevel,
+    maxSuggestions,
+  });
+
+  res.json({ track_id: id, lane: track.subgenre, suggestions });
 });
 
 export default router;

@@ -47,6 +47,14 @@ jest.mock("@aura-x/engine", () => ({
   exportGrooveToMidi:          (...args: unknown[]) => mockExportGrooveToMidi(...args),
 }));
 
+// ─── Mock @aura-x/ac-ami ─────────────────────────────────────────────────────
+
+const mockSuggestGroove = jest.fn();
+
+jest.mock("@aura-x/ac-ami", () => ({
+  suggestGroove: (...args: unknown[]) => mockSuggestGroove(...args),
+}));
+
 // ─── Mock auth middleware ─────────────────────────────────────────────────────
 
 jest.mock("../middleware/auth", () => ({
@@ -594,6 +602,144 @@ describe("GET /api/tracks/:id/midi", () => {
   it("40. Response body is non-empty binary", async () => {
     const res = await request(app).get("/api/tracks/track-aaa-001/midi").buffer(true);
     expect(res.body.length).toBeGreaterThan(0);
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/tracks/:id/groove-suggest
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FAKE_SUGGESTIONS = [
+  { patternId: "ps_groove_01", label: "Private School — Restrained", lane: "private_school",
+    confidence: 0.75, reason: "primary lane match, velocity match",
+    ghostDensity: 0.0, hitDensity: 0.375, swing: 0.54 },
+  { patternId: "ps_groove_02", label: "Private School — Late Night Sparse", lane: "private_school",
+    confidence: 0.65, reason: "primary lane match",
+    ghostDensity: 0.125, hitDensity: 0.375, swing: 0.56 },
+];
+
+describe("GET /api/tracks/:id/groove-suggest", () => {
+
+  function makeTrackQueryGroove(found = true) {
+    return {
+      select: jest.fn().mockReturnThis(),
+      eq:     jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: found ? { id: "track-aaa-001", subgenre: "private_school" } : null,
+        error: null,
+      }),
+    };
+  }
+
+  function makeEvalQuery(score: number | null = 0.65) {
+    return {
+      select: jest.fn().mockReturnThis(),
+      eq:     jest.fn().mockReturnThis(),
+      order:  jest.fn().mockReturnThis(),
+      limit:  jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: score !== null
+          ? { groove_clarity_score: score, composite_score: score }
+          : null,
+        error: null,
+      }),
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSuggestGroove.mockReturnValue(FAKE_SUGGESTIONS);
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "tracks")      return makeTrackQueryGroove(true);
+      if (table === "evaluations") return makeEvalQuery(0.65);
+      return { select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis() };
+    });
+  });
+
+  it("41. Returns 200 with track_id, lane, suggestions array", async () => {
+    const res = await request(app).get("/api/tracks/track-aaa-001/groove-suggest");
+    expect(res.status).toBe(200);
+    expect(res.body.track_id).toBe("track-aaa-001");
+    expect(res.body.lane).toBe("private_school");
+    expect(Array.isArray(res.body.suggestions)).toBe(true);
+  });
+
+  it("42. suggestGroove called with track subgenre as lane", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/groove-suggest");
+    expect(mockSuggestGroove).toHaveBeenCalledWith(
+      "private_school",
+      expect.any(Object)
+    );
+  });
+
+  it("43. suggestGroove called with evaluation scores from DB", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/groove-suggest");
+    expect(mockSuggestGroove).toHaveBeenCalledWith(
+      "private_school",
+      expect.objectContaining({ grooveClarityScore: 0.65, compositeScore: 0.65 })
+    );
+  });
+
+  it("44. ?intensity=0.8 passed to suggestGroove", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/groove-suggest?intensity=0.8");
+    expect(mockSuggestGroove).toHaveBeenCalledWith(
+      "private_school",
+      expect.objectContaining({ intensity: 0.8 })
+    );
+  });
+
+  it("45. ?variation_level=0.7 passed to suggestGroove", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/groove-suggest?variation_level=0.7");
+    expect(mockSuggestGroove).toHaveBeenCalledWith(
+      "private_school",
+      expect.objectContaining({ variationLevel: 0.7 })
+    );
+  });
+
+  it("46. ?max=3 passed as maxSuggestions", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/groove-suggest?max=3");
+    expect(mockSuggestGroove).toHaveBeenCalledWith(
+      "private_school",
+      expect.objectContaining({ maxSuggestions: 3 })
+    );
+  });
+
+  it("47. No evaluation in DB → grooveClarityScore and compositeScore are undefined", async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "tracks")      return makeTrackQueryGroove(true);
+      if (table === "evaluations") return makeEvalQuery(null);
+      return {};
+    });
+    await request(app).get("/api/tracks/track-aaa-001/groove-suggest");
+    const call = (mockSuggestGroove as jest.Mock).mock.calls[0][1];
+    expect(call.grooveClarityScore).toBeUndefined();
+    expect(call.compositeScore).toBeUndefined();
+  });
+
+  it("48. Track not found → 404", async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "tracks") return makeTrackQueryGroove(false);
+      return {};
+    });
+    const res = await request(app).get("/api/tracks/does-not-exist/groove-suggest");
+    expect(res.status).toBe(404);
+  });
+
+  it("49. ?intensity out of range clamped to [0,1]", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/groove-suggest?intensity=5");
+    expect(mockSuggestGroove).toHaveBeenCalledWith(
+      "private_school",
+      expect.objectContaining({ intensity: 1 })
+    );
+  });
+
+  it("50. ?max=999 clamped to 10", async () => {
+    await request(app).get("/api/tracks/track-aaa-001/groove-suggest?max=999");
+    expect(mockSuggestGroove).toHaveBeenCalledWith(
+      "private_school",
+      expect.objectContaining({ maxSuggestions: 10 })
+    );
   });
 
 });

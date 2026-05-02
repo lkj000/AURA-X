@@ -3383,6 +3383,41 @@ SUCCESS CRITERIA
   [x] 13 security tests, 478 total passing
 
 
+---
+
+### JOB H-11 — Adaptive Groove Suggester
+---
+
+PROBLEM DEFINITION
+  Producers had no tool to receive data-driven groove pattern recommendations.
+  After a generation is evaluated, the evaluation scores (groove_clarity_score,
+  composite_score) had no feedback path into pattern selection — each production
+  session started from a blank slate regardless of prior results.
+
+SOLUTION
+  Added `suggestGroove(lane, opts)` in `packages/ac-ami/src/groove/grooveAdvisor.ts`.
+  Scoring factors per pattern (0–1 confidence):
+    - Lane match bonus (0.40): same-lane patterns ranked highest
+    - Groove clarity fit (0.30): low clarity → prefer clean low-ghost patterns;
+      high clarity → reward ghost-note richness
+    - Velocity / intensity fit (0.20): target MIDI velocity = 80 + intensity * 40
+    - Cross-lane bonus: variationLevel >= 0.5 unlocks exploration; compositeScore >
+      0.7 adds a 0.05 variation reward for cross-lane candidates
+  Returns up to maxSuggestions (default 5) sorted by confidence with reason strings.
+  New API route GET /api/tracks/:id/groove-suggest:
+    - Fetches track subgenre + latest evaluation scores from Supabase
+    - Passes scores + query params (?intensity, ?variation_level, ?max) to suggestGroove
+    - Query params clamped: intensity [0,1], variation_level [0,1], max [1,10]
+
+SUCCESS CRITERIA
+  [x] Same-lane patterns always rank first
+  [x] Low groove clarity → top suggestion has lower ghost density than high clarity
+  [x] High variationLevel → cross-lane suggestions appear in top 5
+  [x] All confidence values in [0,1], sorted descending
+  [x] reason field present and non-empty on all suggestions
+  [x] 15 advisor unit tests (ac-ami), 10 route tests (api), 488 API + 203 ac-ami passing
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.

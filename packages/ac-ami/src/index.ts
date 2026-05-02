@@ -6,6 +6,9 @@ export { planGroove, applyGroovePlan, planGrooveWithVariations } from "./groove/
 export type { GroovePlannerOptions, GroovePlanWithVariations } from "./groove/groovePlanner";
 export * from "./groove/grooveLibrary";
 
+export { suggestGroove } from "./groove/grooveAdvisor";
+export type { GrooveSuggestion, GrooveAdvisorOptions } from "./groove/grooveAdvisor";
+
 export { planInstrumentation, applyInstrumentationPlan } from "./instrumentation/instrumentationPlanner";
 export type { InstrumentationPlannerOptions } from "./instrumentation/instrumentationPlanner";
 export * from "./instrumentation/instrumentationKnowledge";
