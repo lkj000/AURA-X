@@ -178,7 +178,7 @@ export async function runRevisionLoop(
 
   const finalValidation = validateAll(currentCtl);
   const finalPercept    = await perceptionGate(currentCtl);
-  const finalPassed     = finalValidation.passed && (finalPercept?.ctl_state === "harmonic" ?? finalValidation.passed);
+  const finalPassed     = finalValidation.passed && (finalPercept ? finalPercept.ctl_state === "harmonic" : finalValidation.passed);
 
   // Feed final result to adaptive profiles
   if (iterations.length > 0) {

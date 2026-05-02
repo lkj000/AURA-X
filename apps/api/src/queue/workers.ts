@@ -1,5 +1,6 @@
 import { Worker, Job } from "bullmq";
 import axios from "axios";
+import FormData from "form-data";
 import { v4 as uuidv4 } from "uuid";
 import { connection, AudioJobData, GenerationJobData, WebhookJobData, enqueueAudioAnalysis, enqueueWebhook } from "./index";
 import { evaluateBuffer, runQualityGates } from "@aura-x/engine";
@@ -269,6 +270,86 @@ export const generationWorker = new Worker(
       };
     }
 
+    // ─── 4b. SIGNAL SCORER: Python engine audio analysis ──────────────────────
+    // Sends the actual WAV buffer to the Python engine for real acoustic evaluation.
+    // composite_score from real audio replaces the engine gate grade for metadata.
+    const AURA_ENGINE_URL = process.env.AURA_ENGINE_URL;
+    let signalScore: number | null = null;
+    let signalState: string | null = null;
+    let signalLaneMatch: boolean | null = null;
+
+    if (AURA_ENGINE_URL) {
+      try {
+        const form = new FormData();
+        form.append("audio", audioBuffer, { filename: "audio.wav", contentType: "audio/wav" });
+        form.append("target_lane", job.data.subgenre ?? "private_school");
+
+        const scoreResp = await axios.post<{
+          composite_score:   number;
+          perception_state:  string;
+          lane_match:        boolean;
+          classified_lane:   string;
+          bpm_measured:      number;
+          key_measured:      string;
+          b_eff:             number;
+          violations:        string[];
+        }>(
+          `${AURA_ENGINE_URL}/signal/score`,
+          form,
+          { headers: form.getHeaders(), timeout: 15_000 },
+        );
+
+        signalScore     = scoreResp.data.composite_score;
+        signalState     = scoreResp.data.perception_state;
+        signalLaneMatch = scoreResp.data.lane_match;
+
+        console.log(
+          `[generation.mode2] Signal score: ${signalScore?.toFixed(3)} ` +
+          `state=${signalState} lane_match=${signalLaneMatch} ` +
+          `bpm=${scoreResp.data.bpm_measured} key=${scoreResp.data.key_measured}`
+        );
+
+        if (!signalLaneMatch || signalScore < 0.40) {
+          await supabase
+            .from("generations")
+            .update({
+              status: "gate_failed",
+              completed_at: new Date().toISOString(),
+              metadata: {
+                signal_score: {
+                  composite_score:  signalScore,
+                  perception_state: signalState,
+                  lane_match:       signalLaneMatch,
+                  classified_lane:  scoreResp.data.classified_lane,
+                  bpm_measured:     scoreResp.data.bpm_measured,
+                  key_measured:     scoreResp.data.key_measured,
+                  b_eff:            scoreResp.data.b_eff,
+                  violations:       scoreResp.data.violations,
+                },
+              },
+            })
+            .eq("id", generation_id);
+
+          if (job.data.webhook_url) {
+            await enqueueWebhook({
+              generation_id,
+              webhook_url: job.data.webhook_url,
+              event: "gate_failed",
+              payload: {
+                reason:          "signal_score_gate",
+                composite_score: signalScore,
+                perception_state: signalState,
+                lane_match:      signalLaneMatch,
+              },
+            });
+          }
+          return { status: "gate_failed", generation_id, signal_composite_score: signalScore };
+        }
+      } catch {
+        // Python engine unavailable — non-critical, continue to complete
+      }
+    }
+
     // ─── 5. UPDATE GENERATION RECORD ────────────────
     await supabase
       .from("generations")
@@ -292,20 +373,28 @@ export const generationWorker = new Worker(
         webhook_url: job.data.webhook_url,
         event: "complete",
         payload: {
-          audio_file_id: fileId,
-          grade:         gateReport?.grade ?? "skip",
-          overall_score: gateReport?.overallScore ?? null,
+          audio_file_id:         fileId,
+          grade:                 gateReport?.grade ?? "skip",
+          overall_score:         gateReport?.overallScore ?? null,
+          signal_composite_score: signalScore,
+          signal_state:          signalState,
+          signal_lane_match:     signalLaneMatch,
         },
       });
     }
 
-    console.log(`[generation.mode2] ✓ Generation ${generation_id} complete — ${storagePath} grade:${gateReport?.grade ?? "skip"}`);
+    console.log(
+      `[generation.mode2] ✓ Generation ${generation_id} complete — ` +
+      `${storagePath} grade:${gateReport?.grade ?? "skip"} signal:${signalScore?.toFixed(3) ?? "n/a"}`
+    );
     return {
       status: "complete",
       generation_id,
-      audio_file_id: fileId,
-      grade:         gateReport?.grade ?? "skip",
-      overall_score: gateReport?.overallScore ?? null,
+      audio_file_id:          fileId,
+      grade:                  gateReport?.grade ?? "skip",
+      overall_score:          gateReport?.overallScore ?? null,
+      signal_composite_score: signalScore,
+      signal_state:           signalState,
     };
   },
   {

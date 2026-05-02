@@ -60,6 +60,33 @@ export type SignalEvalResult = {
   signal_notes: string[];
 };
 
+// ─── TypeScript engine fallback ───────────────────────────────────────────────
+
+function _buildCtlFromTypeScript(goal: AgentGoalInput): CTLv1 {
+  let ctl = synthesizeCtlFromGoal({
+    title:            goal.title,
+    subgenre:         goal.subgenre as Lane,
+    bpm:              goal.bpm,
+    key:              goal.key,
+    emotionalProfile: goal.emotional_profile,
+    createdBy:        goal.created_by,
+  });
+  ctl = {
+    ...ctl,
+    global: {
+      ...ctl.global,
+      generation_mode: goal.generation_mode ?? ctl.global.generation_mode,
+      created_at:      new Date().toISOString(),
+    },
+  };
+  const perceptResult = optimizeCTLForHarmonicState(ctl);
+  ctl = perceptResult.ctl;
+  ctl = applyHarmonyPlan(ctl);
+  ctl = applyGroovePlan(ctl);
+  ctl = applyInstrumentationPlan(ctl);
+  return ctl;
+}
+
 // ─── Activity implementations ─────────────────────────────────────────────────
 
 export type AgentActivities = typeof agentActivities;
@@ -90,31 +117,47 @@ export const agentActivities = {
   async buildCtl(input: { track_id: string; goal: AgentGoalInput }): Promise<BuildCtlResult> {
     const { track_id, goal } = input;
 
-    let ctl: CTLv1 = synthesizeCtlFromGoal({
-      title:             goal.title,
-      subgenre:          goal.subgenre as Lane,
-      bpm:               goal.bpm,
-      key:               goal.key,
-      emotionalProfile:  goal.emotional_profile,
-      createdBy:         goal.created_by,
-    });
+    let ctl: CTLv1;
+    const engineUrl = process.env.AURA_ENGINE_URL;
 
-    // Stamp generation_mode and creation time after engine synthesis
-    ctl = {
-      ...ctl,
-      global: {
-        ...ctl.global,
-        generation_mode: goal.generation_mode ?? ctl.global.generation_mode,
-        created_at:      new Date().toISOString(),
-      },
-    };
-
-    const perceptResult = optimizeCTLForHarmonicState(ctl);
-    ctl = perceptResult.ctl;
-
-    ctl = applyHarmonyPlan(ctl);
-    ctl = applyGroovePlan(ctl);
-    ctl = applyInstrumentationPlan(ctl);
+    if (engineUrl) {
+      // ─── Primary path: Python engine CTL from acoustic priors ───────────────
+      try {
+        const resp = await fetch(`${engineUrl}/ctl/from-goal`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title:             goal.title,
+            subgenre:          goal.subgenre,
+            bpm:               goal.bpm ?? null,
+            key:               goal.key ?? null,
+            emotional_profile: goal.emotional_profile ?? null,
+            created_by:        goal.created_by,
+            generation_mode:   goal.generation_mode ?? "mode_1_suno",
+          }),
+        });
+        if (!resp.ok) throw new Error(`Engine ${resp.status}`);
+        const data = await resp.json() as { ctl: CTLv1 };
+        ctl = {
+          ...data.ctl,
+          global: {
+            ...data.ctl.global,
+            generation_mode: goal.generation_mode ?? data.ctl.global.generation_mode,
+            created_at:      new Date().toISOString(),
+          },
+        };
+        // Enrich engine CTL with ac-ami planners (harmony layering + groove articulation)
+        ctl = applyHarmonyPlan(ctl);
+        ctl = applyGroovePlan(ctl);
+        ctl = applyInstrumentationPlan(ctl);
+      } catch {
+        // Engine unavailable — fall through to TypeScript path
+        engineUrl && console.warn("[buildCtl] Python engine unavailable — falling back to TypeScript engine");
+        ctl = _buildCtlFromTypeScript(goal);
+      }
+    } else {
+      ctl = _buildCtlFromTypeScript(goal);
+    }
 
     const { data: ctlData } = await supabase
       .from("ctls")

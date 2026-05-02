@@ -1,20 +1,12 @@
 """
-AURA Engine API — POST /analyse, POST /synthesize-goal, GET /health.
+AURA Engine API.
 
-POST /analyse
-  Accepts: WAV file (multipart form-data, field "audio")
-  Returns: full CTL + perception report + cultural classification + quality score
-
-POST /synthesize-goal
-  Accepts: JSON {lane, title, bpm?, key?, generation_mode?, created_by?}
-  Returns: CTL from lane acoustic priors (cold start, no audio required)
-
-GET /classify-features
-  Accepts: JSON 7-feature vector
-  Returns: classification result + probabilities
-
-GET /health
-  Returns: {"status": "ok", "engine": "aura-engine", "version": "1.0.0"}
+POST /analyse              — WAV → CTL + perception + cultural classification
+POST /synthesize-goal      — goal JSON → CTL from lane acoustic priors
+POST /ctl/from-goal        — alias for /synthesize-goal (TypeScript agent path)
+POST /classify-features    — 7-feature vector → lane probabilities
+POST /signal/score         — WAV + target_lane → signal composite score
+GET  /health
 """
 
 from __future__ import annotations
@@ -24,13 +16,13 @@ import wave
 from typing import Any, Optional
 
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .ctl_generator import from_audio, from_goal
-from .culture import classify, LANES
-from .perception import measure
+from .culture import classify, classify_from_features, LANES
+from .perception import measure, evaluate_perception, extract_features
 
 app = FastAPI(title="AURA Engine", version="1.0.0")
 
@@ -82,6 +74,32 @@ class GoalResponse(BaseModel):
     lane:             str
     perception_state: str
     synthesis_ms:     int
+
+
+class CtlFromGoalRequest(BaseModel):
+    """TypeScript agent canonical goal shape → maps into GoalRequest."""
+    title:             str = "Untitled"
+    subgenre:          str
+    bpm:               Optional[float] = None
+    key:               Optional[str]   = None
+    emotional_profile: Optional[str]   = None
+    created_by:        str = "aura-engine"
+    generation_mode:   str = "mode_1_suno"
+    temperature:       float = 0.5
+
+
+class SignalScoreResponse(BaseModel):
+    composite_score:            float   # 0–1 blended signal quality
+    perception_state:           str     # harmonic | ambiguous | percussion
+    lane_match:                 bool    # does audio classify as target_lane?
+    classified_lane:            str     # what the audio actually sounds like
+    classification_confidence:  float
+    bpm_measured:               float
+    key_measured:               str
+    b_eff:                      float
+    transient_density:          float
+    violations:                 list[str]
+    quality_score:              float   # raw perception quality (C1/C2/C3 gates)
 
 
 # ── WAV parsing ───────────────────────────────────────────────────────────────
@@ -205,6 +223,85 @@ async def classify_features(req: ClassifyRequest):
         "confidence":    result.confidence,
         "probabilities": result.probabilities,
     }
+
+
+@app.post("/ctl/from-goal", response_model=GoalResponse)
+async def ctl_from_goal(req: CtlFromGoalRequest):
+    """
+    TypeScript agent primary path: goal → CTL from lane acoustic priors.
+    Accepts the TypeScript AgentGoalInput shape (subgenre, not lane).
+    """
+    if req.subgenre not in LANES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown subgenre '{req.subgenre}'. Valid: {LANES}",
+        )
+
+    result = from_goal(
+        lane=req.subgenre,
+        title=req.title,
+        bpm=req.bpm,
+        key=req.key,
+        generation_mode=req.generation_mode,
+        created_by=req.created_by,
+    )
+
+    return GoalResponse(
+        ctl=result.ctl,
+        lane=result.lane,
+        perception_state=result.perception_state,
+        synthesis_ms=result.synthesis_ms,
+    )
+
+
+@app.post("/signal/score", response_model=SignalScoreResponse)
+async def signal_score(
+    audio: UploadFile = File(...),
+    target_lane: str = Form(default="private_school"),
+):
+    """
+    Signal scoring gate: analyse actual WAV output and score against target lane.
+
+    Called by the TypeScript generation worker after Mode 2 audio is downloaded.
+    Returns composite_score (0–1), perception state, lane classification fidelity.
+    """
+    raw = await audio.read()
+    if len(raw) < 44:
+        raise HTTPException(status_code=400, detail="File too small to be a valid WAV")
+
+    samples, sr = _load_wav(raw)
+    if len(samples) < sr:
+        raise HTTPException(status_code=400, detail="Audio must be at least 1 second long")
+
+    # Extract features and evaluate
+    features  = extract_features(samples, sr)
+    report    = evaluate_perception(features)
+    classif   = classify_from_features(features)
+
+    # Lane fidelity: does the audio classify as what was requested?
+    lane_match = classif.lane == target_lane
+    lane_match_prob = classif.probabilities.get(target_lane, 0.0)
+
+    # Composite score: 60% perception quality + 40% lane fidelity
+    composite_score = round(
+        0.60 * report.quality_score + 0.40 * lane_match_prob, 4
+    )
+
+    key_str = f"{features.key_root}{'m' if features.key_mode == 'minor' else ''}"
+
+    return SignalScoreResponse(
+        composite_score=composite_score,
+        perception_state=report.state,
+        lane_match=lane_match,
+        classified_lane=classif.lane,
+        classification_confidence=classif.confidence,
+        bpm_measured=features.bpm,
+        key_measured=key_str,
+        b_eff=features.b_eff,
+        transient_density=features.transient_density,
+        violations=report.violations,
+        quality_score=report.quality_score,
+    )
 
 
 @app.get("/health")
