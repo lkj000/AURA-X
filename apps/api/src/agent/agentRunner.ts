@@ -1,5 +1,5 @@
 import axios from "axios";
-import { CTLv1 } from "@aura-x/ctl";
+import type { CTLv1 } from "@aura-x/ctl";
 import {
   applyHarmonyPlan,
   applyGroovePlan,
@@ -7,15 +7,8 @@ import {
   evaluateSignal,
   ObservedFeatures,
 } from "@aura-x/ac-ami";
-import {
-  privateSchoolPreset,
-  bacardiPreset,
-  sgijaPreset,
-  stixxSgijaPreset,
-  mbiraianoPreset,
-  gqomFusionPreset,
-  hybridRnbPreset,
-} from "@aura-x/ctl";
+import { synthesizeCtlFromGoal } from "@aura-x/engine";
+import type { Lane } from "@aura-x/engine";
 import { runRevisionLoop } from "./revisionLoop";
 import { storeResult } from "./resultsStore";
 import { supabase } from "../lib/supabase";
@@ -48,32 +41,23 @@ export type AgentRunResult = {
   agent_log: string[];
 };
 
-// ─── PRESET SELECTOR ─────────────────────────────────────────────────────────
+// ─── CTL BUILDER ─────────────────────────────────────────────────────────────
 
-const PRESET_MAP: Record<string, CTLv1> = {
-  private_school:      privateSchoolPreset,
-  bacardi:             bacardiPreset,
-  sgija:               sgijaPreset,
-  stixx_sgija:         stixxSgijaPreset,
-  mbiraiano:           mbiraianoPreset,
-  gqom_fusion:         gqomFusionPreset,
-  hybrid_rnb_amapiano: hybridRnbPreset,
-};
-
-function selectPreset(subgenre: string, overrides: Partial<AgentGoal>): CTLv1 {
-  const base = PRESET_MAP[subgenre] ?? privateSchoolPreset;
-
+function buildCtlFromGoal(goal: AgentGoal): CTLv1 {
+  const ctl = synthesizeCtlFromGoal({
+    title:             goal.title,
+    subgenre:          goal.subgenre as Lane,
+    bpm:               goal.bpm,
+    key:               goal.key,
+    emotionalProfile:  goal.emotional_profile,
+    createdBy:         goal.created_by,
+  });
   return {
-    ...base,
+    ...ctl,
     global: {
-      ...base.global,
-      title:             overrides.title             ?? base.global.title,
-      bpm:               overrides.bpm               ?? base.global.bpm,
-      key:               overrides.key               ?? base.global.key,
-      emotional_profile: overrides.emotional_profile ?? base.global.emotional_profile,
-      generation_mode:   overrides.generation_mode   ?? base.global.generation_mode,
-      created_by:        overrides.created_by        ?? base.global.created_by,
-      created_at:        new Date().toISOString(),
+      ...ctl.global,
+      generation_mode: goal.generation_mode ?? ctl.global.generation_mode,
+      created_at:      new Date().toISOString(),
     },
   };
 }
@@ -115,9 +99,9 @@ export async function runAgent(goal: AgentGoal): Promise<AgentRunResult> {
   const track_id = trackData.id;
   agentLog.push(`[agent] Track created: ${track_id}`);
 
-  // ─── 2. Select and plan CTL ───────────────────────
-  let ctl = selectPreset(goal.subgenre, goal);
-  agentLog.push(`[agent] Preset selected: ${goal.subgenre}`);
+  // ─── 2. Synthesise CTL via engine cultural intelligence ───────────────────
+  let ctl = buildCtlFromGoal(goal);
+  agentLog.push(`[agent] CTL synthesised: ${goal.subgenre} (engine-native)`);
 
   ctl = applyHarmonyPlan(ctl);
   ctl = applyGroovePlan(ctl);

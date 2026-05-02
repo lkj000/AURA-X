@@ -7,30 +7,13 @@ import {
   evaluateSignal,
   ObservedFeatures,
 } from "@aura-x/ac-ami";
-import {
-  CTLv1,
-  privateSchoolPreset,
-  bacardiPreset,
-  sgijaPreset,
-  stixxSgijaPreset,
-  mbiraianoPreset,
-  gqomFusionPreset,
-  hybridRnbPreset,
-} from "@aura-x/ctl";
+import type { CTLv1 } from "@aura-x/ctl";
+import { synthesizeCtlFromGoal } from "@aura-x/engine";
+import type { Lane } from "@aura-x/engine";
 import { runRevisionLoop } from "../../agent/revisionLoop";
 import { storeResult } from "../../agent/resultsStore";
 
 const AUDIO_SERVICE = process.env.AUDIO_SERVICE_URL ?? "http://localhost:8000";
-
-const PRESET_MAP: Record<string, CTLv1> = {
-  private_school:      privateSchoolPreset,
-  bacardi:             bacardiPreset,
-  sgija:               sgijaPreset,
-  stixx_sgija:         stixxSgijaPreset,
-  mbiraiano:           mbiraianoPreset,
-  gqom_fusion:         gqomFusionPreset,
-  hybrid_rnb_amapiano: hybridRnbPreset,
-};
 
 // ─── I/O types ────────────────────────────────────────────────────────────────
 
@@ -106,19 +89,23 @@ export const agentActivities = {
 
   async buildCtl(input: { track_id: string; goal: AgentGoalInput }): Promise<BuildCtlResult> {
     const { track_id, goal } = input;
-    const base = PRESET_MAP[goal.subgenre] ?? privateSchoolPreset;
 
-    let ctl: CTLv1 = {
-      ...base,
+    let ctl: CTLv1 = synthesizeCtlFromGoal({
+      title:             goal.title,
+      subgenre:          goal.subgenre as Lane,
+      bpm:               goal.bpm,
+      key:               goal.key,
+      emotionalProfile:  goal.emotional_profile,
+      createdBy:         goal.created_by,
+    });
+
+    // Stamp generation_mode and creation time after engine synthesis
+    ctl = {
+      ...ctl,
       global: {
-        ...base.global,
-        title:             goal.title             ?? base.global.title,
-        bpm:               goal.bpm               ?? base.global.bpm,
-        key:               goal.key               ?? base.global.key,
-        emotional_profile: goal.emotional_profile ?? base.global.emotional_profile,
-        generation_mode:   goal.generation_mode   ?? base.global.generation_mode,
-        created_by:        goal.created_by,
-        created_at:        new Date().toISOString(),
+        ...ctl.global,
+        generation_mode: goal.generation_mode ?? ctl.global.generation_mode,
+        created_at:      new Date().toISOString(),
       },
     };
 

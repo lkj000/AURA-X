@@ -9,7 +9,8 @@ import { createCTL, PRESET_MAP } from "@aura-x/ctl";
 import type { CTLv1 } from "@aura-x/ctl";
 import { clamp } from "../_utils";
 import { CULTURAL_PROFILES } from "../cultural/cultural_profiles";
-import type { AmapianEvaluation } from "../types";
+import { LANE_TARGETS } from "../types";
+import type { AmapianEvaluation, Lane } from "../types";
 
 export type { CTLv1 };
 
@@ -33,6 +34,88 @@ const QUALITY_SCALE: Record<string, number> = {
 };
 
 // ── Public API ────────────────────────────────────────────────────────────────
+
+// Goal-based synthesis — no audio analysis required.
+// Uses cultural profiles and lane targets to produce a fully-informed CTL
+// from a producer's creative intent (subgenre, BPM, key, title).
+export interface CtlGoal {
+  title:             string;
+  subgenre:          Lane;
+  bpm?:              number;
+  key?:              string;
+  emotionalProfile?: string;
+  createdBy:         string;
+}
+
+export function synthesizeCtlFromGoal(goal: CtlGoal): CTLv1 {
+  const lane    = goal.subgenre;
+  const preset  = PRESET_MAP[lane] ?? PRESET_MAP["private_school"];
+  const profile = CULTURAL_PROFILES[lane];
+  const targets = LANE_TARGETS[lane];
+
+  const bpm   = Math.min(130, Math.max(95, goal.bpm ?? targets.bpm));
+  const key   = goal.key ?? profile.keyBias[0] ?? preset.global.key;
+  const mode  = preset.global.mode;
+  const tonal = tonalCenter(key);
+
+  const emotionalProfile = goal.emotionalProfile ?? profile.emotionalProfile.join(", ");
+
+  // strong quality, perfect alignment (building to spec, not analysing existing audio)
+  const tScale = QUALITY_SCALE["strong"] * 1.0;
+
+  const bt = preset.evaluation_targets;
+  const evaluationTargets = {
+    authenticity_target:             clamp(bt.authenticity_target             * tScale),
+    subgenre_recognizability_target: clamp(bt.subgenre_recognizability_target * tScale),
+    groove_clarity_target:           clamp(bt.groove_clarity_target           * tScale),
+    harmonic_density_target:         clamp(bt.harmonic_density_target         * tScale),
+    dj_mix_friendliness_target:      clamp(bt.dj_mix_friendliness_target      * tScale),
+    cultural_lineage_coherence:      clamp(bt.cultural_lineage_coherence),
+  };
+
+  const culturalHints = profile.productionMarkers
+    .slice(0, 2)
+    .map((m) => `cultural_marker: ${m}`);
+
+  const productionDirectives = {
+    ...preset.production_directives,
+    automation_hints: [
+      ...preset.production_directives.automation_hints,
+      ...culturalHints,
+    ],
+  };
+
+  return createCTL({
+    global: {
+      title:                goal.title,
+      bpm,
+      key,
+      mode,
+      subgenre:             lane,
+      mix_profile:          profile.mixProfile,
+      vocal_profile:        preset.global.vocal_profile,
+      emotional_profile:    emotionalProfile,
+      reference_style_tags: preset.global.reference_style_tags,
+      created_by:           goal.createdBy,
+    },
+    sections:          preset.sections,
+    curves:            preset.curves,
+    groove_patterns:   preset.groove_patterns,
+    harmony: {
+      ...preset.harmony,
+      tonal_center: tonal,
+      mode,
+    },
+    instrumentation:   preset.instrumentation,
+    cultural_lineage:  preset.cultural_lineage,
+    style_constraints: {
+      ...preset.style_constraints,
+      preferred_keys: [...profile.keyBias],
+    },
+    production_directives: productionDirectives,
+    evaluation_targets:    evaluationTargets,
+  });
+}
 
 export function synthesizeCtl(
   evaluation: AmapianEvaluation,

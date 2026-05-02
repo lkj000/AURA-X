@@ -18,7 +18,7 @@ import { applyPerceptionModel, computeBEff, computePerceptualDensity, barkScale 
 import { decomposeStems } from "../perception/stem_decomposer";
 import { computeCulturalAlignment } from "../cultural/cultural_encoder";
 import { CULTURAL_PROFILES } from "../cultural/cultural_profiles";
-import { synthesizeCtl } from "../ctl_synthesis/ctl_synthesizer";
+import { synthesizeCtl, synthesizeCtlFromGoal } from "../ctl_synthesis/ctl_synthesizer";
 import { analyzeAndPlan } from "../pipeline/analysis_pipeline";
 import { evaluateBuffer, buildEnhancement } from "../pipeline/evaluation";
 import { generateGrooveVariations } from "../groove/variation_engine";
@@ -1255,6 +1255,90 @@ describe("ctl_synthesizer", () => {
 
   test("cultural_lineage has required keys", () => {
     const ctl = synthesizeCtl(evaluation, "Test Track", "test_user");
+    expect(ctl.cultural_lineage).toHaveProperty("deep_house");
+    expect(ctl.cultural_lineage).toHaveProperty("kwaito");
+    expect(ctl.cultural_lineage).toHaveProperty("log_drum_innovation");
+  });
+});
+
+// ── 18b. Goal-based CTL synthesis ────────────────────────────────────────────
+
+describe("synthesizeCtlFromGoal", () => {
+  test("does not throw for all 8 lanes", () => {
+    const lanes = ["private_school","bacardi","sgija","stixx_sgija","mbiraiano","three_step","gqom_fusion","hybrid_rnb_amapiano"] as const;
+    for (const lane of lanes) {
+      expect(() => synthesizeCtlFromGoal({ title: "Test", subgenre: lane, createdBy: "u" })).not.toThrow();
+    }
+  });
+
+  test("schema_version is ctl_v1", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "Night Drive", subgenre: "private_school", createdBy: "dj_test" });
+    expect(ctl.schema_version).toBe("ctl_v1");
+  });
+
+  test("global.subgenre matches requested lane", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "Sgija Fire", subgenre: "sgija", createdBy: "u" });
+    expect(ctl.global.subgenre).toBe("sgija");
+  });
+
+  test("explicit BPM override is respected", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "bacardi", bpm: 119, createdBy: "u" });
+    expect(ctl.global.bpm).toBe(119);
+  });
+
+  test("explicit key override is respected", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "private_school", key: "Cm", createdBy: "u" });
+    expect(ctl.global.key).toBe("Cm");
+  });
+
+  test("default BPM is within lane range [95, 130]", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "mbiraiano", createdBy: "u" });
+    expect(ctl.global.bpm).toBeGreaterThanOrEqual(95);
+    expect(ctl.global.bpm).toBeLessThanOrEqual(130);
+  });
+
+  test("mix_profile comes from cultural profile for the lane", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "private_school", createdBy: "u" });
+    expect(ctl.global.mix_profile).toBe("luxury_noir");
+  });
+
+  test("sgija mix_profile is raw_street", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "sgija", createdBy: "u" });
+    expect(ctl.global.mix_profile).toBe("raw_street");
+  });
+
+  test("preferred_keys come from cultural keyBias", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "private_school", createdBy: "u" });
+    expect(ctl.style_constraints.preferred_keys).toContain("Am");
+  });
+
+  test("all evaluation_targets in [0, 1]", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "bacardi", createdBy: "u" });
+    for (const v of Object.values(ctl.evaluation_targets)) {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("automation_hints contain cultural_marker entries", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "sgija", createdBy: "u" });
+    const hasMarker = ctl.production_directives.automation_hints.some(h => h.startsWith("cultural_marker:"));
+    expect(hasMarker).toBe(true);
+  });
+
+  test("emotional_profile override is respected", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "private_school", emotionalProfile: "dark_club_energy", createdBy: "u" });
+    expect(ctl.global.emotional_profile).toBe("dark_club_energy");
+  });
+
+  test("sections is a non-empty array", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "gqom_fusion", createdBy: "u" });
+    expect(Array.isArray(ctl.sections)).toBe(true);
+    expect(ctl.sections.length).toBeGreaterThan(0);
+  });
+
+  test("cultural_lineage has required keys", () => {
+    const ctl = synthesizeCtlFromGoal({ title: "T", subgenre: "mbiraiano", createdBy: "u" });
     expect(ctl.cultural_lineage).toHaveProperty("deep_house");
     expect(ctl.cultural_lineage).toHaveProperty("kwaito");
     expect(ctl.cultural_lineage).toHaveProperty("log_drum_innovation");
