@@ -69,6 +69,7 @@ import { generateCcAutomation }      from "../daw_export/cc_automation";
 import { analyzeTaps }               from "../intelligence/tap_analyzer";
 import { resolveProb }               from "../groove/prob_sequencer";
 import { generateTempoRamp }         from "../arrangement/tempo_ramp_generator";
+import { buildDrumMap, resolveDrumNote } from "../daw_export/drum_mapper";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -5565,5 +5566,80 @@ describe("68. Tempo ramp generator", () => {
   test("output is deterministic", () => {
     const opts = { startBpm: 110, endBpm: 125, totalBars: 8 };
     expect(generateTempoRamp(opts)).toEqual(generateTempoRamp(opts));
+  });
+});
+
+// ── 69. MIDI drum mapper ──────────────────────────────────────────────────────
+describe("69. MIDI drum mapper", () => {
+  const DRUM_PARTS = [
+    "kick", "snare", "hihat_closed", "hihat_open",
+    "clap", "rim", "tom_high", "tom_mid", "tom_low",
+    "crash", "ride", "log_drum", "shaker", "perc",
+  ] as const;
+
+  test("buildDrumMap returns all 14 parts for gm", () => {
+    const r = buildDrumMap("gm");
+    expect(r.entries).toHaveLength(14);
+    expect(r.layout).toBe("gm");
+  });
+
+  test("buildDrumMap returns all 14 parts for tr808", () => {
+    expect(buildDrumMap("tr808").entries).toHaveLength(14);
+  });
+
+  test("buildDrumMap returns all 14 parts for tr909", () => {
+    expect(buildDrumMap("tr909").entries).toHaveLength(14);
+  });
+
+  test("buildDrumMap returns all 14 parts for ableton", () => {
+    expect(buildDrumMap("ableton").entries).toHaveLength(14);
+  });
+
+  test("gm kick is note 36", () => {
+    const r = buildDrumMap("gm");
+    const kick = r.entries.find((e) => e.part === "kick")!;
+    expect(kick.midiNote).toBe(36);
+  });
+
+  test("every entry has a non-empty name", () => {
+    const r = buildDrumMap("tr808");
+    r.entries.forEach((e) => expect(e.name.length).toBeGreaterThan(0));
+  });
+
+  test("every entry has a MIDI note in 0–127", () => {
+    for (const layout of ["gm", "tr808", "tr909", "ableton"] as const) {
+      buildDrumMap(layout).entries.forEach((e) => {
+        expect(e.midiNote).toBeGreaterThanOrEqual(0);
+        expect(e.midiNote).toBeLessThanOrEqual(127);
+      });
+    }
+  });
+
+  test("all 14 parts present in each layout", () => {
+    for (const layout of ["gm", "tr808", "tr909", "ableton"] as const) {
+      const parts = buildDrumMap(layout).entries.map((e) => e.part);
+      DRUM_PARTS.forEach((p) => expect(parts).toContain(p));
+    }
+  });
+
+  test("resolveDrumNote matches buildDrumMap entry", () => {
+    for (const layout of ["gm", "tr808", "tr909", "ableton"] as const) {
+      const r = buildDrumMap(layout);
+      r.entries.forEach((e) => {
+        expect(resolveDrumNote(e.part, layout)).toBe(e.midiNote);
+      });
+    }
+  });
+
+  test("tr808 and gm differ on snare note", () => {
+    expect(resolveDrumNote("snare", "gm")).not.toBe(resolveDrumNote("snare", "tr808"));
+  });
+
+  test("tr909 tom_high is 48", () => {
+    expect(resolveDrumNote("tom_high", "tr909")).toBe(48);
+  });
+
+  test("ableton ride differs from gm ride", () => {
+    expect(resolveDrumNote("ride", "ableton")).not.toBe(resolveDrumNote("ride", "gm"));
   });
 });

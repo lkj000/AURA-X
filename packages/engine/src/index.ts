@@ -78,6 +78,7 @@ export type {
   TapAnalysis,
   ProbabilisticPattern,
   TempoRampShape, TempoPoint, TempoMap,
+  DrumPart, DrumLayout, DrumMapEntry, DrumMapResult,
 }                                                     from "./types";
 
 export {
@@ -131,6 +132,7 @@ export { exportChordProgressionToMidi }               from "./daw_export/chord_m
 export type { ChordMidiOptions, ChordMidiResult }     from "./daw_export/chord_midi_export";
 export { deduplicateMidi }                            from "./daw_export/midi_deduplicator";
 export type { DeduplicateOptions }                    from "./daw_export/midi_deduplicator";
+export { buildDrumMap, resolveDrumNote }              from "./daw_export/drum_mapper";
 
 // ── High-level convenience API ────────────────────────────────────────────────
 export { evaluateBuffer, buildEnhancement }           from "./pipeline/evaluation";

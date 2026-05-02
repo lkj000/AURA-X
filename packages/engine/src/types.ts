@@ -464,6 +464,26 @@ export interface DeduplicateResult {
   truncatedCount: number;            // notes shortened but kept
 }
 
+// ─── MIDI drum map ────────────────────────────────────────────────────────────
+
+export type DrumPart =
+  | "kick" | "snare" | "hihat_closed" | "hihat_open"
+  | "clap" | "rim" | "tom_high" | "tom_mid" | "tom_low"
+  | "crash" | "ride" | "log_drum" | "shaker" | "perc";
+
+export type DrumLayout = "gm" | "tr808" | "tr909" | "ableton";
+
+export interface DrumMapEntry {
+  part:     DrumPart;
+  midiNote: number;   // MIDI note number [0, 127]
+  name:     string;   // human-readable label
+}
+
+export interface DrumMapResult {
+  layout:  DrumLayout;
+  entries: DrumMapEntry[];
+}
+
 // ─── Tempo ramp ───────────────────────────────────────────────────────────────
 
 export type TempoRampShape = "linear" | "exponential";
