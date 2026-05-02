@@ -1,6 +1,8 @@
 import { CTLv1 } from "@aura-x/ctl";
 import { z } from "zod";
 import { GroovePatternSchema, SubgenreEnum } from "@aura-x/ctl";
+import { generateGrooveVariations, humanizePattern, quantizeSwing } from "@aura-x/engine";
+import type { Lane, GrooveVariationSet, HumanizedPattern, SwingResult } from "@aura-x/engine";
 import {
   GroovePattern,
   PRIVATE_SCHOOL_GROOVE_1, PRIVATE_SCHOOL_GROOVE_2,
@@ -123,6 +125,47 @@ function maxVariations(variationLevel: number): number {
 /** Returns a new CTL with groove_patterns replaced by the planner output. Immutable. */
 export function applyGroovePlan(ctl: CTLv1, opts: GroovePlannerOptions = {}): CTLv1 {
   return { ...ctl, groove_patterns: planGroove(ctl, opts) };
+}
+
+// ── Engine-backed variation layer ─────────────────────────────────────────────
+
+export type GroovePlanWithVariations = {
+  /** Legacy CTL-level groove patterns (velocity + swing adapted per subgenre) */
+  patterns:     GroovePattern[];
+  /** Engine-backed 5-variant set: main / variation / fill / breakdown / build */
+  variationSet: GrooveVariationSet;
+  /** Humanized main groove — swing timing + velocity offsets per hit */
+  humanized:    HumanizedPattern;
+  /** Kick-drum active steps quantized to MIDI ticks with swing */
+  kickSwing:    SwingResult;
+};
+
+/**
+ * Full groove pipeline: CTL-level patterns + engine 5-variant set + humanized
+ * main pattern + swing-quantized kick positions.
+ */
+export function planGrooveWithVariations(
+  ctl: CTLv1,
+  opts: GroovePlannerOptions = {}
+): GroovePlanWithVariations {
+  const patterns     = planGroove(ctl, opts);
+  const lane         = ctl.global.subgenre as Lane;
+  const bpm          = ctl.global.bpm;
+  const variationSet = generateGrooveVariations(lane, { bpm });
+
+  const humanness    = opts.intensity ?? 0.5;
+  const humanized    = humanizePattern(variationSet.main, { bpm, humanness });
+
+  // Extract active kick step indices for swing quantization
+  const kickSteps    = Array.from(variationSet.main.kickPattern)
+    .map((v, i) => (v ? i : -1))
+    .filter((i): i is number => i >= 0);
+
+  // Map swing ratio [0.5, 0.75] → swingPercent [0, 50]
+  const swingPercent = Math.round((variationSet.swing - 0.5) / 0.5 * 100);
+  const kickSwing    = quantizeSwing(kickSteps, { swingPercent });
+
+  return { patterns, variationSet, humanized, kickSwing };
 }
 
 // Re-export schema type for consumers

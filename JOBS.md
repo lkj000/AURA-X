@@ -3200,6 +3200,35 @@ SUCCESS CRITERIA
   [x] All 8 presets work without throwing; 18 existing harmony tests unaffected
 
 
+---
+### JOB H-05 — Engine Groove Variation Integration
+---
+
+PROBLEM DEFINITION
+  The ac-ami groove planner (planGroove) produced CTL-level GroovePattern[]
+  (abstract velocity/swing-adapted patterns) but had no path to the engine's
+  richer variation system: named structural variants (main/fill/breakdown/build),
+  swing-aware humanized timing per hit, or MIDI-tick quantized kick positions.
+  The engine's generateGrooveVariations, humanizePattern, and quantizeSwing
+  were unused by the planning pipeline.
+
+SOLUTION
+  Add planGrooveWithVariations(ctl, opts) to packages/ac-ami/src/groove/groovePlanner.ts.
+  The function chains the full pipeline:
+    planGroove(ctl, opts) → GroovePattern[] (existing CTL-level patterns)
+    generateGrooveVariations(lane, { bpm }) → GrooveVariationSet (5 engine variants)
+    humanizePattern(variationSet.main, { bpm, humanness }) → HumanizedPattern (timing offsets per hit)
+    quantizeSwing(kickSteps, { swingPercent }) → SwingResult (kick ticks with swing)
+  Kick active steps extracted from kickPattern as indices. SwingPercent derived
+  from variationSet.swing ratio: (swing - 0.5) / 0.5 × 100. Returns
+  GroovePlanWithVariations — all four outputs in one call.
+
+SUCCESS CRITERIA
+  [x] variationSet has all 5 named variants; lane + bpm match CTL values
+  [x] humanized.hits non-empty with step/voice/offsetMs/velocityScale per hit
+  [x] kickSwing.tickPositions are non-negative integers; 20 existing tests unaffected
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 NEW JOBS — append below this line
 Copy JOB_TEMPLATE.md, fill in all sections, commit.

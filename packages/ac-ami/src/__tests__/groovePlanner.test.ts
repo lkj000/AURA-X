@@ -1,4 +1,4 @@
-import { planGroove } from "../groove/groovePlanner";
+import { planGroove, planGrooveWithVariations } from "../groove/groovePlanner";
 import { GroovePatternSchema } from "@aura-x/ctl";
 import { ALL_PATTERNS, GROOVE_LIBRARY } from "../groove/grooveLibrary";
 import {
@@ -162,6 +162,84 @@ describe("Groove Planner", () => {
     };
     const patterns = planGroove(highKwaitoSgija);
     expect(patterns[0].id).toBe("sgija_groove_01");
+  });
+
+});
+
+describe("planGrooveWithVariations", () => {
+
+  it("21. Returns patterns, variationSet, humanized, kickSwing", () => {
+    const result = planGrooveWithVariations(privateSchoolPreset);
+    expect(Array.isArray(result.patterns)).toBe(true);
+    expect(result.variationSet).toBeDefined();
+    expect(result.humanized).toBeDefined();
+    expect(result.kickSwing).toBeDefined();
+  });
+
+  it("22. variationSet has all 5 named variants", () => {
+    const result = planGrooveWithVariations(privateSchoolPreset);
+    const vs = result.variationSet;
+    expect(vs.main).toBeDefined();
+    expect(vs.variation).toBeDefined();
+    expect(vs.fill).toBeDefined();
+    expect(vs.breakdown).toBeDefined();
+    expect(vs.build).toBeDefined();
+  });
+
+  it("23. variationSet.lane matches CTL subgenre", () => {
+    const result = planGrooveWithVariations(privateSchoolPreset);
+    expect(result.variationSet.lane).toBe("private_school");
+  });
+
+  it("24. variationSet.bpm matches CTL global.bpm", () => {
+    const result = planGrooveWithVariations(privateSchoolPreset);
+    expect(result.variationSet.bpm).toBe(privateSchoolPreset.global.bpm);
+  });
+
+  it("25. humanized.lane matches CTL subgenre", () => {
+    const result = planGrooveWithVariations(privateSchoolPreset);
+    expect(result.humanized.lane).toBe("private_school");
+  });
+
+  it("26. humanized.hits is a non-empty array", () => {
+    const result = planGrooveWithVariations(privateSchoolPreset);
+    expect(Array.isArray(result.humanized.hits)).toBe(true);
+    expect(result.humanized.hits.length).toBeGreaterThan(0);
+  });
+
+  it("27. Each humanized hit has step, voice, offsetMs, velocityScale", () => {
+    const result = planGrooveWithVariations(privateSchoolPreset);
+    for (const hit of result.humanized.hits) {
+      expect(typeof hit.step).toBe("number");
+      expect(typeof hit.voice).toBe("string");
+      expect(typeof hit.offsetMs).toBe("number");
+      expect(typeof hit.velocityScale).toBe("number");
+    }
+  });
+
+  it("28. kickSwing.stepPositions only contains active kick steps", () => {
+    const result = planGrooveWithVariations(privateSchoolPreset);
+    const { stepPositions, tickPositions } = result.kickSwing;
+    expect(stepPositions.length).toBe(tickPositions.length);
+    expect(stepPositions.length).toBeGreaterThan(0);
+  });
+
+  it("29. kickSwing.tickPositions are non-negative integers", () => {
+    const result = planGrooveWithVariations(privateSchoolPreset);
+    for (const tick of result.kickSwing.tickPositions) {
+      expect(tick).toBeGreaterThanOrEqual(0);
+      expect(Number.isInteger(tick)).toBe(true);
+    }
+  });
+
+  it("30. Works for all 8 presets without throwing", () => {
+    const allPresets = [
+      privateSchoolPreset, bacardiPreset, sgijaPreset,
+      stixxSgijaPreset, gqomFusionPreset,
+    ];
+    for (const preset of allPresets) {
+      expect(() => planGrooveWithVariations(preset)).not.toThrow();
+    }
   });
 
 });

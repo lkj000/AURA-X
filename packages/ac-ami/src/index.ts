@@ -2,8 +2,8 @@ export { planHarmony, applyHarmonyPlan, planHarmonyWithVoicings } from "./harmon
 export type { HarmonyPlan, HarmonyPlannerOptions, HarmonyPlanWithVoicings } from "./harmony/harmonyPlanner";
 export * from "./harmony/harmonyKnowledge";
 
-export { planGroove, applyGroovePlan } from "./groove/groovePlanner";
-export type { GroovePlannerOptions } from "./groove/groovePlanner";
+export { planGroove, applyGroovePlan, planGrooveWithVariations } from "./groove/groovePlanner";
+export type { GroovePlannerOptions, GroovePlanWithVariations } from "./groove/groovePlanner";
 export * from "./groove/grooveLibrary";
 
 export { planInstrumentation, applyInstrumentationPlan } from "./instrumentation/instrumentationPlanner";
