@@ -484,6 +484,23 @@ export interface DrumMapResult {
   entries: DrumMapEntry[];
 }
 
+// ─── Note echo ───────────────────────────────────────────────────────────────
+
+export interface EchoNote {
+  midiNote:      number;
+  tick:          number;
+  durationTicks: number;
+  velocity:      number;
+  repeatIndex:   number;
+}
+
+export interface EchoResult {
+  echoes:     EchoNote[];
+  repeats:    number;
+  delayTicks: number;
+  decay:      number;
+}
+
 // ─── Ghost note injector ──────────────────────────────────────────────────────
 
 export interface GhostNote {

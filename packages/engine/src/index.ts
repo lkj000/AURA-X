@@ -82,6 +82,7 @@ export type {
   ArpMode, ArpNote, ArpResult,
   StutterShape, StutterNote, StutterResult,
   GhostNote, GhostNoteResult,
+  EchoNote, EchoResult,
 }                                                     from "./types";
 
 export {
@@ -148,6 +149,10 @@ export type { StutterOptions }                        from "./groove/note_stutte
 // ── Ghost note injector ───────────────────────────────────────────────────────
 export { injectGhostNotes }                           from "./groove/ghost_note_injector";
 export type { GhostOptions }                          from "./groove/ghost_note_injector";
+
+// ── Note echo ─────────────────────────────────────────────────────────────────
+export { generateEcho }                               from "./groove/note_echo";
+export type { EchoOptions }                           from "./groove/note_echo";
 
 // ── High-level convenience API ────────────────────────────────────────────────
 export { evaluateBuffer, buildEnhancement }           from "./pipeline/evaluation";

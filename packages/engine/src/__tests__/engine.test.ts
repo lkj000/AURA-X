@@ -73,6 +73,7 @@ import { buildDrumMap, resolveDrumNote } from "../daw_export/drum_mapper";
 import { generateArpeggio }              from "../groove/arpeggiator";
 import { generateStutter }              from "../groove/note_stutter";
 import { injectGhostNotes }            from "../groove/ghost_note_injector";
+import { generateEcho }               from "../groove/note_echo";
 import { LANE_GRAMMARS, LANES, AMAPIANO_THRESHOLD, REFINEMENT_ACTIONS } from "../types";
 import type { AudioFeatures, GroovePlan, QualityScore, SamplePlan } from "../types";
 
@@ -5866,5 +5867,67 @@ describe("72. Ghost note injector", () => {
       expect(g.step).toBeGreaterThanOrEqual(0);
       expect(g.step).toBeLessThan(16);
     });
+  });
+});
+
+// ── 73. Note echo ─────────────────────────────────────────────────────────────
+describe("73. Note echo", () => {
+  test("produces the requested repeat count", () => {
+    const r = generateEcho({ repeats: 4, decay: 0.9 });
+    expect(r.echoes).toHaveLength(4);
+    expect(r.repeats).toBe(4);
+  });
+
+  test("all echoes carry the configured midiNote", () => {
+    const r = generateEcho({ midiNote: 48, repeats: 3, decay: 0.8 });
+    r.echoes.forEach((e) => expect(e.midiNote).toBe(48));
+  });
+
+  test("tick of echo i = startTick + i × delayTicks", () => {
+    const r = generateEcho({ startTick: 480, delayTicks: 240, repeats: 3, decay: 0.9 });
+    r.echoes.forEach((e) => expect(e.tick).toBe(480 + e.repeatIndex * 240));
+  });
+
+  test("velocity decreases with each repeat", () => {
+    const r = generateEcho({ velocity: 100, decay: 0.7, repeats: 4 });
+    const vels = r.echoes.map((e) => e.velocity);
+    for (let i = 1; i < vels.length; i++) expect(vels[i]).toBeLessThan(vels[i - 1]);
+  });
+
+  test("decay=1 keeps velocity constant", () => {
+    const r = generateEcho({ velocity: 80, decay: 1, repeats: 4 });
+    r.echoes.forEach((e) => expect(e.velocity).toBe(80));
+  });
+
+  test("stops early when velocity drops below minVelocity", () => {
+    const r = generateEcho({ velocity: 100, decay: 0.3, repeats: 10, minVelocity: 10 });
+    expect(r.echoes.length).toBeLessThan(10);
+    r.echoes.forEach((e) => expect(e.velocity).toBeGreaterThanOrEqual(10));
+  });
+
+  test("repeats=0 returns empty echoes", () => {
+    expect(generateEcho({ repeats: 0 }).echoes).toHaveLength(0);
+  });
+
+  test("durationTicks is applied to every echo", () => {
+    const r = generateEcho({ durationTicks: 60, repeats: 3, decay: 0.9 });
+    r.echoes.forEach((e) => expect(e.durationTicks).toBe(60));
+  });
+
+  test("repeatIndex starts at 1", () => {
+    const r = generateEcho({ repeats: 3, decay: 0.9 });
+    expect(r.echoes[0].repeatIndex).toBe(1);
+    expect(r.echoes[2].repeatIndex).toBe(3);
+  });
+
+  test("delayTicks and decay are reflected in result", () => {
+    const r = generateEcho({ delayTicks: 960, decay: 0.5 });
+    expect(r.delayTicks).toBe(960);
+    expect(r.decay).toBeCloseTo(0.5);
+  });
+
+  test("output is deterministic", () => {
+    const opts = { midiNote: 64, velocity: 90, decay: 0.65, repeats: 5 };
+    expect(generateEcho(opts)).toEqual(generateEcho(opts));
   });
 });
