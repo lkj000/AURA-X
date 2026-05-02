@@ -9,6 +9,7 @@
     "test": "jest --no-coverage --runInBand"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
     "@aura-x/ac-ami": "workspace:*",
     "@aura-x/ctl": "workspace:*",
     "@aura-x/engine": "workspace:*",

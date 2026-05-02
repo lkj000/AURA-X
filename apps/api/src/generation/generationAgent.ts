@@ -1,6 +1,7 @@
 import { CTLv1 } from "@aura-x/ctl";
 import { exportForSuno } from "@aura-x/suno-exporter";
 import { conditionForMode2 } from "@aura-x/ac-ami";
+import { compileSunoPromptsWithLLM } from "./sunoLLMCompiler";
 import { createReplicateClient } from "@aura-x/replicate-client";
 import { supabase } from "../lib/supabase";
 import { validateMode2Bpm } from "./mode2QualityGate";
@@ -82,14 +83,15 @@ export async function runGeneration(
     }
 
     try {
-      const bundle = exportForSuno(req.ctl);
+      const { style_prompt, lyrics_prompt } = await compileSunoPromptsWithLLM(req.ctl);
+      const staticBundle = exportForSuno(req.ctl);
 
       await supabase
         .from("generations")
         .update({
           status: "complete",
-          prompt_style: bundle.style_prompt,
-          prompt_lyrics: bundle.lyrics_prompt,
+          prompt_style: style_prompt,
+          prompt_lyrics: lyrics_prompt,
           completed_at: new Date().toISOString(),
         })
         .eq("id", generation_id);
@@ -100,9 +102,9 @@ export async function runGeneration(
         mode,
         status: "complete",
         suno_bundle: {
-          style_prompt: bundle.style_prompt,
-          lyrics_prompt: bundle.lyrics_prompt,
-          warnings: bundle.warnings,
+          style_prompt,
+          lyrics_prompt,
+          warnings: staticBundle.warnings,
         },
       };
     } catch (err) {

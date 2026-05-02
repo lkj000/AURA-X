@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { CTLv1Schema } from "@aura-x/ctl";
 import { runGeneration } from "../generation/generationAgent";
 import { getGenerationStatus, getGenerationsByTrack } from "../generation/generationStatus";
+import { compileSunoPromptsWithLLM } from "../generation/sunoLLMCompiler";
 
 const router = Router();
 
@@ -36,17 +37,15 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
   res.status(statusCode).json(result);
 });
 
-// POST /api/generate/suno (Mode 1 direct — backward compat)
-router.post("/suno", (req: Request, res: Response): void => {
+// POST /api/generate/suno (Mode 1 direct — LLM-powered, falls back to static)
+router.post("/suno", async (req: Request, res: Response): Promise<void> => {
   const parsed = CTLv1Schema.safeParse(req.body.ctl);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid CTL", issues: parsed.error.issues });
     return;
   }
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { exportForSuno } = require("@aura-x/suno-exporter");
-  const bundle = exportForSuno(parsed.data);
-  res.json(bundle);
+  const result = await compileSunoPromptsWithLLM(parsed.data);
+  res.json(result);
 });
 
 // GET /api/generate/status/:generationId
