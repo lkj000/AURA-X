@@ -172,152 +172,102 @@ function isScoreField(key: string, val: unknown): val is number {
   return typeof val === "number" && val >= 0 && val <= 1 && !skip.has(key);
 }
 
-// ── WAV encoder (AudioBuffer → Blob) ──────────────────────────────────────────
+// ── WAV encoder (Float32Array → Blob, no Web Audio needed) ───────────────────
 
-function writeStr(view: DataView, offset: number, str: string) {
-  for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-}
-
-function audioBufferToWavBlob(buf: AudioBuffer): Blob {
-  const numSamples = buf.length;
-  const sampleRate = buf.sampleRate;
-  const ab = new ArrayBuffer(44 + numSamples * 2);
-  const view = new DataView(ab);
-  writeStr(view, 0, "RIFF");
-  view.setUint32(4, 36 + numSamples * 2, true);
-  writeStr(view, 8, "WAVE");
-  writeStr(view, 12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeStr(view, 36, "data");
-  view.setUint32(40, numSamples * 2, true);
-  const samples = buf.getChannelData(0);
+function float32ToWavBlob(samples: Float32Array, sr: number): Blob {
+  const n  = samples.length;
+  const ab = new ArrayBuffer(44 + n * 2);
+  const v  = new DataView(ab);
+  const ws = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); v.setUint32(4, 36 + n * 2, true);
+  ws(8, "WAVE"); ws(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true);
+  v.setUint16(32, 2, true);  v.setUint16(34, 16, true);
+  ws(36, "data"); v.setUint32(40, n * 2, true);
   let off = 44;
-  for (let i = 0; i < numSamples; i++) {
+  for (let i = 0; i < n; i++) {
     const s = Math.max(-1, Math.min(1, samples[i]));
-    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    v.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
     off += 2;
   }
   return new Blob([ab], { type: "audio/wav" });
 }
 
-// ── Groove synthesizer (OfflineAudioContext) ───────────────────────────────────
+// ── Groove synthesizer (pure JS — no Web Audio, guaranteed audible output) ────
 
-// Ensure a pattern has at least `min` active steps so the preview is audible.
-// If it's sparse we fill in evenly-spaced fallback beats rather than producing silence.
-function ensureMinHits(pattern: number[], min: number, fallbackSteps: number[]): number[] {
-  const hits = pattern.filter(Boolean).length;
-  if (hits >= min) return pattern;
+function ensureMinHits(pattern: number[], min: number, fallback: number[]): number[] {
+  if (pattern.filter(Boolean).length >= min) return pattern;
   const p = [...pattern];
-  for (const s of fallbackSteps) p[s] = 1;
+  for (const s of fallback) p[s] = 1;
   return p;
 }
 
-async function synthesizeGroove(enhancement: Enhancement): Promise<string> {
-  const bpm      = enhancement.recommendedCtl.bpm > 0 ? enhancement.recommendedCtl.bpm : 112;
-  const stepSec  = (60 / bpm) / 4;
-  const loops    = 8;
-  const totalSec = stepSec * 16 * loops;
-  const sr       = 44100;
+function synthesizeGroove(enhancement: Enhancement): Promise<string> {
+  const bpm   = enhancement.recommendedCtl.bpm > 0 ? enhancement.recommendedCtl.bpm : 112;
+  const sr    = 44100;
+  const stepSec = (60 / bpm) / 4;
+  const loops = 8;
+  const totalSamples = Math.ceil(stepSec * 16 * loops * sr);
+  const out   = new Float32Array(totalSamples);
 
-  const ctx = new OfflineAudioContext(1, Math.ceil(totalSec * sr), sr);
-
-  // Master compressor — prevents simultaneous-hit clipping that silences output
-  const comp = ctx.createDynamicsCompressor();
-  comp.threshold.value = -14;
-  comp.knee.value      = 8;
-  comp.ratio.value     = 6;
-  comp.attack.value    = 0.002;
-  comp.release.value   = 0.12;
-  comp.connect(ctx.destination);
-
-  const gp  = enhancement.groovePlan;
-
-  // Guarantee minimum hits so the preview sounds like a groove, not silence
-  const kick    = ensureMinHits([...gp.kickPattern],     2, [0, 8]);
-  const logDrum = ensureMinHits([...gp.logDrumPattern],  3, [3, 6, 11]);
-  const hat     = ensureMinHits([...gp.hatPattern],      4, [0, 2, 4, 6, 8, 10, 12, 14]);
-  const shaker  = ensureMinHits([...gp.shakerPattern],   4, [1, 3, 5, 7, 9, 11, 13, 15]);
+  const gp = enhancement.groovePlan;
+  const kick    = ensureMinHits([...gp.kickPattern],    2, [0, 8]);
+  const logDrum = ensureMinHits([...gp.logDrumPattern], 3, [3, 6, 11]);
+  const hat     = ensureMinHits([...gp.hatPattern],     4, [0, 2, 4, 6, 8, 10, 12, 14]);
+  const shaker  = ensureMinHits([...gp.shakerPattern],  4, [1, 3, 5, 7, 9, 11, 13, 15]);
 
   for (let loop = 0; loop < loops; loop++) {
-    const loopOffset = loop * stepSec * 16;
-
     for (let step = 0; step < 16; step++) {
-      const t = loopOffset + step * stepSec;
+      const tSec = (loop * 16 + step) * stepSec;
+      const tSmp = Math.floor(tSec * sr);
 
-      // Kick — sine sweep 80→48 Hz, punchy decay
+      // Kick — sine sweep 80→48 Hz, 200ms decay
       if (kick[step]) {
-        const osc  = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(80, t);
-        osc.frequency.exponentialRampToValueAtTime(48, t + 0.14);
-        gain.gain.setValueAtTime(0.7, t);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.20);
-        osc.connect(gain); gain.connect(comp);
-        osc.start(t); osc.stop(t + 0.20);
+        const len = Math.floor(0.20 * sr);
+        let ph = 0;
+        for (let n = 0; n < len && tSmp + n < totalSamples; n++) {
+          const frac = n / len;
+          ph += (2 * Math.PI / sr) * (80 + (48 - 80) * frac);
+          out[tSmp + n] += 0.80 * Math.exp(-7 * frac) * Math.sin(ph);
+        }
       }
 
-      // Log drum — long pitch glide (Amapiano signature)
+      // Log drum — sine sweep 115→58 Hz, 450ms (Amapiano glide)
       if (logDrum[step]) {
-        const osc  = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(115, t);
-        osc.frequency.exponentialRampToValueAtTime(58, t + 0.38);
-        gain.gain.setValueAtTime(0.60, t);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
-        osc.connect(gain); gain.connect(comp);
-        osc.start(t); osc.stop(t + 0.45);
+        const len = Math.floor(0.45 * sr);
+        let ph = 0;
+        for (let n = 0; n < len && tSmp + n < totalSamples; n++) {
+          const frac = n / len;
+          ph += (2 * Math.PI / sr) * (115 + (58 - 115) * frac);
+          out[tSmp + n] += 0.75 * Math.exp(-4 * frac) * Math.sin(ph);
+        }
       }
 
-      // Hi-hat — short noise burst through highpass
+      // Hi-hat — short noise burst, 40ms
       if (hat[step]) {
-        const len = Math.ceil(0.04 * sr);
-        const nb  = ctx.createBuffer(1, len, sr);
-        const nd  = nb.getChannelData(0);
-        for (let i = 0; i < len; i++) nd[i] = Math.random() * 2 - 1;
-        const src  = ctx.createBufferSource();
-        src.buffer = nb;
-        const hp   = ctx.createBiquadFilter();
-        hp.type    = "highpass";
-        hp.frequency.value = 7500;
-        const gain = ctx.createGain();
-        gain.gain.setValueAtTime(0.22, t);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
-        src.connect(hp); hp.connect(gain); gain.connect(comp);
-        src.start(t);
+        const len = Math.floor(0.04 * sr);
+        for (let n = 0; n < len && tSmp + n < totalSamples; n++) {
+          out[tSmp + n] += 0.28 * Math.exp(-12 * n / len) * (Math.random() * 2 - 1);
+        }
       }
 
-      // Shaker — bandpass noise, quieter
+      // Shaker — slightly longer noise burst, 60ms
       if (shaker[step]) {
-        const len = Math.ceil(0.06 * sr);
-        const nb  = ctx.createBuffer(1, len, sr);
-        const nd  = nb.getChannelData(0);
-        for (let i = 0; i < len; i++) nd[i] = Math.random() * 2 - 1;
-        const src  = ctx.createBufferSource();
-        src.buffer = nb;
-        const bp   = ctx.createBiquadFilter();
-        bp.type    = "bandpass";
-        bp.frequency.value = 3800;
-        bp.Q.value = 1.0;
-        const gain = ctx.createGain();
-        gain.gain.setValueAtTime(0.14, t);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-        src.connect(bp); bp.connect(gain); gain.connect(comp);
-        src.start(t);
+        const len = Math.floor(0.06 * sr);
+        for (let n = 0; n < len && tSmp + n < totalSamples; n++) {
+          out[tSmp + n] += 0.18 * Math.exp(-9 * n / len) * (Math.random() * 2 - 1);
+        }
       }
     }
   }
 
-  const rendered = await ctx.startRendering();
-  const blob     = audioBufferToWavBlob(rendered);
-  return URL.createObjectURL(blob);
+  // Normalize to 80% full scale — always audible regardless of pattern density
+  let peak = 0;
+  for (let i = 0; i < totalSamples; i++) if (Math.abs(out[i]) > peak) peak = Math.abs(out[i]);
+  if (peak > 0.001) { const sc = 0.80 / peak; for (let i = 0; i < totalSamples; i++) out[i] *= sc; }
+
+  return Promise.resolve(URL.createObjectURL(float32ToWavBlob(out, sr)));
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────────
