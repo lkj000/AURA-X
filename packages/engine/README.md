@@ -6,7 +6,7 @@ Superior TypeScript Amapiano intelligence engine. Zero runtime dependencies.
 
 ```bash
 cd packages/engine
-npx jest --no-coverage          # run 912 tests
+npx jest --no-coverage          # run 949 tests
 npx tsc --build                 # typecheck + compile
 ```
 

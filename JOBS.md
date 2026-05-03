@@ -3894,3 +3894,135 @@ SUCCESS CRITERIA
   [x] agentActivities.buildCtl logs source (engine | fallback) and quality_score
   [x] railway.json + nixpacks.toml + pyproject.toml in packages/aura-engine
   [x] AURA_ENGINE_URL env var activates engine; absent = silent fallback throughout
+
+
+### JOB I-09 — TypeScript → Python Engine Wire
+---
+
+PROBLEM DEFINITION
+  The Python intelligence engine existed as a standalone service but the
+  TypeScript platform had no HTTP client to call it. CTL synthesis still
+  fell through to the TypeScript fallback path; signal scoring after Mode 2
+  audio download had no acoustic measurement.
+
+SOLUTION
+  Built apps/api/src/lib/auraEngine.ts — typed HTTP client:
+    ctlFromGoal()  — POST /ctl/from-goal → EngineCtlResult | null
+    scoreSignal()  — POST /signal/score (FormData + Blob)
+    perceive()     — POST /perceive
+    isEngineAvailable() — GET /health → boolean
+  All methods return null gracefully when engine unreachable (AURA_ENGINE_URL
+  not set or service down). AbortSignal timeouts: 15s for CTL, 30s for signal.
+  Wired agentActivities.buildCtl(): engine primary, TS synthesizeCtlFromGoal fallback.
+  Wired workers.ts: scoreSignal() after Mode 2 audio downloaded; non-blocking.
+  8 new TypeScript tests (auraEngine.test.ts), all passing.
+
+SUCCESS CRITERIA
+  [x] ctlFromGoal calls Python engine first, falls back to TS synthesizeCtlFromGoal
+  [x] scoreSignal returns composite_score, detected_lane, c1/c2/c3 from real audio
+  [x] agentActivities logs source (engine | fallback) and quality_score
+  [x] 8 TypeScript tests passing
+  [x] commit b86f957
+
+
+### JOB I-10 — Python Engine Deployed to Railway
+---
+
+PROBLEM DEFINITION
+  packages/aura-engine was built and tested locally but not deployed. The
+  platform had AURA_ENGINE_URL pointing nowhere — every request fell back
+  to the TypeScript path. Real acoustic measurement was unavailable in production.
+
+SOLUTION
+  Deployed packages/aura-engine as a standalone Railway service:
+    Service name: exemplary-strength (loyal-creation project, us-west2)
+    URL: https://exemplary-strength-production-78ac.up.railway.app
+    Builder: Nixpacks (python311Full + venv)
+    railway.json: build + start commands, /health healthcheck
+    nixpacks.toml: PYTHONPATH=., pip install from requirements.txt
+  Set AURA_ENGINE_URL on AURA-X API service → engine now active in production.
+  GET /health confirmed 200 OK.
+
+SUCCESS CRITERIA
+  [x] Railway service live and healthy (GET /health → 200 OK)
+  [x] AURA_ENGINE_URL set on AURA-X API service
+  [x] POST /ctl/from-goal reachable from platform in production
+  [x] commit 2025827
+
+
+### JOB I-11 — Amapianorizer: Analysis-Driven Enhancement
+---
+
+PROBLEM DEFINITION
+  The Amapianorize endpoint returned enhancement suggestions derived from
+  preset lookup tables rather than actual measured properties of the uploaded
+  audio. BPM deltas, swing correction, and log drum guidance were not grounded
+  in what the engine actually detected. The UI had no audio player and no
+  visual groove display.
+
+SOLUTION
+  Rewrote buildEnhancement() in the engine:
+    - Groove patterns derived from detected transient hits, not presets
+    - Swing target corrected from measured IOI ratios
+    - Log drum guidance from actual pitchGlideSemitones/grade signal
+    - BPM delta from measured gap to subgenre target
+    - correctionMode field: analysis_verified | analysis_corrected | fallback
+  API route flattens nested AmapianEvaluation into 7 plain 0–1 score fields.
+  UI additions:
+    - Original WAV player (URL.createObjectURL, no server round-trip)
+    - Auto-synthesized enhanced groove (OfflineAudioContext):
+        kick 80→50 Hz sine, log drum 110→62 Hz sine,
+        hi-hat noise+highpass 8 kHz, shaker noise+bandpass 4 kHz
+    - 8-bar loop preview at detected BPM
+    - correctionMode badge (analysis verified / analysis corrected)
+    - Issues panel + enhancement suggestions panel
+
+SUCCESS CRITERIA
+  [x] Enhancement BPM/swing/log drum grounded in measured audio properties
+  [x] correctionMode field present on every response
+  [x] Original audio playback in UI
+  [x] 8-bar synthesized groove preview plays correctly
+  [x] commit 7780db3
+
+
+### JOB I-12 — Amapianorizer: Dual-Grid Groove Display + UX Polish
+---
+
+PROBLEM DEFINITION
+  The groove grid showed a single pattern without distinguishing between
+  steps detected in the audio and steps invented by the synthesizer to fill
+  sparse voices. Producers reading the grid couldn't tell what was real vs
+  what was fallback, so the "program this into your DAW" instruction was
+  misleading on tracks where detection found few hits.
+  Additional gaps: key defaulted to hardcoded "F#m" on Generate page regardless
+  of subgenre; BPM defaulted to 110 for all subgenres; synthesis errors were
+  swallowed silently.
+
+SOLUTION
+  Generate page:
+    - SUBGENRE_DEFAULT_KEYS and SUBGENRE_DEFAULT_BPM maps added to utils.ts,
+      sourced from CULTURAL_PROFILES keyBias in the engine
+    - Key and BPM now auto-set on load and on subgenre change
+
+  Amapianorize page:
+    - ensureMinHitsLocal with per-voice minimums and fallback positions
+    - Dual groove grid layout:
+        "Detected in audio" — raw hits only, nothing invented
+        "Synthesized preview — what you hear" — padded pattern with ghost
+        cells (outlined, semi-transparent) for added fallback steps
+    - "What changed and why" diff panel — lists every padded voice with
+        detected step count, minimum required, and added step numbers,
+        plus DAW instruction
+    - Legend: solid = detected, outlined = added for preview, grey = empty
+    - Synthesis errors now surfaced to UI (previously swallowed by .catch)
+    - BPM guard: Number() cast + range check (50–300) prevents
+        OfflineAudioContext receiving bad buffer length
+
+SUCCESS CRITERIA
+  [x] Generate page key and BPM default to subgenre cultural values
+  [x] Subgenre change updates both key and BPM
+  [x] Dual grids render with correct solid/ghost cell distinction
+  [x] Diff panel lists every padded voice with step numbers
+  [x] Synthesis errors visible in UI instead of failing silently
+  [x] Audio preview works on all tested tracks
+  [x] commits 797614b, 7803048, 105f5e5, 8a57d6b
