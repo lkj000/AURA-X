@@ -389,12 +389,11 @@ router.get(
       );
       res.json(response.data);
     } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        res.status(err.response?.status ?? 500).json(
-          err.response?.data ?? { error: "Audio service error" }
-        );
+      if (axios.isAxiosError(err) && err.response) {
+        res.status(err.response.status).json(err.response.data);
       } else {
-        res.status(500).json({ error: "Unexpected error" });
+        // Upstream unreachable (ECONNREFUSED, timeout, etc.)
+        res.status(503).json({ error: "Audio service unavailable" });
       }
     }
   }

@@ -51,33 +51,35 @@ export default function TrackDetailPage({ params }: { params: Promise<{ trackId:
   const [sunoError, setSunoError]   = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       setLoading(true);
       setError(null);
       try {
         const t = await getTrack(trackId);
+        if (cancelled) return;
         setTrack(t);
 
-        // Try to load audio if a generation exists
         if (t.generation?.id) {
           try {
             const status = await getGenerationStatus(t.generation.id);
             const first = status.audio_files?.[0];
-            if (first?.id) {
+            if (first?.id && !cancelled) {
               const { url } = await getSignedUrl(first.id);
-              setAudioUrl(url);
+              if (!cancelled) setAudioUrl(url);
             }
           } catch {
-            // Audio not available — not an error
+            // Audio service unavailable or file not ready — not an error
           }
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Track not found");
+        if (!cancelled) setError(e instanceof Error ? e.message : "Track not found");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
     load();
+    return () => { cancelled = true; };
   }, [trackId]);
 
   if (loading) {
