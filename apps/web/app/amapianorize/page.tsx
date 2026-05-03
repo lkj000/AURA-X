@@ -46,14 +46,26 @@ function GatePill({ label, pass }: { label: string; pass: boolean }) {
 }
 
 const SCORE_LABELS: Record<string, string> = {
+  quality:     "Overall quality",
+  groove:      "Groove strength",
+  logDrum:     "Log drum presence",
+  harmonic:    "Harmonic density",
+  perception:  "Perception score",
+  cultural:    "Cultural authenticity",
+  composite:   "Composite",
   authenticity:             "Authenticity",
   subgenre_recognizability: "Subgenre recognizability",
   groove_clarity:           "Groove clarity",
   harmonic_density:         "Harmonic density",
   dj_mix_friendliness:      "DJ mix friendliness",
   cultural_lineage:         "Cultural lineage",
-  composite:                "Composite",
 };
+
+// Only render fields that are plain 0–1 numeric scores
+function isScoreField(key: string, val: unknown): val is number {
+  const skip = new Set(["threshold", "lane", "subgenre", "bpm", "swing", "steps"]);
+  return typeof val === "number" && val >= 0 && val <= 1 && !skip.has(key);
+}
 
 export default function AmapianorizePage() {
   const [file, setFile]         = useState<File | null>(null);
@@ -82,7 +94,7 @@ export default function AmapianorizePage() {
   }
 
   const scores = result
-    ? Object.entries(result.evaluation).filter(([k]) => k !== "lane" && k !== "subgenre")
+    ? Object.entries(result.evaluation).filter(([k, v]) => isScoreField(k, v)) as [string, number][]
     : [];
 
   return (
@@ -150,9 +162,22 @@ export default function AmapianorizePage() {
 
           {/* Scores */}
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4">
-            <p className="text-sm font-medium text-white">Evaluation scores</p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-white">Evaluation scores</p>
+              <div className="flex gap-3 text-xs text-zinc-500">
+                {result.evaluation.lane && (
+                  <span>Lane detected: <span className="text-zinc-300">{String(result.evaluation.lane)}</span></span>
+                )}
+                {typeof result.evaluation.threshold === "number" && (
+                  <span>Threshold: <span className="text-zinc-300">{Math.round((result.evaluation.threshold as number) * 100)}%</span></span>
+                )}
+              </div>
+            </div>
+            {scores.length === 0 && (
+              <p className="text-xs text-zinc-600">No numeric scores returned — track may need re-encoding as WAV.</p>
+            )}
             {scores.map(([key, val]) => (
-              <ScoreBar key={key} label={SCORE_LABELS[key] ?? key} value={typeof val === "number" ? val : 0} />
+              <ScoreBar key={key} label={SCORE_LABELS[key] ?? key} value={val} />
             ))}
           </div>
 
