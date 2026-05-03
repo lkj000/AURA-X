@@ -40,8 +40,21 @@ type GroovePlan = {
   steps: 16;
 };
 
+type RecommendedCtl = {
+  lane: string;
+  bpm: number;
+  bpmTarget?: number;
+  bpmDelta?: number;
+  swing: number;
+  swingDetected?: number;
+  logDrum: string;
+  quality: string;
+  laneDistance?: number | null;
+  correctionMode?: string;
+};
+
 type Enhancement = {
-  recommendedCtl: { lane: string; bpm: number; swing: number; logDrum: string; quality: string };
+  recommendedCtl: RecommendedCtl;
   groovePlan: GroovePlan;
   suggestions: string[];
   canAutoEnhance: boolean;
@@ -86,6 +99,59 @@ function GatePill({ label, pass }: { label: string; pass: boolean }) {
     )}>
       {pass ? "✓" : "✗"} {label}
     </span>
+  );
+}
+
+// ── Groove step grid ──────────────────────────────────────────────────────────
+
+const VOICE_CONFIG = [
+  { key: "kickPattern",     label: "Kick",     color: "bg-blue-500",    dot: "bg-blue-400"    },
+  { key: "logDrumPattern",  label: "Log drum", color: "bg-violet-500",  dot: "bg-violet-400"  },
+  { key: "hatPattern",      label: "Hi-hat",   color: "bg-emerald-500", dot: "bg-emerald-400" },
+  { key: "shakerPattern",   label: "Shaker",   color: "bg-amber-500",   dot: "bg-amber-400"   },
+] as const;
+
+function GrooveGrid({ groovePlan }: { groovePlan: GroovePlan }) {
+  return (
+    <div className="space-y-2">
+      {VOICE_CONFIG.map(({ key, label, color }) => {
+        const pattern = groovePlan[key] as number[];
+        const activeSteps = pattern.map((v, i) => v ? i : -1).filter((i) => i >= 0);
+        return (
+          <div key={key} className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-500 w-16 shrink-0 text-right">{label}</span>
+              <div className="flex gap-px">
+                {Array.from({ length: 16 }, (_, i) => (
+                  <div key={i} className={cn(
+                    "w-[18px] h-[18px] rounded-sm",
+                    i > 0 && i % 4 === 0 ? "ml-1.5" : "",
+                    pattern[i] ? color : "bg-zinc-800 border border-zinc-700"
+                  )} />
+                ))}
+              </div>
+              <span className="text-xs text-zinc-600 font-mono">
+                {activeSteps.length > 0 ? `steps ${activeSteps.map((s) => s + 1).join(", ")}` : "—"}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+      {/* Beat markers */}
+      <div className="flex items-center gap-2">
+        <span className="w-16 shrink-0" />
+        <div className="flex gap-px">
+          {Array.from({ length: 16 }, (_, i) => (
+            <div key={i} className={cn(
+              "w-[18px] text-center text-zinc-700 text-[10px] font-mono",
+              i > 0 && i % 4 === 0 ? "ml-1.5" : ""
+            )}>
+              {i % 4 === 0 ? i / 4 + 1 : "·"}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -145,7 +211,7 @@ function audioBufferToWavBlob(buf: AudioBuffer): Blob {
 async function synthesizeGroove(enhancement: Enhancement): Promise<string> {
   const bpm     = enhancement.recommendedCtl.bpm > 0 ? enhancement.recommendedCtl.bpm : 112;
   const stepSec = (60 / bpm) / 4;
-  const loops   = 4;
+  const loops   = 8; // 8 bars for a usable listening preview
   const totalSec = stepSec * 16 * loops;
   const sr      = 44100;
 
@@ -373,7 +439,7 @@ export default function AmapianorizePage() {
                   </span>
                 )}
                 {!synthesizing && (() => {
-                  const mode = String((result.enhancement.recommendedCtl as Record<string, unknown>).correctionMode ?? "");
+                  const mode = result.enhancement.recommendedCtl.correctionMode ?? "";
                   if (!mode) return null;
                   const cls =
                     mode === "analysis_verified"  ? "bg-emerald-900/40 text-emerald-400" :
@@ -446,23 +512,110 @@ export default function AmapianorizePage() {
             </div>
           )}
 
-          {/* Enhancement suggestions */}
-          {result.enhancement.suggestions.length > 0 && (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-2">
-              <p className="text-sm font-medium text-white">Enhancement suggestions</p>
-              <ul className="space-y-1">
-                {result.enhancement.suggestions.map((s, i) => (
-                  <li key={i} className="text-xs text-violet-300 flex gap-2">
-                    <span className="shrink-0 text-violet-600">→</span>
-                    <span>{s}</span>
-                  </li>
-                ))}
-              </ul>
+          {/* Enhancement plan */}
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-5">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-white">Enhancement plan</p>
               {result.enhancement.canAutoEnhance && (
-                <p className="text-xs text-emerald-400 mt-2">✓ Track quality sufficient for auto-enhancement</p>
+                <span className="text-xs text-emerald-400">✓ Quality sufficient for auto-enhancement</span>
               )}
             </div>
-          )}
+
+            {/* Production numbers */}
+            {(() => {
+              const ctl = result.enhancement.recommendedCtl;
+              const rows: { label: string; value: string; action?: string; urgent?: boolean }[] = [];
+
+              if (ctl.bpmDelta != null && Math.abs(ctl.bpmDelta) > 0.5) {
+                rows.push({
+                  label: "Tempo",
+                  value: `${(ctl.bpm).toFixed(1)} BPM detected → target ${ctl.bpmTarget ?? "—"} BPM`,
+                  action: `${ctl.bpmDelta > 0 ? "Speed up" : "Slow down"} by ${Math.abs(ctl.bpmDelta).toFixed(1)} BPM`,
+                  urgent: Math.abs(ctl.bpmDelta) > 3,
+                });
+              }
+
+              if (ctl.swingDetected != null) {
+                const swingPct      = Math.round(ctl.swing * 100);
+                const detectedPct   = Math.round(ctl.swingDetected * 100);
+                rows.push({
+                  label: "Swing",
+                  value: `Detected ${detectedPct}% → set DAW swing to ${swingPct}%`,
+                  action: Math.abs(ctl.swing - ctl.swingDetected) > 0.015
+                    ? `Adjust swing in your DAW/sampler to ${swingPct}% (${swingPct >= 50 ? "push 16th-note offbeats later" : "tighten offbeats earlier"})`
+                    : "Swing feels right — no change needed",
+                });
+              }
+
+              if (ctl.logDrum === "add") {
+                rows.push({
+                  label: "Log drum",
+                  value: "Not detected",
+                  action: "Add a pitched sample (60–200 Hz) with a downward pitch glide of ≥ 1.0 semitones. Place on the steps shown in the grid below. Keep it mono-centred.",
+                  urgent: true,
+                });
+              } else if (ctl.logDrum === "strengthen") {
+                rows.push({
+                  label: "Log drum",
+                  value: "Weak / developing",
+                  action: "Deepen the pitch envelope — increase glide depth to ≥ 1.0 st. Layer a second sample an octave lower (30–80 Hz) to reinforce the wood resonance.",
+                });
+              }
+
+              if (ctl.laneDistance != null && ctl.laneDistance > 0) {
+                rows.push({
+                  label: "Pattern",
+                  value: `${ctl.laneDistance} step${ctl.laneDistance !== 1 ? "s" : ""} from ideal ${ctl.lane} pattern`,
+                  action: ctl.laneDistance <= 2
+                    ? "Groove is very close to target — keep detected pattern"
+                    : `Re-program the drum machine to match the grid below. Focus on log drum placement first.`,
+                  urgent: ctl.laneDistance > 6,
+                });
+              }
+
+              return rows.length > 0 ? (
+                <div className="divide-y divide-zinc-800">
+                  {rows.map((r, i) => (
+                    <div key={i} className="py-3 space-y-0.5 first:pt-0 last:pb-0">
+                      <div className="flex items-center gap-2">
+                        <span className={cn("text-xs font-medium w-20 shrink-0", r.urgent ? "text-red-400" : "text-zinc-400")}>{r.label}</span>
+                        <span className="text-xs text-zinc-500 font-mono">{r.value}</span>
+                      </div>
+                      {r.action && (
+                        <p className={cn("text-xs pl-[88px]", r.urgent ? "text-amber-300" : "text-violet-300")}>
+                          → {r.action}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : null;
+            })()}
+
+            {/* Step grid */}
+            <div className="space-y-2">
+              <p className="text-xs text-zinc-500 font-medium">Target groove pattern — program this into your drum machine / sampler</p>
+              <GrooveGrid groovePlan={result.enhancement.groovePlan} />
+              <p className="text-xs text-zinc-600">
+                Swing: {Math.round(result.enhancement.recommendedCtl.swing * 100)}% ·
+                Lane: {result.enhancement.recommendedCtl.lane} ·
+                {result.enhancement.groovePlan.steps} steps per bar
+              </p>
+            </div>
+
+            {/* Remaining suggestions (harmonic, cultural) */}
+            {result.enhancement.suggestions.length > 0 && (
+              <div className="space-y-1 border-t border-zinc-800 pt-4">
+                <p className="text-xs text-zinc-500 font-medium mb-2">Additional suggestions</p>
+                {result.enhancement.suggestions.map((s, i) => (
+                  <div key={i} className="text-xs text-violet-300 flex gap-2">
+                    <span className="shrink-0 text-violet-600">→</span>
+                    <span>{s}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* CTL toggle */}
           <details className="rounded-xl border border-zinc-800 bg-zinc-900">
