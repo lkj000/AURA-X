@@ -418,8 +418,12 @@ export default function AmapianorizePage() {
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-white">Evaluation scores</p>
               <div className="flex gap-3 text-xs text-zinc-500">
-                <span>Lane: <span className="text-zinc-300">{result.evaluation.lane}</span></span>
-                <span>{result.evaluation.bpm.toFixed(1)} BPM</span>
+                {result.evaluation.lane && (
+                  <span>Lane: <span className="text-zinc-300">{result.evaluation.lane}</span></span>
+                )}
+                {result.evaluation.bpm != null && (
+                  <span>{(result.evaluation.bpm as number).toFixed(1)} BPM</span>
+                )}
               </div>
             </div>
             {scores.map(([key, val]) => (
