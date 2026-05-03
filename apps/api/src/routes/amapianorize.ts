@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import multer from "multer";
 import { analyzeAndPlan, buildEnhancement } from "@aura-x/engine";
 
@@ -6,16 +6,26 @@ const router = Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB — DJ extended mixes can be large WAVs
 });
 
 // POST /api/amapianorize
-// Accepts an uploaded WAV file, evaluates it against the 4-lane Amapiano
-// engine model, and returns evaluation scores + enhancement CTL plan.
-// Content-Type: multipart/form-data  field: audio
 router.post(
   "/",
-  upload.single("audio"),
+  (req: Request, res: Response, next: NextFunction) => {
+    upload.single("audio")(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          res.status(413).json({ error: "File too large — maximum 100 MB. For long mixes, trim to the first 3–5 minutes before uploading." });
+        } else {
+          res.status(400).json({ error: `Upload error: ${err.message}` });
+        }
+        return;
+      }
+      if (err) { next(err); return; }
+      next();
+    });
+  },
   async (req: Request, res: Response): Promise<void> => {
     if (!req.file) {
       res.status(400).json({ error: "audio file required (multipart field: audio)" });

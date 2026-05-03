@@ -117,7 +117,7 @@ export default function AmapianorizePage() {
         ) : (
           <div className="space-y-1">
             <p className="text-sm text-zinc-400">Drop a WAV file or click to browse</p>
-            <p className="text-xs text-zinc-600">WAV format required · max 50 MB</p>
+            <p className="text-xs text-zinc-600">WAV format required · max 100 MB</p>
           </div>
         )}
       </div>
