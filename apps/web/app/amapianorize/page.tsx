@@ -104,51 +104,140 @@ function GatePill({ label, pass }: { label: string; pass: boolean }) {
 
 // ── Groove step grid ──────────────────────────────────────────────────────────
 
+function ensureMinHitsLocal(pattern: number[], min: number, fallback: number[]): number[] {
+  if (pattern.filter(Boolean).length >= min) return pattern;
+  const p = [...pattern];
+  for (const s of fallback) p[s] = 1;
+  return p;
+}
+
 const VOICE_CONFIG = [
-  { key: "kickPattern",     label: "Kick",     color: "bg-blue-500",    dot: "bg-blue-400"    },
-  { key: "logDrumPattern",  label: "Log drum", color: "bg-violet-500",  dot: "bg-violet-400"  },
-  { key: "hatPattern",      label: "Hi-hat",   color: "bg-emerald-500", dot: "bg-emerald-400" },
-  { key: "shakerPattern",   label: "Shaker",   color: "bg-amber-500",   dot: "bg-amber-400"   },
+  { key: "kickPattern",    label: "Kick",     solid: "bg-blue-500",    ghost: "border-2 border-blue-500 bg-blue-500/15",     minHits: 2, fallback: [0, 8] },
+  { key: "logDrumPattern", label: "Log drum", solid: "bg-violet-500",  ghost: "border-2 border-violet-500 bg-violet-500/15", minHits: 3, fallback: [3, 6, 11] },
+  { key: "hatPattern",     label: "Hi-hat",   solid: "bg-emerald-500", ghost: "border-2 border-emerald-500 bg-emerald-500/15", minHits: 4, fallback: [0, 2, 4, 6, 8, 10, 12, 14] },
+  { key: "shakerPattern",  label: "Shaker",   solid: "bg-amber-500",   ghost: "border-2 border-amber-500 bg-amber-500/15",   minHits: 4, fallback: [1, 3, 5, 7, 9, 11, 13, 15] },
 ] as const;
 
-function GrooveGrid({ groovePlan }: { groovePlan: GroovePlan }) {
+function BeatMarkers() {
   return (
-    <div className="space-y-2">
-      {VOICE_CONFIG.map(({ key, label, color }) => {
-        const pattern = groovePlan[key] as number[];
-        const activeSteps = pattern.map((v, i) => v ? i : -1).filter((i) => i >= 0);
-        return (
-          <div key={key} className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-500 w-16 shrink-0 text-right">{label}</span>
-              <div className="flex gap-px">
-                {Array.from({ length: 16 }, (_, i) => (
-                  <div key={i} className={cn(
-                    "w-[18px] h-[18px] rounded-sm",
-                    i > 0 && i % 4 === 0 ? "ml-1.5" : "",
-                    pattern[i] ? color : "bg-zinc-800 border border-zinc-700"
-                  )} />
-                ))}
-              </div>
-              <span className="text-xs text-zinc-600 font-mono">
-                {activeSteps.length > 0 ? `steps ${activeSteps.map((s) => s + 1).join(", ")}` : "—"}
-              </span>
+    <div className="flex items-center gap-2">
+      <span className="w-16 shrink-0" />
+      <div className="flex gap-px">
+        {Array.from({ length: 16 }, (_, i) => (
+          <div key={i} className={cn("w-[18px] text-center text-zinc-700 text-[10px] font-mono", i > 0 && i % 4 === 0 ? "ml-1.5" : "")}>
+            {i % 4 === 0 ? i / 4 + 1 : "·"}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SingleGrid({
+  voices,
+  title,
+  note,
+}: {
+  voices: { label: string; pattern: number[]; addedSet: Set<number>; solid: string; ghost: string }[];
+  title: string;
+  note?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">{title}</p>
+      {note && <p className="text-[10px] text-zinc-600 -mt-0.5">{note}</p>}
+      <div className="space-y-1 pt-1">
+        {voices.map(({ label, pattern, addedSet, solid, ghost }) => (
+          <div key={label} className="flex items-center gap-2">
+            <span className="text-xs text-zinc-500 w-16 shrink-0 text-right">{label}</span>
+            <div className="flex gap-px">
+              {Array.from({ length: 16 }, (_, i) => (
+                <div key={i} className={cn(
+                  "w-[18px] h-[18px] rounded-sm",
+                  i > 0 && i % 4 === 0 ? "ml-1.5" : "",
+                  pattern[i] && !addedSet.has(i) ? solid :
+                  addedSet.has(i)                ? ghost :
+                  "bg-zinc-800 border border-zinc-700"
+                )} />
+              ))}
             </div>
           </div>
-        );
-      })}
-      {/* Beat markers */}
-      <div className="flex items-center gap-2">
-        <span className="w-16 shrink-0" />
-        <div className="flex gap-px">
-          {Array.from({ length: 16 }, (_, i) => (
-            <div key={i} className={cn(
-              "w-[18px] text-center text-zinc-700 text-[10px] font-mono",
-              i > 0 && i % 4 === 0 ? "ml-1.5" : ""
-            )}>
-              {i % 4 === 0 ? i / 4 + 1 : "·"}
+        ))}
+        <BeatMarkers />
+      </div>
+    </div>
+  );
+}
+
+function GrooveGrid({ groovePlan }: { groovePlan: GroovePlan }) {
+  const voiceData = VOICE_CONFIG.map(({ key, label, solid, ghost, minHits, fallback }) => {
+    const detected  = groovePlan[key] as number[];
+    const synth     = ensureMinHitsLocal([...detected], minHits, fallback);
+    const addedSet  = new Set(synth.map((v, i) => (v && !detected[i]) ? i : -1).filter(i => i >= 0));
+    const detSteps  = detected.map((v, i) => v ? i + 1 : -1).filter(i => i >= 0);
+    const addedList = [...addedSet].map(s => s + 1).sort((a, b) => a - b);
+    return { label, detected, synth, addedSet, addedList, detSteps, solid, ghost, minHits };
+  });
+
+  const detectedVoices = voiceData.map(v => ({ ...v, pattern: v.detected, addedSet: new Set<number>() }));
+  const synthVoices    = voiceData.map(v => ({ ...v, pattern: v.synth }));
+
+  const diffs = voiceData.filter(v => v.addedSet.size > 0);
+  const allMatch = diffs.length === 0;
+
+  return (
+    <div className="space-y-5">
+      {/* Grid 1 — detected */}
+      <SingleGrid
+        voices={detectedVoices}
+        title="Detected in audio"
+        note="Exactly what the analysis engine found in your track."
+      />
+
+      {/* Grid 2 — synthesized preview */}
+      <SingleGrid
+        voices={synthVoices}
+        title="Synthesized preview — what you hear"
+        note={allMatch
+          ? "Identical to detected — all voices had sufficient hits."
+          : "Outlined steps were invented to fill sparse voices so the preview has a complete groove."}
+      />
+
+      {/* Diff panel */}
+      {!allMatch && (
+        <div className="rounded-lg border border-amber-900/40 bg-amber-950/20 p-3 space-y-2">
+          <p className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider">What changed and why</p>
+          {diffs.map(({ label, detSteps, addedList, minHits }) => (
+            <div key={label} className="space-y-0.5">
+              <p className="text-[10px] text-zinc-300 font-medium">{label}</p>
+              <p className="text-[10px] text-zinc-400 font-mono">
+                Detected: {detSteps.length > 0 ? `steps ${detSteps.join(", ")}` : "none"}
+                {" · "}
+                Needs: {minHits} hits minimum
+                {" · "}
+                Added: steps {addedList.join(", ")}
+              </p>
+              <p className="text-[10px] text-zinc-500">
+                These added steps play in the preview but don&apos;t exist in your track. Program them manually in your DAW to close the gap.
+              </p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className="pl-[72px] flex flex-wrap items-center gap-x-4 gap-y-1">
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-sm bg-zinc-400" />
+          <span className="text-[10px] text-zinc-500">Detected in audio</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-sm border-2 border-zinc-400 bg-zinc-400/15" />
+          <span className="text-[10px] text-zinc-500">Added for preview only</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-sm bg-zinc-800 border border-zinc-700" />
+          <span className="text-[10px] text-zinc-500">Empty</span>
         </div>
       </div>
     </div>
@@ -208,15 +297,9 @@ function audioBufferToWavBlob(buf: AudioBuffer): Blob {
 
 // ── Groove synthesizer (original OfflineAudioContext approach, restored) ──────
 
-function ensureMinHits(pattern: number[], min: number, fallback: number[]): number[] {
-  if (pattern.filter(Boolean).length >= min) return pattern;
-  const p = [...pattern];
-  for (const s of fallback) p[s] = 1;
-  return p;
-}
-
 async function synthesizeGroove(enhancement: Enhancement): Promise<string> {
-  const bpm      = enhancement.recommendedCtl.bpm > 0 ? enhancement.recommendedCtl.bpm : 112;
+  const rawBpm   = Number(enhancement.recommendedCtl.bpm);
+  const bpm      = rawBpm > 50 && rawBpm < 300 ? rawBpm : 112;
   const stepSec  = (60 / bpm) / 4;
   const loops    = 8;
   const totalSec = stepSec * 16 * loops;
@@ -225,11 +308,10 @@ async function synthesizeGroove(enhancement: Enhancement): Promise<string> {
   const ctx = new OfflineAudioContext(1, Math.ceil(totalSec * sr), sr);
   const gp  = enhancement.groovePlan;
 
-  // Guard against sparse detected patterns producing near-silence
-  const kick    = ensureMinHits([...gp.kickPattern],    2, [0, 8]);
-  const logDrum = ensureMinHits([...gp.logDrumPattern], 3, [3, 6, 11]);
-  const hat     = ensureMinHits([...gp.hatPattern],     4, [0, 2, 4, 6, 8, 10, 12, 14]);
-  const shaker  = ensureMinHits([...gp.shakerPattern],  4, [1, 3, 5, 7, 9, 11, 13, 15]);
+  const kick    = ensureMinHitsLocal([...gp.kickPattern],    2, [0, 8]);
+  const logDrum = ensureMinHitsLocal([...gp.logDrumPattern], 3, [3, 6, 11]);
+  const hat     = ensureMinHitsLocal([...gp.hatPattern],     4, [0, 2, 4, 6, 8, 10, 12, 14]);
+  const shaker  = ensureMinHitsLocal([...gp.shakerPattern],  4, [1, 3, 5, 7, 9, 11, 13, 15]);
 
   for (let loop = 0; loop < loops; loop++) {
     const loopOffset = loop * stepSec * 16;
@@ -309,6 +391,7 @@ export default function AmapianorizePage() {
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [enhancedUrl, setEnhancedUrl] = useState<string | null>(null);
   const [synthesizing, setSynthesizing] = useState(false);
+  const [synthError, setSynthError]   = useState<string | null>(null);
   const inputRef                      = useRef<HTMLInputElement>(null);
 
   // Create original audio URL when file is chosen
@@ -328,13 +411,19 @@ export default function AmapianorizePage() {
     if (!result) { setEnhancedUrl(null); return; }
     let cancelled = false;
     setSynthesizing(true);
+    setSynthError(null);
     synthesizeGroove(result.enhancement)
       .then((url) => {
         if (cancelled) { URL.revokeObjectURL(url); return; }
         synthRef.current = url;
         setEnhancedUrl(url);
       })
-      .catch(() => {/* synthesis optional — fail silently */})
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          console.error("[groove synth]", err);
+          setSynthError(err instanceof Error ? err.message : String(err));
+        }
+      })
       .finally(() => { if (!cancelled) setSynthesizing(false); });
     return () => { cancelled = true; };
   }, [result]);
@@ -344,6 +433,7 @@ export default function AmapianorizePage() {
     setResult(null);
     setError(null);
     setEnhancedUrl(null);
+    setSynthError(null);
   }, []);
 
   async function analyse() {
@@ -459,6 +549,9 @@ export default function AmapianorizePage() {
               </div>
               {enhancedUrl && (
                 <audio src={enhancedUrl} controls className="w-full" style={{ colorScheme: "dark" }} />
+              )}
+              {!synthesizing && !enhancedUrl && synthError && (
+                <p className="text-xs text-red-400 font-mono mt-1">Synth error: {synthError}</p>
               )}
             </div>
           )}
@@ -599,7 +692,7 @@ export default function AmapianorizePage() {
 
             {/* Step grid */}
             <div className="space-y-2">
-              <p className="text-xs text-zinc-500 font-medium">Target groove pattern — program this into your drum machine / sampler</p>
+              <p className="text-xs text-zinc-500 font-medium">Groove patterns</p>
               <GrooveGrid groovePlan={result.enhancement.groovePlan} />
               <p className="text-xs text-zinc-600">
                 Swing: {Math.round(result.enhancement.recommendedCtl.swing * 100)}% ·
