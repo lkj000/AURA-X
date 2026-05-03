@@ -47,3 +47,25 @@ export const KEYS = [
   "Cm", "C#m", "Dm", "D#m", "Em", "Fm",
   "F#m", "Gm", "G#m", "Am", "A#m", "Bm",
 ];
+
+// First preferred key per subgenre — sourced from CULTURAL_PROFILES keyBias
+export const SUBGENRE_DEFAULT_KEYS: Record<string, string> = {
+  private_school:       "Am",
+  sgija:                "Gm",
+  bacardi:              "Am",
+  stixx_sgija:          "Cm",
+  mbiraiano:            "Am",
+  gqom_fusion:          "Cm",
+  hybrid_rnb_amapiano:  "Am",
+};
+
+// Middle of each subgenre's BPM range
+export const SUBGENRE_DEFAULT_BPM: Record<string, number> = {
+  private_school:       112,
+  sgija:                114,
+  bacardi:              119,
+  stixx_sgija:          115,
+  mbiraiano:            111,
+  gqom_fusion:          119,
+  hybrid_rnb_amapiano:  112,
+};

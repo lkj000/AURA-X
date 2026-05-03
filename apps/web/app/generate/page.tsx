@@ -10,7 +10,7 @@ import {
   type VideoGenerationResult,
   type FeedbackResult,
 } from "@/lib/api";
-import { SUBGENRES, SUBGENRE_LABELS, KEYS, fmt, scoreColor, cn } from "@/lib/utils";
+import { SUBGENRES, SUBGENRE_LABELS, KEYS, SUBGENRE_DEFAULT_KEYS, SUBGENRE_DEFAULT_BPM, fmt, scoreColor, cn } from "@/lib/utils";
 
 const EMOTIONAL_PROFILES = [
   "melancholic longing",
@@ -370,8 +370,8 @@ export default function GeneratePage() {
   const [form, setForm] = useState({
     title: "",
     subgenre: "private_school",
-    bpm: "110",
-    key: "F#m",
+    bpm: String(SUBGENRE_DEFAULT_BPM["private_school"]),
+    key: SUBGENRE_DEFAULT_KEYS["private_school"],
     emotional_profile: "late night introspection",
     created_by: "producer",
   });
@@ -567,7 +567,15 @@ export default function GeneratePage() {
             <select
               className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
               value={form.subgenre}
-              onChange={(e) => setForm({ ...form, subgenre: e.target.value })}
+              onChange={(e) => {
+                const s = e.target.value;
+                setForm((prev) => ({
+                  ...prev,
+                  subgenre: s,
+                  key: SUBGENRE_DEFAULT_KEYS[s] ?? prev.key,
+                  bpm: String(SUBGENRE_DEFAULT_BPM[s] ?? prev.bpm),
+                }));
+              }}
             >
               {SUBGENRES.map((s) => (
                 <option key={s} value={s}>{SUBGENRE_LABELS[s]}</option>
