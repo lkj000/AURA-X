@@ -7,6 +7,7 @@ const links = [
   { href: "/launch", label: "Launch" },
   { href: "/", label: "Studio" },
   { href: "/generate", label: "Generate" },
+  { href: "/amapianorize", label: "Analyse" },
   { href: "/tracks", label: "Tracks" },
   { href: "/marketplace", label: "Marketplace" },
   { href: "/earnings", label: "Earnings" },
