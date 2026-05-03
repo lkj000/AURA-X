@@ -1,18 +1,60 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3003";
 
-type GateReport = { b_eff: boolean; transient_density: boolean; groove_clarity: boolean };
-type Evaluation = Record<string, number>;
-type Enhancement = Record<string, unknown>;
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type GateReport = {
+  b_eff: boolean;
+  transient_density: boolean;
+  groove_clarity: boolean;
+  all_pass?: boolean;
+  bEff_value?: number;
+  authenticity_score?: number;
+  cultural_score?: number;
+  violations?: string[];
+};
+
+type Evaluation = {
+  authenticity: number;
+  laneConfidence: number;
+  producerScore: number;
+  culturalAlignment: number;
+  harmonicCompatibility: number;
+  groovePocket: number;
+  grooveDensity: number;
+  lane: string;
+  bpm: number;
+  threshold: number;
+  issues: string[];
+};
+
+type GroovePlan = {
+  kickPattern: number[];
+  hatPattern: number[];
+  shakerPattern: number[];
+  logDrumPattern: number[];
+  swing: number;
+  steps: 16;
+};
+
+type Enhancement = {
+  recommendedCtl: { lane: string; bpm: number; swing: number; logDrum: string; quality: string };
+  groovePlan: GroovePlan;
+  suggestions: string[];
+  canAutoEnhance: boolean;
+};
+
 type AmapianorizeResult = {
   evaluation: Evaluation;
   enhancement: Enhancement;
   ctl: Record<string, unknown>;
   gates: GateReport;
 };
+
+// ── Score bar ──────────────────────────────────────────────────────────────────
 
 function ScoreBar({ label, value }: { label: string; value: number }) {
   const pct = Math.round(value * 100);
@@ -32,6 +74,8 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
+// ── Gate pill ──────────────────────────────────────────────────────────────────
+
 function GatePill({ label, pass }: { label: string; pass: boolean }) {
   return (
     <span className={cn(
@@ -45,44 +89,202 @@ function GatePill({ label, pass }: { label: string; pass: boolean }) {
   );
 }
 
+// ── Score labels ───────────────────────────────────────────────────────────────
+
 const SCORE_LABELS: Record<string, string> = {
-  quality:     "Overall quality",
-  groove:      "Groove strength",
-  logDrum:     "Log drum presence",
-  harmonic:    "Harmonic density",
-  perception:  "Perception score",
-  cultural:    "Cultural authenticity",
-  composite:   "Composite",
-  authenticity:             "Authenticity",
-  subgenre_recognizability: "Subgenre recognizability",
-  groove_clarity:           "Groove clarity",
-  harmonic_density:         "Harmonic density",
-  dj_mix_friendliness:      "DJ mix friendliness",
-  cultural_lineage:         "Cultural lineage",
+  authenticity:          "Authenticity",
+  laneConfidence:        "Lane confidence",
+  producerScore:         "Producer quality",
+  culturalAlignment:     "Cultural alignment",
+  harmonicCompatibility: "Harmonic compatibility",
+  groovePocket:          "Groove pocket",
+  grooveDensity:         "Groove density",
 };
 
-// Only render fields that are plain 0–1 numeric scores
 function isScoreField(key: string, val: unknown): val is number {
-  const skip = new Set(["threshold", "lane", "subgenre", "bpm", "swing", "steps"]);
+  const skip = new Set(["threshold", "lane", "subgenre", "bpm", "swing", "steps", "issues"]);
   return typeof val === "number" && val >= 0 && val <= 1 && !skip.has(key);
 }
 
+// ── WAV encoder (AudioBuffer → Blob) ──────────────────────────────────────────
+
+function writeStr(view: DataView, offset: number, str: string) {
+  for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+}
+
+function audioBufferToWavBlob(buf: AudioBuffer): Blob {
+  const numSamples = buf.length;
+  const sampleRate = buf.sampleRate;
+  const ab = new ArrayBuffer(44 + numSamples * 2);
+  const view = new DataView(ab);
+  writeStr(view, 0, "RIFF");
+  view.setUint32(4, 36 + numSamples * 2, true);
+  writeStr(view, 8, "WAVE");
+  writeStr(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(view, 36, "data");
+  view.setUint32(40, numSamples * 2, true);
+  const samples = buf.getChannelData(0);
+  let off = 44;
+  for (let i = 0; i < numSamples; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    off += 2;
+  }
+  return new Blob([ab], { type: "audio/wav" });
+}
+
+// ── Groove synthesizer (OfflineAudioContext) ───────────────────────────────────
+
+async function synthesizeGroove(enhancement: Enhancement): Promise<string> {
+  const bpm     = enhancement.recommendedCtl.bpm > 0 ? enhancement.recommendedCtl.bpm : 112;
+  const stepSec = (60 / bpm) / 4;
+  const loops   = 4;
+  const totalSec = stepSec * 16 * loops;
+  const sr      = 44100;
+
+  const ctx = new OfflineAudioContext(1, Math.ceil(totalSec * sr), sr);
+  const gp  = enhancement.groovePlan;
+
+  for (let loop = 0; loop < loops; loop++) {
+    const loopOffset = loop * stepSec * 16;
+
+    for (let step = 0; step < 16; step++) {
+      const t = loopOffset + step * stepSec;
+
+      // Kick — sine sweep 80→50 Hz
+      if (gp.kickPattern[step]) {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(80, t);
+        osc.frequency.exponentialRampToValueAtTime(50, t + 0.14);
+        gain.gain.setValueAtTime(1.0, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.18);
+      }
+
+      // Log drum — characteristic Amapiano gliding bass
+      if (gp.logDrumPattern[step]) {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(110, t);
+        osc.frequency.exponentialRampToValueAtTime(62, t + 0.32);
+        gain.gain.setValueAtTime(0.85, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.40);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.40);
+      }
+
+      // Hi-hat — noise + high-pass
+      if (gp.hatPattern[step]) {
+        const len  = Math.ceil(0.035 * sr);
+        const nb   = ctx.createBuffer(1, len, sr);
+        const nd   = nb.getChannelData(0);
+        for (let i = 0; i < len; i++) nd[i] = Math.random() * 2 - 1;
+        const src  = ctx.createBufferSource();
+        src.buffer = nb;
+        const hp   = ctx.createBiquadFilter();
+        hp.type    = "highpass";
+        hp.frequency.value = 8000;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.28, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
+        src.connect(hp); hp.connect(gain); gain.connect(ctx.destination);
+        src.start(t);
+      }
+
+      // Shaker — noise + band-pass, softer
+      if (gp.shakerPattern[step]) {
+        const len  = Math.ceil(0.055 * sr);
+        const nb   = ctx.createBuffer(1, len, sr);
+        const nd   = nb.getChannelData(0);
+        for (let i = 0; i < len; i++) nd[i] = Math.random() * 2 - 1;
+        const src  = ctx.createBufferSource();
+        src.buffer = nb;
+        const bp   = ctx.createBiquadFilter();
+        bp.type    = "bandpass";
+        bp.frequency.value = 4000;
+        bp.Q.value = 1.2;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.18, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
+        src.connect(bp); bp.connect(gain); gain.connect(ctx.destination);
+        src.start(t);
+      }
+    }
+  }
+
+  const rendered = await ctx.startRendering();
+  const blob     = audioBufferToWavBlob(rendered);
+  return URL.createObjectURL(blob);
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────────
+
 export default function AmapianorizePage() {
-  const [file, setFile]         = useState<File | null>(null);
-  const [loading, setLoading]   = useState(false);
-  const [result, setResult]     = useState<AmapianorizeResult | null>(null);
-  const [error, setError]       = useState<string | null>(null);
-  const inputRef                = useRef<HTMLInputElement>(null);
+  const [file, setFile]               = useState<File | null>(null);
+  const [loading, setLoading]         = useState(false);
+  const [result, setResult]           = useState<AmapianorizeResult | null>(null);
+  const [error, setError]             = useState<string | null>(null);
+  const [originalUrl, setOriginalUrl] = useState<string | null>(null);
+  const [enhancedUrl, setEnhancedUrl] = useState<string | null>(null);
+  const [synthesizing, setSynthesizing] = useState(false);
+  const inputRef                      = useRef<HTMLInputElement>(null);
+
+  // Create original audio URL when file is chosen
+  useEffect(() => {
+    if (originalUrl) URL.revokeObjectURL(originalUrl);
+    if (!file) { setOriginalUrl(null); return; }
+    const url = URL.createObjectURL(file);
+    setOriginalUrl(url);
+    return () => URL.revokeObjectURL(url);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file]);
+
+  // Auto-synthesize enhanced groove when result arrives
+  const synthRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (synthRef.current) { URL.revokeObjectURL(synthRef.current); synthRef.current = null; }
+    if (!result) { setEnhancedUrl(null); return; }
+    let cancelled = false;
+    setSynthesizing(true);
+    synthesizeGroove(result.enhancement)
+      .then((url) => {
+        if (cancelled) { URL.revokeObjectURL(url); return; }
+        synthRef.current = url;
+        setEnhancedUrl(url);
+      })
+      .catch(() => {/* synthesis optional — fail silently */})
+      .finally(() => { if (!cancelled) setSynthesizing(false); });
+    return () => { cancelled = true; };
+  }, [result]);
+
+  const handleFile = useCallback((f: File | null) => {
+    setFile(f);
+    setResult(null);
+    setError(null);
+    setEnhancedUrl(null);
+  }, []);
 
   async function analyse() {
     if (!file) return;
     setLoading(true);
     setError(null);
     setResult(null);
+    setEnhancedUrl(null);
     try {
       const fd = new FormData();
       fd.append("audio", file, file.name);
-      const res = await fetch(`${API}/api/amapianorize`, { method: "POST", body: fd });
+      const res  = await fetch(`${API}/api/amapianorize`, { method: "POST", body: fd });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? `${res.status}`);
       setResult(body as AmapianorizeResult);
@@ -94,7 +296,7 @@ export default function AmapianorizePage() {
   }
 
   const scores = result
-    ? Object.entries(result.evaluation).filter(([k, v]) => isScoreField(k, v)) as [string, number][]
+    ? (Object.entries(result.evaluation).filter(([k, v]) => isScoreField(k, v)) as [string, number][])
     : [];
 
   return (
@@ -102,7 +304,7 @@ export default function AmapianorizePage() {
       <div>
         <h1 className="text-xl font-semibold text-white">Amapianorizer</h1>
         <p className="text-sm text-zinc-500 mt-1">
-          Upload a WAV file. The engine scores it across 6 Amapiano dimensions and returns an enhancement CTL plan.
+          Upload a WAV file. The engine scores it across Amapiano dimensions, synthesizes an enhanced groove, and returns a CTL plan.
         </p>
       </div>
 
@@ -119,7 +321,7 @@ export default function AmapianorizePage() {
           type="file"
           accept="audio/wav,.wav"
           className="hidden"
-          onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); setError(null); }}
+          onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
         />
         {file ? (
           <div className="space-y-1">
@@ -148,16 +350,67 @@ export default function AmapianorizePage() {
         </div>
       )}
 
+      {/* ── Playback ── */}
+      {(originalUrl || (result && (synthesizing || enhancedUrl))) && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4">
+          <p className="text-sm font-medium text-white">Playback</p>
+
+          {originalUrl && (
+            <div className="space-y-1">
+              <p className="text-xs text-zinc-500">Original upload</p>
+              <audio src={originalUrl} controls className="w-full" style={{ colorScheme: "dark" }} />
+            </div>
+          )}
+
+          {result && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-zinc-500">Enhanced groove (4-bar preview)</p>
+                {synthesizing && (
+                  <span className="flex items-center gap-1 text-xs text-violet-400">
+                    <span className="w-3 h-3 rounded-full border border-violet-400 border-t-transparent animate-spin inline-block" />
+                    Synthesizing…
+                  </span>
+                )}
+                {!synthesizing && (() => {
+                  const mode = String((result.enhancement.recommendedCtl as Record<string, unknown>).correctionMode ?? "");
+                  if (!mode) return null;
+                  const cls =
+                    mode === "analysis_verified"  ? "bg-emerald-900/40 text-emerald-400" :
+                    mode === "analysis_corrected" ? "bg-violet-900/40 text-violet-400"   :
+                                                    "bg-zinc-800 text-zinc-500";
+                  return (
+                    <span className={cn("text-xs px-1.5 py-0.5 rounded font-mono", cls)}>
+                      {mode.replace(/_/g, " ")}
+                    </span>
+                  );
+                })()}
+              </div>
+              {enhancedUrl && (
+                <audio src={enhancedUrl} controls className="w-full" style={{ colorScheme: "dark" }} />
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {result && (
         <div className="space-y-6">
           {/* Quality gates */}
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-3">
             <p className="text-sm font-medium text-white">Quality gates</p>
             <div className="flex flex-wrap gap-2">
-              <GatePill label="B_eff"           pass={result.gates.b_eff} />
-              <GatePill label="Transient density" pass={result.gates.transient_density} />
-              <GatePill label="Groove clarity"  pass={result.gates.groove_clarity} />
+              <GatePill label="Perception"      pass={result.gates.b_eff} />
+              <GatePill label="Authenticity"    pass={result.gates.transient_density} />
+              <GatePill label="Cultural"        pass={result.gates.groove_clarity} />
             </div>
+            {result.gates.violations && result.gates.violations.length > 0 && (
+              <ul className="mt-2 space-y-0.5">
+                {result.gates.violations.map((v, i) => (
+                  <li key={i} className="text-xs text-red-400">· {v}</li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* Scores */}
@@ -165,29 +418,45 @@ export default function AmapianorizePage() {
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-white">Evaluation scores</p>
               <div className="flex gap-3 text-xs text-zinc-500">
-                {result.evaluation.lane && (
-                  <span>Lane detected: <span className="text-zinc-300">{String(result.evaluation.lane)}</span></span>
-                )}
-                {typeof result.evaluation.threshold === "number" && (
-                  <span>Threshold: <span className="text-zinc-300">{Math.round((result.evaluation.threshold as number) * 100)}%</span></span>
-                )}
+                <span>Lane: <span className="text-zinc-300">{result.evaluation.lane}</span></span>
+                <span>{result.evaluation.bpm.toFixed(1)} BPM</span>
               </div>
             </div>
-            {scores.length === 0 && (
-              <p className="text-xs text-zinc-600">No numeric scores returned — track may need re-encoding as WAV.</p>
-            )}
             {scores.map(([key, val]) => (
               <ScoreBar key={key} label={SCORE_LABELS[key] ?? key} value={val} />
             ))}
           </div>
 
-          {/* Enhancement */}
-          {Object.keys(result.enhancement).length > 0 && (
+          {/* Issues */}
+          {result.evaluation.issues && result.evaluation.issues.length > 0 && (
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-2">
-              <p className="text-sm font-medium text-white">Enhancement plan</p>
-              <pre className="text-xs text-zinc-400 overflow-auto max-h-64 font-mono leading-relaxed whitespace-pre-wrap">
-                {JSON.stringify(result.enhancement, null, 2)}
-              </pre>
+              <p className="text-sm font-medium text-white">Issues detected</p>
+              <ul className="space-y-1">
+                {result.evaluation.issues.map((issue, i) => (
+                  <li key={i} className="text-xs text-amber-400 flex gap-2">
+                    <span className="shrink-0">·</span>
+                    <span>{issue}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Enhancement suggestions */}
+          {result.enhancement.suggestions.length > 0 && (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-2">
+              <p className="text-sm font-medium text-white">Enhancement suggestions</p>
+              <ul className="space-y-1">
+                {result.enhancement.suggestions.map((s, i) => (
+                  <li key={i} className="text-xs text-violet-300 flex gap-2">
+                    <span className="shrink-0 text-violet-600">→</span>
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ul>
+              {result.enhancement.canAutoEnhance && (
+                <p className="text-xs text-emerald-400 mt-2">✓ Track quality sufficient for auto-enhancement</p>
+              )}
             </div>
           )}
 

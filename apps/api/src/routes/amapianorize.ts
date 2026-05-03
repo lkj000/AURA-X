@@ -41,11 +41,37 @@ router.post(
     try {
       const plan        = analyzeAndPlan(req.file.buffer, "audio analysis", "amapianorize");
       const enhancement = buildEnhancement(plan.evaluation);
+
+      const ev = plan.evaluation;
+      const gr = plan.gateReport;
+
       res.json({
-        evaluation:  plan.evaluation,
+        evaluation: {
+          authenticity:          ev.laneScores.overallAuthenticity,
+          laneConfidence:        ev.laneScores.laneConfidence,
+          producerScore:         ev.quality.producerScore,
+          culturalAlignment:     ev.cultural.alignmentScore,
+          harmonicCompatibility: ev.harmonic?.amapianoCompatibility ?? 0,
+          groovePocket:          ev.groove?.pocketScore ?? 0,
+          grooveDensity:         ev.groove?.density ?? 0,
+          // metadata (non-score fields — filtered by UI)
+          lane:      ev.laneScores.bestFitLane,
+          bpm:       ev.features.bpm,
+          threshold: ev.threshold,
+          issues:    ev.issues,
+        },
         enhancement,
-        ctl:         plan.ctl,
-        gates:       plan.gateReport,
+        ctl:   plan.ctl,
+        gates: {
+          b_eff:             gr.perceptionGate.passes,
+          transient_density: gr.authenticityGate.passes,
+          groove_clarity:    gr.culturalGate.passes,
+          all_pass:          gr.allPass,
+          bEff_value:        gr.perceptionGate.bEff,
+          authenticity_score: gr.authenticityGate.score,
+          cultural_score:    gr.culturalGate.alignmentScore,
+          violations:        gr.perceptionGate.violations,
+        },
       });
     } catch (e) {
       const msg = (e as Error).message;
