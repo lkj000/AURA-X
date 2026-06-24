@@ -54,6 +54,7 @@ export const CTLGlobalSchema = z.object({
 export const SectionTypeEnum = z.enum([
   "intro", "verse", "chorus", "drop",
   "breakdown", "dj_loop", "bridge", "outro",
+  "hook_fragment", "question", "adlib", "chant_groove", "melodic_rap",
 ]);
 
 export const SectionSchema = z.object({
@@ -209,7 +210,26 @@ export const EvaluationTargetsSchema = z.object({
 });
 
 // ─────────────────────────────────────────────
-// BLOCK 12 — ROOT CTL_v1 SCHEMA
+// BLOCK 12 — CULTURAL VOCABULARY
+// ─────────────────────────────────────────────
+
+export const CallResponseSchema = z.object({
+  call: z.string(),
+  response: z.string(),
+  response_style: z.enum(["whispered", "crowd", "echo", "stacked"]).optional(),
+});
+
+export const CulturalVocabularySchema = z.object({
+  arrangement_style: z.enum(["verse_chorus", "chant_first", "hook_driven"]),
+  language_tags: z.array(z.string()),
+  adlib_bank: z.array(z.string()),
+  question_bank: z.array(z.string()),
+  hook_fragments: z.array(z.string()),
+  call_response: z.array(CallResponseSchema),
+});
+
+// ─────────────────────────────────────────────
+// BLOCK 13 — ROOT CTL_v1 SCHEMA
 // ─────────────────────────────────────────────
 
 export const CTLv1Schema = z.object({
@@ -224,12 +244,13 @@ export const CTLv1Schema = z.object({
   style_constraints: StyleConstraintsSchema,
   production_directives: ProductionDirectivesSchema,
   evaluation_targets: EvaluationTargetsSchema,
+  cultural_vocabulary: CulturalVocabularySchema.optional(),
 });
 
 export type CTLv1 = z.infer<typeof CTLv1Schema>;
 
 // ─────────────────────────────────────────────
-// BLOCK 13 — FACTORY FUNCTION
+// BLOCK 14 — FACTORY FUNCTION
 // ─────────────────────────────────────────────
 
 type CreateCTLInput = Omit<Partial<CTLv1>, "global"> & {
@@ -362,6 +383,7 @@ export function createCTL(overrides: CreateCTLInput): CTLv1 {
       dj_mix_friendliness_target:      0.85,
       cultural_lineage_coherence:      0.80,
     },
+    cultural_vocabulary: overrides.cultural_vocabulary,
   };
   return CTLv1Schema.parse(base);
 }

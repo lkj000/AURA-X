@@ -14,3 +14,4 @@ venv
 apps/api/temporal-certs/
 data/
 *.mp3
+*.tsbuildinfo

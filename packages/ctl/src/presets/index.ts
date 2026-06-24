@@ -99,6 +99,39 @@ export const privateSchoolPreset: CTLv1 = createCTL({
     dj_mix_friendliness_target:      0.88,
     cultural_lineage_coherence:      0.85,
   },
+  cultural_vocabulary: {
+    arrangement_style: "chant_first",
+    language_tags: ["isiZulu", "Setswana", "township_slang", "English"],
+    adlib_bank: [
+      "Heh monna…",
+      "Eish…",
+      "Yah neh…",
+      "Mmh, ke a phapha…",
+      "Yoh…",
+      "Ke teng…",
+      "Sho, sho…",
+      "Ke a fofa…",
+    ],
+    question_bank: [
+      "Why does dreaming feel like healing…",
+      "Why does silence feel like home…",
+      "Why do colours sing so loudly…",
+      "Why does the quiet feel like truth…",
+      "Why does the groove feel like breathing…",
+      "Why does the soul feel lighter at night…",
+    ],
+    hook_fragments: [
+      "I'm a dreamer… drifting slow…",
+      "Everything feels soft when I'm dreaming…",
+      "Visions in my mind…",
+      "I feel like dreaming all the time…",
+      "I float away inside my dreaming…",
+    ],
+    call_response: [
+      { call: "o kae molao?", response: "jinda dai ding…", response_style: "crowd" },
+      { call: "o kae molao, monna?", response: "jinda dai ding… jinda dai ding…", response_style: "echo" },
+    ],
+  },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

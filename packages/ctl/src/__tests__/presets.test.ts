@@ -102,7 +102,47 @@ describe("Groove pattern integrity", () => {
   });
 });
 
-// ─── 4. Preset registry ───────────────────────────────────────────────────────
+// ─── 4. Cultural vocabulary — private school preset ──────────────────────────
+
+describe("Cultural vocabulary — Private School preset", () => {
+  it("privateSchoolPreset has cultural_vocabulary", () =>
+    expect(privateSchoolPreset.cultural_vocabulary).toBeDefined());
+
+  it("arrangement_style is chant_first", () =>
+    expect(privateSchoolPreset.cultural_vocabulary?.arrangement_style).toBe("chant_first"));
+
+  it("language_tags includes isiZulu and Setswana", () => {
+    const tags = privateSchoolPreset.cultural_vocabulary?.language_tags ?? [];
+    expect(tags).toContain("isiZulu");
+    expect(tags).toContain("Setswana");
+  });
+
+  it("adlib_bank is non-empty", () =>
+    expect((privateSchoolPreset.cultural_vocabulary?.adlib_bank ?? []).length).toBeGreaterThan(0));
+
+  it("question_bank is non-empty", () =>
+    expect((privateSchoolPreset.cultural_vocabulary?.question_bank ?? []).length).toBeGreaterThan(0));
+
+  it("hook_fragments is non-empty", () =>
+    expect((privateSchoolPreset.cultural_vocabulary?.hook_fragments ?? []).length).toBeGreaterThan(0));
+
+  it("call_response includes 'o kae molao?' call", () => {
+    const crs = privateSchoolPreset.cultural_vocabulary?.call_response ?? [];
+    expect(crs.some((cr) => cr.call === "o kae molao?")).toBe(true);
+  });
+
+  it("call_response 'o kae molao?' has response 'jinda dai ding…'", () => {
+    const cr = (privateSchoolPreset.cultural_vocabulary?.call_response ?? []).find(
+      (c) => c.call === "o kae molao?"
+    );
+    expect(cr?.response).toBe("jinda dai ding…");
+  });
+
+  it("privateSchoolPreset still passes CTLv1Schema after vocabulary addition", () =>
+    expect(() => CTLv1Schema.parse(privateSchoolPreset)).not.toThrow());
+});
+
+// ─── 5. Preset registry ───────────────────────────────────────────────────────
 
 describe("Preset registry", () => {
   it("ALL_PRESETS contains 8 presets", () => {
