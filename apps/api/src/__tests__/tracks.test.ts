@@ -63,11 +63,17 @@ jest.mock("@aura-x/ac-ami", () => ({
 
 // ─── Mock auth middleware ─────────────────────────────────────────────────────
 
+const TEST_ARTIST = "test-artist-001";
+const attach = (req: { artist: unknown }, _res: unknown, next: () => void) => {
+  req.artist = { artist_id: TEST_ARTIST, email: "test@aurax.test" };
+  next();
+};
 jest.mock("../middleware/auth", () => ({
-  verifyToken: (req: { artist: unknown }, _res: unknown, next: () => void) => {
-    req.artist = { artist_id: "test-artist-001", email: "test@aurax.test" };
-    next();
-  },
+  verifyToken: (...a: Parameters<typeof attach>) => attach(...a),
+  // `optionalToken` attaches an identity when one is presented and never refuses for its absence.
+  // The suno-result route uses it because that endpoint has two legitimate callers: a human moderator
+  // with a token, and the classification integration with a shared secret and no token at all.
+  optionalToken: (...a: Parameters<typeof attach>) => attach(...a),
 }));
 
 // ─── Build app ───────────────────────────────────────────────────────────────
@@ -297,13 +303,28 @@ describe("POST /api/tracks/:id/suno-result", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // APPROVAL IS NOW AUTHORISED, NOT MERELY AUTHENTICATED.
+    //
+    // This route accepted any validly signed artist token, so any artist could set `suno_approved` on
+    // any track — half the marketplace listing gate. It now requires either the classification
+    // integration's shared secret or a named moderator, and refuses everyone when neither is
+    // configured. These tests exercise the UPDATE mechanics, so the test artist is made a moderator;
+    // that an ordinary artist is refused is asserted in agentAuthorization.test.ts.
+    process.env.TRACK_MODERATOR_IDS = TEST_ARTIST;
+    // The route reads the track before deciding, because self-approval cannot be judged without
+    // knowing whose track it is. `created_by` is somebody else, so the moderator is not the owner.
     mockFrom.mockImplementation(() => ({
-      update:  jest.fn().mockReturnThis(),
-      eq:      jest.fn().mockReturnThis(),
-      select:  jest.fn().mockReturnThis(),
-      single:  jest.fn().mockResolvedValue({ data: SUNO_RESULT, error: null }),
+      update:      jest.fn().mockReturnThis(),
+      eq:          jest.fn().mockReturnThis(),
+      select:      jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: { id: "track-aaa-001", created_by: "some-other-artist" }, error: null,
+      }),
+      single:      jest.fn().mockResolvedValue({ data: SUNO_RESULT, error: null }),
     }));
   });
+
+  afterEach(() => { delete process.env.TRACK_MODERATOR_IDS; });
 
   it("11. POST approved:true → 200 with suno_approved true", async () => {
     const res = await request(app)
@@ -317,9 +338,12 @@ describe("POST /api/tracks/:id/suno-result", () => {
 
   it("12. POST approved:false → 200 with suno_approved false", async () => {
     mockFrom.mockImplementation(() => ({
-      update:  jest.fn().mockReturnThis(),
-      eq:      jest.fn().mockReturnThis(),
-      select:  jest.fn().mockReturnThis(),
+      update:      jest.fn().mockReturnThis(),
+      eq:          jest.fn().mockReturnThis(),
+      select:      jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: { id: "track-aaa-001", created_by: "some-other-artist" }, error: null,
+      }),
       single:  jest.fn().mockResolvedValue({ data: { ...SUNO_RESULT, suno_approved: false }, error: null }),
     }));
     const res = await request(app)
@@ -349,9 +373,12 @@ describe("POST /api/tracks/:id/suno-result", () => {
 
   it("15. POST track not found → 404", async () => {
     mockFrom.mockImplementation(() => ({
-      update:  jest.fn().mockReturnThis(),
-      eq:      jest.fn().mockReturnThis(),
-      select:  jest.fn().mockReturnThis(),
+      update:      jest.fn().mockReturnThis(),
+      eq:          jest.fn().mockReturnThis(),
+      select:      jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: { id: "track-aaa-001", created_by: "some-other-artist" }, error: null,
+      }),
       single:  jest.fn().mockResolvedValue({ data: null, error: null }),
     }));
     const res = await request(app)

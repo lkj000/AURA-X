@@ -62,6 +62,21 @@ import request from "supertest";
 import agentRouter from "../routes/agent";
 import { createCTL } from "@aura-x/ctl";
 
+// ─── Auth for the guarded agent routes ───────────────────────────────────────
+//
+// /run, /finetune, /revise, /tune and /ingest now require a session. The router was previously mounted
+// with no authentication at all, and /run took `created_by` from the REQUEST BODY — so an anonymous
+// caller could start real workflow runs and attribute them to any name they typed. These suites test
+// route MECHANICS, so they present a valid token; that the routes refuse without one is asserted in
+// agentAuthorization.test.ts.
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? "test-secret-aura-x-agent";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const AGENT_TEST_TOKEN = (require("jsonwebtoken") as typeof import("jsonwebtoken")).sign(
+  { artist_id: "artist-test-agent", email: "agent@test.local" },
+  process.env.JWT_SECRET,
+  { expiresIn: "1h" },
+);
+
 const app = express();
 app.use(express.json());
 app.use("/api/agent", agentRouter);
@@ -122,6 +137,7 @@ describe("Revision Loop", () => {
   it("5. Missing track_id → 400", async () => {
     const res = await request(app)
       .post("/api/agent/revise")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ ctl_id: "ctl-001", ctl: VALID_CTL });
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
@@ -130,6 +146,7 @@ describe("Revision Loop", () => {
   it("6. Invalid CTL → 400", async () => {
     const res = await request(app)
       .post("/api/agent/revise")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "t-001", ctl_id: "ctl-001", ctl: { invalid: true } });
     expect(res.status).toBe(400);
     expect(res.body.issues).toBeDefined();
@@ -140,6 +157,7 @@ describe("Revision Loop", () => {
 
     const res = await request(app)
       .post("/api/agent/revise")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "t-001", ctl_id: "ctl-001", ctl: VALID_CTL });
 
     expect(res.status).toBe(200);
@@ -162,6 +180,7 @@ describe("Revision Loop", () => {
 
     const res = await request(app)
       .post("/api/agent/revise")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "t-001", ctl_id: "ctl-001", ctl: VALID_CTL });
 
     expect(res.status).toBe(200);
@@ -173,6 +192,7 @@ describe("Revision Loop", () => {
   it("9. Response has final_ctl object", async () => {
     const res = await request(app)
       .post("/api/agent/revise")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "t-001", ctl_id: "ctl-001", ctl: VALID_CTL });
 
     expect(res.status).toBe(200);
@@ -183,6 +203,7 @@ describe("Revision Loop", () => {
   it("10. total_mutations_applied is a non-negative integer", async () => {
     const res = await request(app)
       .post("/api/agent/revise")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "t-001", ctl_id: "ctl-001", ctl: VALID_CTL });
 
     expect(res.status).toBe(200);

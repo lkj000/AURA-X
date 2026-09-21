@@ -127,6 +127,19 @@ import express from "express";
 import request from "supertest";
 import agentRouter from "../routes/agent";
 
+// ─── Auth for the guarded agent routes ───────────────────────────────────────
+//
+// /ingest now requires a session. This router was mounted with no authentication at all. These tests
+// exercise route MECHANICS, so they present a valid token; that the routes refuse without one is
+// asserted in agentAuthorization.test.ts.
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? "test-secret-aura-x-agent";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const AGENT_TEST_TOKEN = (require("jsonwebtoken") as typeof import("jsonwebtoken")).sign(
+  { artist_id: "artist-test-agent", email: "agent@test.local" },
+  process.env.JWT_SECRET,
+  { expiresIn: "1h" },
+);
+
 const app = express();
 app.use(express.json());
 app.use("/api/agent", agentRouter);
@@ -140,6 +153,7 @@ describe("Temporal — POST /api/agent/ingest", () => {
   it("1. Missing track_id → 400", async () => {
     const res = await request(app)
       .post("/api/agent/ingest")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ generation_id: "gen-001", audio_url: "s3://bucket/audio.wav" });
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
@@ -148,6 +162,7 @@ describe("Temporal — POST /api/agent/ingest", () => {
   it("2. Missing generation_id → 400", async () => {
     const res = await request(app)
       .post("/api/agent/ingest")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "track-001", audio_url: "s3://bucket/audio.wav" });
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
@@ -156,6 +171,7 @@ describe("Temporal — POST /api/agent/ingest", () => {
   it("3. Missing audio_url → 400", async () => {
     const res = await request(app)
       .post("/api/agent/ingest")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "track-001", generation_id: "gen-001" });
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
@@ -164,6 +180,7 @@ describe("Temporal — POST /api/agent/ingest", () => {
   it("4. Invalid source value → 400", async () => {
     const res = await request(app)
       .post("/api/agent/ingest")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "track-001", generation_id: "gen-001",
               audio_url: "s3://bucket/audio.wav", source: "suno" });
     expect(res.status).toBe(400);
@@ -173,6 +190,7 @@ describe("Temporal — POST /api/agent/ingest", () => {
   it("5. Valid ingest request → 202 with workflow_id", async () => {
     const res = await request(app)
       .post("/api/agent/ingest")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "track-001", generation_id: "gen-001",
               audio_url: "s3://bucket/audio.wav", source: "human" });
     expect(res.status).toBe(202);
@@ -183,6 +201,7 @@ describe("Temporal — POST /api/agent/ingest", () => {
   it("6. Source defaults to 'human' when not provided", async () => {
     const res = await request(app)
       .post("/api/agent/ingest")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "track-001", generation_id: "gen-001",
               audio_url: "s3://bucket/audio.wav" });
     expect(res.status).toBe(202);
@@ -197,6 +216,7 @@ describe("Temporal — POST /api/agent/ingest", () => {
   it("7. Workflow ID passed to Temporal includes track_id and generation_id", async () => {
     await request(app)
       .post("/api/agent/ingest")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "track-abc", generation_id: "gen-xyz",
               audio_url: "s3://bucket/audio.wav" });
     expect(mockWorkflowStart).toHaveBeenCalledWith(

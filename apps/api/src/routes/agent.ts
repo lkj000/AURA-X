@@ -1,4 +1,6 @@
 import { Router, Request, Response } from "express";
+import { verifyToken } from "../middleware/auth";
+import { generationLimiter } from "../middleware/rateLimit";
 import { CTLv1Schema } from "@aura-x/ctl";
 import { runRevisionLoop } from "../agent/revisionLoop";
 import { tuneWeightsForSubgenre } from "../agent/weightTuner";
@@ -21,7 +23,7 @@ const router = Router();
 // POST /api/agent/revise
 // Body: { track_id, ctl_id, ctl, max_iterations? }
 // Runs revision loop: evaluate → mutate → regenerate (max 3 iterations)
-router.post("/revise", async (req: Request, res: Response): Promise<void> => {
+router.post("/revise", verifyToken, async (req: Request, res: Response): Promise<void> => {
   const { track_id, ctl_id, max_iterations } = req.body;
 
   if (!track_id || !ctl_id) {
@@ -47,7 +49,7 @@ router.post("/revise", async (req: Request, res: Response): Promise<void> => {
 
 // POST /api/agent/tune
 // Body: { subgenre, min_score? }
-router.post("/tune", async (req: Request, res: Response): Promise<void> => {
+router.post("/tune", verifyToken, async (req: Request, res: Response): Promise<void> => {
   const { subgenre, min_score } = req.body;
   if (!subgenre) {
     res.status(400).json({ error: "subgenre is required" });
@@ -80,11 +82,22 @@ router.get("/dataset/stats", async (_req: Request, res: Response): Promise<void>
 // POST /api/agent/run — FULL AUTONOMOUS AGENT (in-process, no Temporal dependency)
 // Body: { title, subgenre, bpm?, key?, emotional_profile?, generation_mode?, created_by }
 // Returns 202 immediately with workflowId — poll GET /api/agent/workflow/:workflowId for result
-router.post("/run", (req: Request, res: Response): void => {
-  const { title, subgenre, bpm, key, emotional_profile, generation_mode, created_by } = req.body;
+//
+// AUTHENTICATED, RATE-LIMITED, AND THE IDENTITY COMES FROM THE SESSION.
+//
+// This router was mounted with no authentication at all, while `/api/generate` beside it carried the
+// generation limiter. `created_by` was read from the REQUEST BODY — so an anonymous caller started
+// real workflow runs and attributed them to whoever they typed. Same for `triggered_by` on /finetune,
+// which starts model training.
+//
+// `created_by` is still accepted in the body and ignored: silently overriding it is better than a 400,
+// because the existing web client sends it and breaking that would be a second defect.
+router.post("/run", verifyToken, generationLimiter, (req: Request, res: Response): void => {
+  const { title, subgenre, bpm, key, emotional_profile, generation_mode } = req.body;
+  const created_by = req.artist!.artist_id;
 
-  if (!title || !subgenre || !created_by) {
-    res.status(400).json({ error: "title, subgenre, and created_by are required" });
+  if (!title || !subgenre) {
+    res.status(400).json({ error: "title and subgenre are required" });
     return;
   }
 
@@ -157,7 +170,7 @@ router.post("/run", (req: Request, res: Response): void => {
 
 // POST /api/agent/ingest
 // Body: { track_id, generation_id, audio_url, source? }
-router.post("/ingest", async (req: Request, res: Response): Promise<void> => {
+router.post("/ingest", verifyToken, async (req: Request, res: Response): Promise<void> => {
   const { track_id, generation_id, audio_url, source = "human" } = req.body;
 
   if (!track_id || !generation_id || !audio_url) {
@@ -205,8 +218,11 @@ router.get("/workflow/:workflowId", (req: Request, res: Response): void => {
 
 // POST /api/agent/finetune
 // Body: { subgenre?, min_score?, training_steps?, learning_rate?, triggered_by }
-router.post("/finetune", async (req: Request, res: Response): Promise<void> => {
-  const { subgenre, min_score, training_steps, learning_rate, triggered_by } = req.body;
+// Training spends real compute. Same reasoning as /run: authenticated, limited, and the actor is the
+// session rather than a field the caller fills in.
+router.post("/finetune", verifyToken, generationLimiter, async (req: Request, res: Response): Promise<void> => {
+  const { subgenre, min_score, training_steps, learning_rate } = req.body;
+  const triggered_by = req.artist!.artist_id;
 
   if (!triggered_by) {
     res.status(400).json({ error: "triggered_by is required" });

@@ -128,6 +128,20 @@ import express from "express";
 import request from "supertest";
 import agentRouter from "../routes/agent";
 
+// ─── Auth for the guarded agent routes ───────────────────────────────────────
+//
+// /run now requires a session. This router was mounted with NO authentication at all, and `created_by`
+// was read from the REQUEST BODY — so an anonymous caller started real Temporal workflow runs and
+// attributed them to whatever name they typed. These tests exercise route MECHANICS, so they present a
+// valid token; that the route refuses without one is asserted in agentAuthorization.test.ts.
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? "test-secret-aura-x-agent";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const AGENT_TEST_TOKEN = (require("jsonwebtoken") as typeof import("jsonwebtoken")).sign(
+  { artist_id: "artist-test-agent", email: "agent@test.local" },
+  process.env.JWT_SECRET,
+  { expiresIn: "1h" },
+);
+
 const app = express();
 app.use(express.json());
 app.use("/api/agent", agentRouter);
@@ -146,6 +160,7 @@ describe("Agent Runner — POST /api/agent/run (T13: Temporal AutonomousGenerati
   it("1. Missing title → 400", async () => {
     const res = await request(app)
       .post("/api/agent/run")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ subgenre: "private_school", created_by: "test" });
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
@@ -154,17 +169,25 @@ describe("Agent Runner — POST /api/agent/run (T13: Temporal AutonomousGenerati
   it("2. Missing subgenre → 400", async () => {
     const res = await request(app)
       .post("/api/agent/run")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ title: "Night Drive", created_by: "test" });
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
   });
 
-  it("3. Missing created_by → 400", async () => {
+  it("3. identity comes from the session, so an absent created_by is not an error", async () => {
+    // WAS "Missing created_by → 400", which required the CALLER to supply their own identity in the
+    // request body — on a route mounted with no authentication at all that starts a real workflow. A
+    // missing field was rejected; a fabricated one was accepted and became the run's attribution.
+    //
+    // `created_by` now comes from the verified token, so its absence from the body is unremarkable,
+    // and a value supplied there is ignored rather than trusted.
     const res = await request(app)
       .post("/api/agent/run")
-      .send({ title: "Night Drive", subgenre: "private_school" });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBeDefined();
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
+      .send({ title: "Test", subgenre: "private_school", created_by: "somebody-else-entirely" });
+    expect(res.status).toBe(202);
+    expect(JSON.stringify(res.body)).not.toContain("somebody-else-entirely");
   });
 
   // ─── T13: non-blocking 202 + workflowId ──────────────────────────────────
@@ -172,6 +195,7 @@ describe("Agent Runner — POST /api/agent/run (T13: Temporal AutonomousGenerati
   it("4. Valid goal → 202 (non-blocking — Temporal workflow started)", async () => {
     const res = await request(app)
       .post("/api/agent/run")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ title: "Night Drive", subgenre: "private_school", created_by: "okovanggo_ai" });
     expect(res.status).toBe(202);
   });
@@ -179,6 +203,7 @@ describe("Agent Runner — POST /api/agent/run (T13: Temporal AutonomousGenerati
   it("5. Response has workflow_id string", async () => {
     const res = await request(app)
       .post("/api/agent/run")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ title: "Night Drive", subgenre: "private_school", created_by: "okovanggo_ai" });
     expect(res.status).toBe(202);
     expect(typeof res.body.workflow_id).toBe("string");
@@ -188,6 +213,7 @@ describe("Agent Runner — POST /api/agent/run (T13: Temporal AutonomousGenerati
   it("6. Response has run_id string", async () => {
     const res = await request(app)
       .post("/api/agent/run")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ title: "Night Drive", subgenre: "private_school", created_by: "okovanggo_ai" });
     expect(res.status).toBe(202);
     expect(typeof res.body.run_id).toBe("string");
@@ -196,6 +222,7 @@ describe("Agent Runner — POST /api/agent/run (T13: Temporal AutonomousGenerati
   it("7. Response status field is 'started'", async () => {
     const res = await request(app)
       .post("/api/agent/run")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ title: "Night Drive", subgenre: "private_school", created_by: "okovanggo_ai" });
     expect(res.status).toBe(202);
     expect(res.body.status).toBe("started");
@@ -204,6 +231,7 @@ describe("Agent Runner — POST /api/agent/run (T13: Temporal AutonomousGenerati
   it("8. Temporal workflow started with AutonomousGenerationWorkflow name", async () => {
     await request(app)
       .post("/api/agent/run")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ title: "Night Drive", subgenre: "private_school", created_by: "okovanggo_ai" });
     expect(mockAgentWorkflowStart).toHaveBeenCalledWith(
       "AutonomousGenerationWorkflow",
@@ -214,6 +242,7 @@ describe("Agent Runner — POST /api/agent/run (T13: Temporal AutonomousGenerati
   it("9. Workflow args contain goal with title, subgenre, created_by", async () => {
     await request(app)
       .post("/api/agent/run")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ title: "Night Drive", subgenre: "sgija", created_by: "test-producer" });
     expect(mockAgentWorkflowStart).toHaveBeenCalledWith(
       "AutonomousGenerationWorkflow",
@@ -233,6 +262,7 @@ describe("Agent Runner — POST /api/agent/run (T13: Temporal AutonomousGenerati
     mockAgentWorkflowStart.mockRejectedValueOnce(new Error("Temporal unavailable"));
     const res = await request(app)
       .post("/api/agent/run")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ title: "Night Drive", subgenre: "private_school", created_by: "okovanggo_ai" });
     expect(res.status).toBe(500);
     expect(res.body.error).toMatch(/Temporal unavailable/);

@@ -98,6 +98,21 @@ import request from "supertest";
 import agentRouter from "../routes/agent";
 import { triggerFinetune } from "../agent/finetuneRunner";
 
+// ─── Auth for the guarded agent routes ───────────────────────────────────────
+//
+// /run, /finetune, /revise, /tune and /ingest now require a session. The router was previously mounted
+// with no authentication at all, and /run took `created_by` from the REQUEST BODY — so an anonymous
+// caller could start real workflow runs and attribute them to any name they typed. These suites test
+// route MECHANICS, so they present a valid token; that the routes refuse without one is asserted in
+// agentAuthorization.test.ts.
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? "test-secret-aura-x-agent";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const AGENT_TEST_TOKEN = (require("jsonwebtoken") as typeof import("jsonwebtoken")).sign(
+  { artist_id: "artist-test-agent", email: "agent@test.local" },
+  process.env.JWT_SECRET,
+  { expiresIn: "1h" },
+);
+
 const app = express();
 app.use(express.json());
 app.use("/api/agent", agentRouter);
@@ -129,18 +144,35 @@ describe("POST /api/agent/finetune", () => {
     setupMocks(50);
   });
 
-  it("1. Missing triggered_by → 400", async () => {
+  it("1. identity comes from the session, so an absent triggered_by is not an error", async () => {
+    // WAS "Missing triggered_by → 400", which required the CALLER to supply their own identity in the
+    // request body — on a route that was mounted with no authentication at all and starts model
+    // training. A missing field was rejected; a fabricated one was accepted.
+    //
+    // `triggered_by` now comes from the verified token, so its absence from the body is unremarkable.
     const res = await request(app)
       .post("/api/agent/finetune")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ subgenre: "private_school" });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBeDefined();
+    expect(res.status).toBe(202);
+  });
+
+  it("1b. a triggered_by supplied in the body does not override the session", async () => {
+    // The whole point: the field is still accepted so the existing client keeps working, and ignored
+    // so it cannot be used to attribute a training run to somebody else.
+    const res = await request(app)
+      .post("/api/agent/finetune")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
+      .send({ subgenre: "private_school", triggered_by: "somebody-else-entirely" });
+    expect(res.status).toBe(202);
+    expect(JSON.stringify(res.body)).not.toContain("somebody-else-entirely");
   });
 
   it("2. Insufficient data (< 10 records) → 422", async () => {
     setupMocks(3);
     const res = await request(app)
       .post("/api/agent/finetune")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ triggered_by: "test_user" });
     expect(res.status).toBe(422);
     expect(res.body.status).toBe("rejected");
@@ -149,6 +181,7 @@ describe("POST /api/agent/finetune", () => {
   it("3. Sufficient data → 202", async () => {
     const res = await request(app)
       .post("/api/agent/finetune")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ triggered_by: "test_user" });
     expect(res.status).toBe(202);
   });
@@ -156,6 +189,7 @@ describe("POST /api/agent/finetune", () => {
   it("4. Response has run_id field", async () => {
     const res = await request(app)
       .post("/api/agent/finetune")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ triggered_by: "test_user" });
     expect(res.status).toBe(202);
     expect(res.body.run_id).toBeDefined();
@@ -165,6 +199,7 @@ describe("POST /api/agent/finetune", () => {
   it("5. Response has status field", async () => {
     const res = await request(app)
       .post("/api/agent/finetune")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ triggered_by: "test_user" });
     expect(res.status).toBe(202);
     expect(res.body.status).toBeDefined();
@@ -173,6 +208,7 @@ describe("POST /api/agent/finetune", () => {
   it("6. Response has message string", async () => {
     const res = await request(app)
       .post("/api/agent/finetune")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ triggered_by: "test_user" });
     expect(res.status).toBe(202);
     expect(typeof res.body.message).toBe("string");
@@ -182,6 +218,7 @@ describe("POST /api/agent/finetune", () => {
   it("7. run_id contains 'finetune-'", async () => {
     const res = await request(app)
       .post("/api/agent/finetune")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ triggered_by: "test_user" });
     expect(res.status).toBe(202);
     expect(res.body.run_id).toContain("finetune-");
@@ -190,6 +227,7 @@ describe("POST /api/agent/finetune", () => {
   it("8. run_id contains subgenre when provided", async () => {
     const res = await request(app)
       .post("/api/agent/finetune")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ triggered_by: "test_user", subgenre: "sgija" });
     expect(res.status).toBe(202);
     expect(res.body.run_id).toContain("sgija");
