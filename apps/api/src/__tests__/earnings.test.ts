@@ -3,6 +3,12 @@ import * as path from "path";
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 process.env.JWT_SECRET    = "test-secret-aura-x-phase4";
+
+// These suites exercise the licensing/withdrawal MECHANICS — tier pricing, the 80/20 split, the
+// access token, balance arithmetic. Those paths now refuse outright unless a mode is chosen, because
+// the platform cannot charge a buyer or record a payable. Set BEFORE the route imports below, which
+// are hoisted. That the DEFAULT is refusal is asserted in marketplaceSettlement.test.ts.
+process.env.AURA_MARKETPLACE_MODE = "SIMULATION";
 process.env.NEXUS_API_URL = "http://nexus-mock.test";
 process.env.GIG_API_KEY   = "test-gig-key";
 
@@ -68,6 +74,7 @@ function makeHistoryMock(data = PAID_SPLITS) {
   return {
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
+    in: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     range: jest.fn().mockResolvedValue({ data, error: null }),
   };
@@ -76,7 +83,11 @@ function makeHistoryMock(data = PAID_SPLITS) {
 function makeSummaryMock(data = PAID_SPLITS) {
   return {
     select: jest.fn().mockReturnThis(),
+    // `in` as well as `eq`: the routes filter on `.in("status", ["PAID", "SIMULATED"])` now. Splits
+    // created through the marketplace are written SIMULATED rather than PAID, because no buyer is
+    // charged and no producer is paid — a PAID-only filter would report every balance as zero.
     eq: jest.fn().mockResolvedValue({ data, error: null }),
+    in: jest.fn().mockResolvedValue({ data, error: null }),
   };
 }
 
@@ -107,6 +118,7 @@ describe("GET /api/earnings", () => {
     mockFrom.mockImplementation(() => ({
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockResolvedValue({ data: [], error: null }),
+      in: jest.fn().mockResolvedValue({ data: [], error: null }),
     }));
     const token = makeToken("unknown-producer");
     const res   = await request(app).get("/api/earnings").set("Authorization", `Bearer ${token}`);
@@ -191,14 +203,23 @@ describe("POST /api/earnings/withdraw", () => {
     expect(res.body.available).toBe(200);
   });
 
-  it("11. Returns 200 with WITHDRAWN status and NEXUS tx_id on success", async () => {
+  it("11. a request that moves no money does not report itself as WITHDRAWN", async () => {
+    // WAS "Returns 200 with WITHDRAWN status and NEXUS tx_id on success" — the A3 defect written down
+    // as a requirement. Nothing leaves an account on this path: no withdrawal row is written, the
+    // available balance is computed from splits and is not reduced, and the NEXUS call it makes
+    // reaches a function that performs arithmetic and persists nothing. "Success" here meant "no
+    // exception was thrown".
     const token = makeToken();
     const res   = await request(app)
       .post("/api/earnings/withdraw")
       .set("Authorization", `Bearer ${token}`)
       .send({ amount_usd: 100 });
+
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe("WITHDRAWN");
+    expect(res.body.status).not.toBe("WITHDRAWN");
+    expect(res.body.status).toBe("SIMULATED_NOT_WITHDRAWN");
+    expect(res.body.amount_paid).toBe(0);
+    // The request amount is still echoed — what changes is that it is not called a payment.
     expect(res.body.amount_usd).toBe(100);
     expect(res.body.nexus_tx_id).toBe("AURA-withdraw-001");
   });

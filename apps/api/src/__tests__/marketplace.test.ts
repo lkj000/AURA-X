@@ -6,6 +6,12 @@ process.env.JWT_SECRET    = "test-secret-aura-x-phase4";
 process.env.NEXUS_API_URL = "http://nexus-mock.test";
 process.env.GIG_API_KEY   = "test-gig-key";
 
+// These suites exercise the licensing/withdrawal MECHANICS — tier pricing, the 80/20 split, the
+// access token, balance arithmetic. Those paths now refuse outright unless a mode is chosen, because
+// the platform cannot charge a buyer or record a payable. Set BEFORE the route imports below, which
+// are hoisted. That the DEFAULT is refusal is asserted in marketplaceSettlement.test.ts.
+process.env.AURA_MARKETPLACE_MODE = "SIMULATION";
+
 // ─── Mock Supabase ────────────────────────────────────────────────────────────
 
 const mockFrom = jest.fn();
@@ -54,7 +60,11 @@ function makeTrackMock(exists = true) {
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     maybeSingle: jest.fn().mockResolvedValue({
-      data: exists ? { id: "track-mkt-001", created_by: "producer-001" } : null,
+      // `suno_approved` added when the purchase path started enforcing the SAME eligibility rule as
+      // the listing. Before that, the listing required a passed gate AND approval while a purchase
+      // required only the gate — so a track withheld from the marketplace could still be licensed by
+      // anyone who knew its id. This fixture is "a normal, purchasable track", so it carries both.
+      data: exists ? { id: "track-mkt-001", created_by: "producer-001", suno_approved: true } : null,
       error: null,
     }),
   };
@@ -300,8 +310,14 @@ describe("POST /api/marketplace/:trackId/license", () => {
     expect(res.body.price_usd).toBe(25);
     expect(res.body.license_id).toBe("lic-mkt-001");
     expect(res.body.split_id).toBe("split-mkt-001");
-    expect(res.body.split_status).toBe("PAID");
     expect(typeof res.body.access_token).toBe("string");
+
+    // WAS `expect(res.body.split_status).toBe("PAID")`. Nobody was paid. No buyer was charged, and
+    // the producer "payout" is a NEXUS function that computes figures and writes no wallet credit and
+    // no transaction. A test asserting PAID made the defect a requirement.
+    expect(res.body.split_status).not.toBe("PAID");
+    expect(res.body.simulated).toBe(true);
+    expect(res.body.amount_charged).toBe(0);
   });
 
   it("11. PREMIUM tier priced at $150", async () => {
@@ -339,7 +355,11 @@ describe("POST /api/marketplace/:trackId/license", () => {
     );
   });
 
-  it("14. NEXUS failure still returns 201 with split_status FAILED", async () => {
+  it("14. a failed producer payout does not yield an active licence", async () => {
+    // WAS "NEXUS failure still returns 201 with split_status FAILED" — the A1 defect written down as
+    // intended behaviour. The buyer received rights, the producer was not paid, and the platform
+    // recorded both outcomes as fine. It still returns 201 in SIMULATION, because nothing about this
+    // path is a real sale; what it must never return is an ACTIVE licence.
     mockFetch.mockRejectedValue(new Error("NEXUS down"));
     mockFrom.mockImplementation((table: string) => {
       if (table === "tracks")         return makeTrackMock();
