@@ -16,7 +16,22 @@ type WorkflowState =
   | { status: "completed"; result: AgentGenerationResult }
   | { status: "failed"; error: string };
 
+/**
+ * IN-PROCESS WORKFLOW STATE, AND WHAT THAT COSTS.
+ *
+ * A Map lives in one process's memory. It does not survive a restart and is not shared between
+ * instances, so behind more than one replica a caller polls whichever instance the load balancer
+ * picks and is told `not_found` by the ones that did not start the work.
+ *
+ * That is not fixed here — durable execution is a real piece of work, not a comment. What is fixed is
+ * the SILENCE: `not_found` was returned for three different situations — never existed, lost to a
+ * restart, or running on another instance — and the caller could not tell which. The polling response
+ * now says so, so "my job disappeared" is a diagnosable statement rather than a mystery.
+ */
 const workflows = new Map<string, WorkflowState>();
+
+/** Stamped at boot. A workflow id issued before this instance started cannot be in its Map. */
+const PROCESS_STARTED_AT = new Date().toISOString();
 
 const router = Router();
 
@@ -183,10 +198,21 @@ router.post("/ingest", verifyToken, async (req: Request, res: Response): Promise
     return;
   }
 
-  // Stub: acknowledge ingest request (full DatasetIngestionWorkflow requires Temporal worker)
-  res.status(202).json({
-    workflow_id:   `dataset-ingest-${track_id}-${generation_id}`,
-    status:        "started",
+  // IT SAID "started" AND STARTED NOTHING.
+  //
+  // The full DatasetIngestionWorkflow needs a Temporal worker that is not wired up. This returned 202
+  // with `status: "started"` and a workflow_id that was never registered in `workflows` — so polling
+  // that id answered `not_found`, and the caller was left to conclude their job had vanished rather
+  // than that it had never begun.
+  //
+  // 501 rather than 202: the operation is not implemented, and a 2xx is a promise. The identifier is
+  // still returned because callers store it, but it is named for what it is.
+  res.status(501).json({
+    error:         "Dataset ingestion is not implemented — no workflow was started.",
+    reason:        "INGEST_NOT_IMPLEMENTED",
+    status:        "not_started",
+    detail:        "The DatasetIngestionWorkflow requires a Temporal worker that is not currently running.",
+    would_be_workflow_id: `dataset-ingest-${track_id}-${generation_id}`,
     track_id,
     generation_id,
   });
@@ -199,7 +225,18 @@ router.get("/workflow/:workflowId", (req: Request, res: Response): void => {
   const state = workflows.get(workflowId);
 
   if (!state) {
-    res.json({ workflow_id: workflowId, status: "not_found" });
+    // "not_found" covered three different situations — never existed, lost to a restart, or started
+    // on another instance — and the caller could not tell which. The state is still in memory; what
+    // changes is that its absence no longer reads as "your job is gone".
+    res.json({
+      workflow_id: workflowId,
+      status: "not_found",
+      detail:
+        "This instance has no record of that workflow. State is held in memory: it does not survive " +
+        "a restart and is not shared between instances, so a workflow started elsewhere or before " +
+        "this process began will not be found here.",
+      process_started_at: PROCESS_STARTED_AT,
+    });
     return;
   }
 

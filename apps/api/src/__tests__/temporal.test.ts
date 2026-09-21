@@ -187,57 +187,50 @@ describe("Temporal — POST /api/agent/ingest", () => {
     expect(res.body.error).toMatch(/source/);
   });
 
-  it("5. Valid ingest request → 202 with workflow_id", async () => {
+  it("5. ingest reports that it did NOT start, because it does not", async () => {
+    // WAS "Valid ingest request → 202 with workflow_id", asserting `status: "started"`. The handler
+    // is a stub — its own comment said so — and the workflow_id it returned was never registered, so
+    // polling it answered `not_found`. The caller was left to conclude their job had vanished rather
+    // than that it had never begun. A 2xx is a promise; this makes none.
     const res = await request(app)
       .post("/api/agent/ingest")
       .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "track-001", generation_id: "gen-001",
               audio_url: "s3://bucket/audio.wav", source: "human" });
-    expect(res.status).toBe(202);
-    expect(res.body.workflow_id).toBeDefined();
-    expect(res.body.status).toBe("started");
+
+    expect(res.status).toBe(501);
+    expect(res.body.reason).toBe("INGEST_NOT_IMPLEMENTED");
+    expect(res.body.status).toBe("not_started");
+    expect(res.body.status).not.toBe("started");
   });
 
-  it("6. Source defaults to 'human' when not provided", async () => {
-    const res = await request(app)
+  it("6. and it starts no Temporal workflow — which is why it must not claim to", async () => {
+    // WAS asserting mockWorkflowStart was called with "DatasetIngestionWorkflow". It never was: the
+    // handler contains no Temporal call at all, so this test was failing before any of these changes.
+    // Inverted to assert the actual behaviour, which is the thing worth locking down — if ingestion is
+    // implemented later, this test fails and forces the 501 to be removed deliberately.
+    await request(app)
       .post("/api/agent/ingest")
       .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "track-001", generation_id: "gen-001",
               audio_url: "s3://bucket/audio.wav" });
-    expect(res.status).toBe(202);
-    expect(mockWorkflowStart).toHaveBeenCalledWith(
-      "DatasetIngestionWorkflow",
-      expect.objectContaining({
-        args: [expect.objectContaining({ source: "human" })],
-      }),
-    );
+
+    expect(mockWorkflowStart).not.toHaveBeenCalled();
   });
 
-  it("7. Workflow ID passed to Temporal includes track_id and generation_id", async () => {
-    await request(app)
+  it("7. the identifier it would have used is still returned, named for what it is", async () => {
+    // Callers store the id, so it is still provided — under `would_be_workflow_id` rather than
+    // `workflow_id`, so nothing polls it expecting to find a running job.
+    const res = await request(app)
       .post("/api/agent/ingest")
       .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ track_id: "track-abc", generation_id: "gen-xyz",
               audio_url: "s3://bucket/audio.wav" });
-    expect(mockWorkflowStart).toHaveBeenCalledWith(
-      "DatasetIngestionWorkflow",
-      expect.objectContaining({
-        workflowId: expect.stringContaining("track-abc"),
-      }),
-    );
-    expect(mockWorkflowStart).toHaveBeenCalledWith(
-      "DatasetIngestionWorkflow",
-      expect.objectContaining({
-        workflowId: expect.stringContaining("gen-xyz"),
-      }),
-    );
+
+    expect(res.body.would_be_workflow_id).toContain("track-abc");
+    expect(res.body.would_be_workflow_id).toContain("gen-xyz");
+    expect(res.body.workflow_id).toBeUndefined();
   });
-
-});
-
-describe("Temporal — GET /api/agent/workflow/:workflowId", () => {
-
-  beforeEach(() => jest.clearAllMocks());
 
   it("8. Completed workflow returns result", async () => {
     mockWorkflowHandle.describe.mockResolvedValue({

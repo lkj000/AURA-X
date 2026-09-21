@@ -1,9 +1,11 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { getSession, type ArtistSession } from "@/lib/session";
 import { getEarningsSummary, getEarningsHistory, withdrawEarnings, type EarningsSummary, type EarningsHistoryRow } from "@/lib/api";
 
 export default function EarningsPage() {
-  const [token, setToken]         = useState("");
+  // THE SESSION, NOT A PASTED TOKEN. Onboarding stored it; this page asked for it again.
+  const [session, setSession]     = useState<ArtistSession | null>(null);
   const [summary, setSummary]     = useState<EarningsSummary | null>(null);
   const [history, setHistory]     = useState<EarningsHistoryRow[]>([]);
   const [page, setPage]           = useState(1);
@@ -18,13 +20,13 @@ export default function EarningsPage() {
   const LIMIT = 10;
 
   const load = useCallback(async (p: number) => {
-    if (!token.trim()) return;
+    if (!session) return;
     setLoading(true);
     setError(null);
     try {
       const [sumRes, histRes] = await Promise.all([
-        getEarningsSummary(token.trim()),
-        getEarningsHistory(token.trim(), { page: p, limit: LIMIT }),
+        getEarningsSummary(session.token),
+        getEarningsHistory(session.token, { page: p, limit: LIMIT }),
       ]);
       setSummary(sumRes);
       setHistory(histRes.history);
@@ -34,23 +36,33 @@ export default function EarningsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [session]);
 
-  // Re-load when token changes (debounce via effect dep)
-  useEffect(() => {
-    if (token.trim().length > 20) { load(1); }
-  }, [token, load]);
+  // After mount only — localStorage does not exist during server rendering.
+  useEffect(() => { setSession(getSession()); }, []);
+
+  // WAS "if (token.trim().length > 20)" — a length check standing in for "does this look like a
+  // credential", which fired on any 21-character string and not on a shorter valid one.
+  useEffect(() => { if (session) load(1); }, [session, load]);
 
   async function withdraw() {
     const amt = parseFloat(withdrawAmt);
     if (!amt || amt <= 0) { setWithdrawError("Enter a valid positive amount."); return; }
-    if (!token.trim()) { setWithdrawError("JWT token required."); return; }
+    if (!session) { setWithdrawError("Sign in to withdraw."); return; }
     setWithdrawing(true);
     setWithdrawError(null);
     setWithdrawResult(null);
     try {
-      const res = await withdrawEarnings(token.trim(), amt);
-      setWithdrawResult(`Withdrawn $${res.amount_usd} — NEXUS TX: ${res.nexus_tx_id ?? "n/a"}`);
+      const res = await withdrawEarnings(session.token, amt);
+      // NOT "Withdrawn". No withdrawal row is written, the available balance is not reduced, and the
+      // NEXUS call reaches a function that computes figures and persists nothing — so the same amount
+      // can be requested again immediately. The API now says so in its status; this must not
+      // contradict it at the one place a person actually reads.
+      setWithdrawResult(
+        res.status === "SIMULATED_NOT_WITHDRAWN"
+          ? `Requested $${res.amount_usd} — SIMULATED. No money moved and your balance is unchanged.`
+          : `Withdrawn $${res.amount_usd} — NEXUS TX: ${res.nexus_tx_id ?? "n/a"}`,
+      );
       setWithdrawAmt("");
       load(page);
     } catch (e) {
@@ -65,21 +77,17 @@ export default function EarningsPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">Earnings</h1>
         <p className="text-zinc-400 text-sm mt-1">
-          Producer royalty dashboard. Paste your JWT to view balance and withdraw.
+          Producer royalty dashboard.
         </p>
       </div>
 
-      {/* Token input */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 space-y-2">
-        <label className="text-xs text-zinc-500">Your JWT (from POST /api/auth/login)</label>
-        <input
-          type="text"
-          placeholder="eyJhbGci..."
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-violet-500"
-        />
-      </div>
+      {/* WAS A TOKEN INPUT — the session already existed in storage; this asked for it again. */}
+      {!session && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-400">
+          <a href="/onboarding" className="text-violet-400 hover:underline">Sign in</a> to view your
+          balance and request a withdrawal.
+        </div>
+      )}
 
       {/* Error */}
       {error && (
