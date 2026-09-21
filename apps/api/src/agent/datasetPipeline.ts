@@ -245,6 +245,15 @@ export async function getDatasetStats(): Promise<{
   by_subgenre: Record<string, number>;
   by_source: Record<string, number>;
   by_split: Record<string, number>;
+  /**
+   * How the audio was obtained, counted. PROVENANCE, NOT CLEARANCE: `bandcamp_purchase` evidences
+   * lawful acquisition and personal listening — it does not establish rights to train on or derive
+   * from a recording, which are negotiated with the rights holder.
+   *
+   * Reported because the alternative was silence, and silence reads as "nobody checked".
+   */
+  by_rights_basis: Record<string, number>;
+  records_without_rights_basis: number;
   mean_score: number;
   ready_for_training: boolean;
   readiness_basis: string;
@@ -252,13 +261,14 @@ export async function getDatasetStats(): Promise<{
 }> {
   const { data, error } = await supabase
     .from("dataset_records")
-    .select("subgenre, source, split, composite_score, audio_files(content_sha256)");
+    .select("subgenre, source, split, composite_score, rights_basis, audio_files(content_sha256)");
 
   if (error || !data) {
     return {
       total: 0,
       distinct_audio: 0, distinct_train_audio: 0, duplicate_records: 0,
       by_subgenre: {}, by_source: {}, by_split: {},
+      by_rights_basis: {}, records_without_rights_basis: 0,
       mean_score: 0, ready_for_training: false,
       readiness_basis: "No dataset records could be read.",
       training_threshold: 100,
@@ -304,6 +314,9 @@ export async function getDatasetStats(): Promise<{
     by_subgenre:          _countBy(data, r => r.subgenre),
     by_source:            _countBy(data, r => r.source),
     by_split:             _countBy(data, r => r.split),
+    by_rights_basis:      _countBy(data, r => (r.rights_basis as string) ?? "unknown"),
+    records_without_rights_basis:
+      data.filter(r => ((r.rights_basis as string) ?? "unknown") === "unknown").length,
     mean_score:           parseFloat(meanScore.toFixed(3)),
     ready_for_training:   ready,
     readiness_basis:      basis,

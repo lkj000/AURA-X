@@ -26,11 +26,12 @@ jest.mock("../lib/supabase", () => ({
 import { getDatasetStats } from "../agent/datasetPipeline";
 
 /** A dataset record as the joined query returns it. `sha` null means "not yet hashed". */
-const rec = (split: string, sha: string | null, score = 0.78): Row => ({
+const rec = (split: string, sha: string | null, score = 0.78, rights = "bandcamp_purchase"): Row => ({
   subgenre: "private_school",
   source: "human",
   split,
   composite_score: score,
+  rights_basis: rights,
   audio_files: sha === null ? { content_sha256: null } : { content_sha256: sha },
 });
 
@@ -133,5 +134,44 @@ describe("the joined row arrives in more than one shape", () => {
     const s = await getDatasetStats();
     expect(s.distinct_train_audio).toBe(120);
     expect(s.ready_for_training).toBe(true);
+  });
+});
+
+describe("provenance is reported, never inferred", () => {
+  it("DR-09 the rights basis is counted, not assumed", async () => {
+    rows = [
+      ...Array.from({ length: 100 }, (_, i) => rec("train", `a-${i}`, 0.78, "bandcamp_purchase")),
+      ...Array.from({ length: 20 },  (_, i) => rec("train", `b-${i}`, 0.78, "unknown")),
+    ];
+
+    const s = await getDatasetStats();
+    expect(s.by_rights_basis["bandcamp_purchase"]).toBe(100);
+    expect(s.by_rights_basis["unknown"]).toBe(20);
+    expect(s.records_without_rights_basis).toBe(20);
+  });
+
+  it("DR-10 an absent column reads as unknown, not as cleared", async () => {
+    // Before the migration and the backfill, every record is unknown. That must present as unknown
+    // rather than as a blank a reader fills in optimistically.
+    rows = Array.from({ length: 50 }, (_, i) => {
+      const r = rec("train", `c-${i}`);
+      delete (r as Record<string, unknown>).rights_basis;
+      return r;
+    });
+
+    const s = await getDatasetStats();
+    expect(s.by_rights_basis["unknown"]).toBe(50);
+    expect(s.records_without_rights_basis).toBe(50);
+  });
+
+  it("DR-11 provenance does NOT gate readiness — it is a separate question", async () => {
+    // Deliberate. Readiness asks whether enough distinct material exists. Whether the corpus may
+    // lawfully be trained on is a rights question no row count can answer, and this flag must not
+    // appear to settle it. Reported side by side, decided separately.
+    rows = Array.from({ length: 120 }, (_, i) => rec("train", `d-${i}`, 0.78, "unknown"));
+
+    const s = await getDatasetStats();
+    expect(s.ready_for_training).toBe(true);
+    expect(s.records_without_rights_basis).toBe(120);
   });
 });
