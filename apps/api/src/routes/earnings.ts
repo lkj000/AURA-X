@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { supabase } from "../lib/supabase";
 import { verifyToken } from "../middleware/auth";
+import { marketplaceMode, SIMULATION_NOTICE, settlementUnavailable } from "../lib/marketplaceSettlement";
 
 const router = Router();
 
@@ -30,7 +31,7 @@ router.get("/", verifyToken, async (req: Request, res: Response): Promise<void> 
   const { data: splits, error } = await supabase
     .from("royalty_splits")
     .select("id, track_id, period, total_amount_usd, splits, status, created_at")
-    .eq("status", "PAID");
+    .in("status", ["PAID", "SIMULATED"]);
 
   if (error) { res.status(500).json({ error: error.message }); return; }
 
@@ -102,11 +103,26 @@ router.post("/withdraw", verifyToken, async (req: Request, res: Response): Promi
     return;
   }
 
-  // Verify available balance (sum of PAID splits for this artist)
+  // NOTHING HERE CAN MOVE MONEY, SO NOTHING HERE MAY REPORT THAT IT DID.
+  //
+  // This route summed every PAID split for this artist across all time, subtracted no prior
+  // withdrawal, RECORDED NOTHING, and answered `status: "WITHDRAWN"`. There is no withdrawals table
+  // to subtract from — so the same earnings supported unlimited withdrawals, each one reported as
+  // complete. The absence of a ledger is not a detail to fix later; it is the reason this cannot be
+  // answered honestly at all.
+  // Captured once here, so a single request cannot straddle two policies.
+  const mode = marketplaceMode();
+  if (mode === "DISABLED") {
+    const refusal = settlementUnavailable("Withdrawal");
+    res.status(refusal.status).json(refusal.body);
+    return;
+  }
+
+  // Verify available balance (sum of simulated splits for this artist)
   const { data: splits, error } = await supabase
     .from("royalty_splits")
     .select("splits")
-    .eq("status", "PAID");
+    .in("status", ["PAID", "SIMULATED"]);
 
   if (error) { res.status(500).json({ error: error.message }); return; }
 
@@ -137,11 +153,20 @@ router.post("/withdraw", verifyToken, async (req: Request, res: Response): Promi
   }
 
   res.status(200).json({
-    status:       "WITHDRAWN",
+    // NOT "WITHDRAWN". Nothing left an account and nothing was recorded as owed or paid — and
+    // because no withdrawal row is written, a second identical request would be answered the same
+    // way, from the same unreduced balance. Saying so in the status is the only thing stopping a
+    // caller treating this as money received.
+    ...SIMULATION_NOTICE,
+    status:       "SIMULATED_NOT_WITHDRAWN",
     amount_usd,
+    amount_paid:  0,
     period,
     nexus_tx_id:  (nexusPayout.txId as string) ?? null,
     nexus_payout: nexusPayout,
+    warning:
+      "No withdrawal was recorded. The available balance is unchanged, so this request can be " +
+      "repeated indefinitely. A payable ledger is required before withdrawals can be real.",
   });
 });
 

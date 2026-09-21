@@ -194,9 +194,20 @@ export default function TrackDetailPage({ params }: { params: Promise<{ trackId:
             </span>
           </div>
 
-          {track.suno_approved == null && (
+          {/* THE INSTRUCTION ASSUMED AUDIO THAT MAY NOT EXIST.
+              This read "Download the track above" whenever classification was pending — including on
+              a track whose generation FAILED and has no audio at all. The reviewed example showed a
+              100% composite and a passed gate beside a failed generation and nothing to play, and
+              still told the reader to download it. An evaluation score is not playable output. */}
+          {track.suno_approved == null && audioUrl && (
             <p className="text-xs text-zinc-500">
               Download the track above, upload to Suno, and record the result. If Suno classifies it as Amapiano, mark approved — the track becomes marketplace-eligible.
+            </p>
+          )}
+          {track.suno_approved == null && !audioUrl && (
+            <p className="text-xs text-amber-400">
+              No audio is available for this track, so it cannot be submitted for classification yet.
+              A passed quality gate scores the composition; it does not mean a render exists.
             </p>
           )}
 

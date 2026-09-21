@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { getSession, type ArtistSession } from "@/lib/session";
 import { listMarketplace, purchaseLicense, type MarketplaceListing } from "@/lib/api";
 import { SUBGENRE_LABELS, cn } from "@/lib/utils";
 
@@ -25,7 +26,9 @@ export default function MarketplacePage() {
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState<string | null>(null);
 
-  const [token, setToken]           = useState("");
+  // THE SESSION, NOT A TEXT BOX. Onboarding stored this token; this page simply never read it and
+  // asked the user to paste one instead. See lib/session.ts.
+  const [session, setSession]       = useState<ArtistSession | null>(null);
   const [buying, setBuying]         = useState<string | null>(null);
   const [buyResult, setBuyResult]   = useState<Record<string, unknown> | null>(null);
   const [buyError, setBuyError]     = useState<string | null>(null);
@@ -50,16 +53,20 @@ export default function MarketplacePage() {
 
   useEffect(() => { load(1); }, [load]);
 
+  // After mount only: localStorage does not exist during server rendering, and reading it in the
+  // component body would throw there.
+  useEffect(() => { setSession(getSession()); }, []);
+
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
 
   async function buy(trackId: string) {
     const tier = selectedTier[trackId] ?? "STANDARD";
-    if (!token.trim()) { setBuyError("Paste your JWT token below to purchase."); return; }
+    if (!session) { setBuyError("Sign in to license a track."); return; }
     setBuying(trackId);
     setBuyError(null);
     setBuyResult(null);
     try {
-      const res = await purchaseLicense(trackId, tier, token.trim());
+      const res = await purchaseLicense(trackId, tier, session.token);
       setBuyResult({ ...res, trackId, tier });
     } catch (e) {
       setBuyError(e instanceof Error ? e.message : "Purchase failed");
@@ -77,17 +84,15 @@ export default function MarketplacePage() {
         </p>
       </div>
 
-      {/* Token input */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 space-y-2">
-        <label className="text-xs text-zinc-500">Your JWT (from POST /api/auth/login)</label>
-        <input
-          type="text"
-          placeholder="eyJhbGci..."
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-violet-500"
-        />
-      </div>
+      {/* WAS A TOKEN INPUT — a box asking the user to paste a bearer token they already held, under
+          the label "Your JWT (from POST /api/auth/login)". Removed: it taught people to paste
+          credentials into forms, which is the habit every phishing page depends on. */}
+      {!session && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-400">
+          <a href="/onboarding" className="text-violet-400 hover:underline">Sign in</a> to license a track.
+          Browsing does not require an account.
+        </div>
+      )}
 
       {/* Error / result banners */}
       {buyError && (
@@ -95,7 +100,15 @@ export default function MarketplacePage() {
       )}
       {buyResult && (
         <div className="rounded-lg border border-emerald-800 bg-emerald-950/50 p-4 text-xs text-emerald-300 space-y-1">
-          <p className="font-medium text-emerald-200">License purchased</p>
+          {/* NOT "License purchased". The API no longer claims settlement it cannot perform: no buyer
+              is charged, so a licence is recorded as simulated and the response says so. Announcing a
+              purchase here would reintroduce the claim at the last place anybody reads. */}
+          <p className="font-medium text-emerald-200">
+            {buyResult.simulated ? "Licence recorded — simulated, no payment taken" : "License purchased"}
+          </p>
+          {buyResult.simulated === true && (
+            <p className="text-amber-300">{buyResult.notice as string}</p>
+          )}
           <p>License ID: <span className="font-mono">{buyResult.license_id as string}</span></p>
           <p>Tier: <span className="font-mono">{buyResult.tier as string}</span> — ${buyResult.price_usd as number}</p>
           <p>Split status: <span className="font-mono">{buyResult.split_status as string}</span></p>

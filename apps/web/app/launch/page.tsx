@@ -9,12 +9,19 @@ const FEATURES = [
   {
     icon: "$",
     title: "Royalty Marketplace",
-    desc: "List tracks that pass the quality gate. Buyers license them at STANDARD, PREMIUM, or EXCLUSIVE tiers. 80% goes directly to you.",
+    // "80% goes directly to you" describes a split that is calculated and never paid. The tiers and
+    // the split are real as a design; the money movement is not implemented.
+    desc: "List tracks that pass the quality gate at STANDARD, PREMIUM or EXCLUSIVE tiers, with an 80/20 split in the producer's favour. Licensing is in preview — no payment is taken and no payout is made.",
   },
   {
     icon: "↗",
     title: "NEXUS Payouts",
-    desc: "Royalties hit your NEXUS wallet automatically. Withdraw to mobile money, card, or stablecoin anywhere in Africa.",
+    // WAS "Royalties hit your NEXUS wallet automatically. Withdraw to mobile money, card, or
+    // stablecoin anywhere in Africa." None of that happens. The payout function computes figures and
+    // persists nothing — no wallet credit, no transaction — and the withdrawal endpoint records no
+    // payable. The API was corrected to stop claiming settlement it cannot perform; this page must
+    // not reinstate the claim in larger type.
+    desc: "Designed to pay out through NEXUS. The payout and withdrawal rails are not live yet — earnings shown in the studio are simulated until settlement is built.",
   },
   {
     icon: "✓",
@@ -33,14 +40,17 @@ export default function LaunchPage() {
       {/* Hero */}
       <div className="space-y-6 pt-8">
         <div className="inline-block px-3 py-1 rounded-full border border-violet-700 bg-violet-950/40 text-violet-300 text-xs font-medium">
-          Phase 4 — Public Launch
+          {/* WAS "Phase 4 — Public Launch". The marketplace had no listings, licensing takes no
+              payment and payouts are not implemented. A launch badge over a preview is the claim that
+              makes every other claim on the page read as shipped. */}
+          Preview — building in the open
         </div>
         <h1 className="text-4xl sm:text-5xl font-bold text-white leading-tight">
           The Amapiano AI<br />
           <span className="text-violet-400">Revenue Platform</span>
         </h1>
         <p className="text-zinc-400 text-lg max-w-xl">
-          Generate, evaluate, and sell African music. Built by Okovanggo AI —
+          Generate and evaluate African music, and prepare it for sale. Built by Okovanggo AI —
           for producers across the continent.
         </p>
         <div className="flex flex-wrap gap-3">

@@ -218,24 +218,59 @@ export async function writeDatasetRecord(input: {
 
 // ─── DATASET STATS ────────────────────────────────────────────────────────────
 
+/**
+ * READINESS IS COUNTED IN RECORDINGS, NOT ROWS.
+ *
+ * `ready_for_training` was `trainRecords.length >= 100`. On the live dataset that is 389 rows over
+ * **152 distinct recordings**: 93 files ingested three times, 46 twice, one six times. The flag would
+ * read true on a hundred copies of one track, and the training run would weight some recordings three
+ * to six times heavier than others for no reason anybody chose.
+ *
+ * Distinctness cannot be inferred from anything the dataset already held. Every duplicate has its own
+ * `audio_file_id` and its own storage path — measured against the live data, distinct ids equal the
+ * row count exactly, 389 of 389. Filenames are no better: the same recording is stored both as
+ * `King_Deetoy_...mp3` and in a URL-encoded form with spaces, so name matching reports one recording
+ * as two. (That error is not hypothetical — it was made while investigating this, and it overcounted
+ * 152 recordings as 254.) Only `audio_files.content_sha256` identifies a recording.
+ *
+ * UNHASHED IS UNKNOWN, NOT DISTINCT. Where the column is not yet populated this reports
+ * `ready_for_training: false` with a reason, rather than falling back to the row count. Falling back
+ * would reproduce the original defect precisely, and silently, at the moment the data is least known.
+ */
 export async function getDatasetStats(): Promise<{
   total: number;
+  distinct_audio: number | null;
+  distinct_train_audio: number | null;
+  duplicate_records: number | null;
   by_subgenre: Record<string, number>;
   by_source: Record<string, number>;
   by_split: Record<string, number>;
+  /**
+   * How the audio was obtained, counted. PROVENANCE, NOT CLEARANCE: `bandcamp_purchase` evidences
+   * lawful acquisition and personal listening — it does not establish rights to train on or derive
+   * from a recording, which are negotiated with the rights holder.
+   *
+   * Reported because the alternative was silence, and silence reads as "nobody checked".
+   */
+  by_rights_basis: Record<string, number>;
+  records_without_rights_basis: number;
   mean_score: number;
   ready_for_training: boolean;
+  readiness_basis: string;
   training_threshold: number;
 }> {
   const { data, error } = await supabase
     .from("dataset_records")
-    .select("subgenre, source, split, composite_score");
+    .select("subgenre, source, split, composite_score, rights_basis, audio_files(content_sha256)");
 
   if (error || !data) {
     return {
       total: 0,
+      distinct_audio: 0, distinct_train_audio: 0, duplicate_records: 0,
       by_subgenre: {}, by_source: {}, by_split: {},
+      by_rights_basis: {}, records_without_rights_basis: 0,
       mean_score: 0, ready_for_training: false,
+      readiness_basis: "No dataset records could be read.",
       training_threshold: 100,
     };
   }
@@ -247,14 +282,45 @@ export async function getDatasetStats(): Promise<{
 
   const TRAINING_THRESHOLD = 100;
 
+  // Supabase returns the joined row as an object or a single-element array depending on how the
+  // relationship is inferred. Both shapes are accepted rather than assumed.
+  const hashOf = (r: unknown): string | null => {
+    const joined = (r as { audio_files?: unknown }).audio_files;
+    const row = Array.isArray(joined) ? joined[0] : joined;
+    const h = (row as { content_sha256?: string | null } | undefined)?.content_sha256;
+    return h && h.length > 0 ? h : null;
+  };
+
+  const hashed      = data.filter(r => hashOf(r) !== null);
+  const everyHashed = hashed.length === data.length && data.length > 0;
+
+  const distinctAll   = everyHashed ? new Set(data.map(hashOf)).size : null;
+  const distinctTrain = everyHashed ? new Set(trainRecords.map(hashOf)).size : null;
+
+  // Readiness needs DISTINCT TRAIN recordings. Unknown content identity is not readiness.
+  const ready = distinctTrain !== null && distinctTrain >= TRAINING_THRESHOLD;
+
+  const basis = everyHashed
+    ? `${distinctTrain} distinct recordings in the train split, from ${trainRecords.length} records.`
+    : `Content identity unknown: ${data.length - hashed.length} of ${data.length} records have no ` +
+      `audio_files.content_sha256. Readiness is withheld rather than counted from rows, because rows ` +
+      `count uploads and the same recording is stored many times.`;
+
   return {
-    total:              data.length,
-    by_subgenre:        _countBy(data, r => r.subgenre),
-    by_source:          _countBy(data, r => r.source),
-    by_split:           _countBy(data, r => r.split),
-    mean_score:         parseFloat(meanScore.toFixed(3)),
-    ready_for_training: trainRecords.length >= TRAINING_THRESHOLD,
-    training_threshold: TRAINING_THRESHOLD,
+    total:                data.length,
+    distinct_audio:       distinctAll,
+    distinct_train_audio: distinctTrain,
+    duplicate_records:    distinctAll === null ? null : data.length - distinctAll,
+    by_subgenre:          _countBy(data, r => r.subgenre),
+    by_source:            _countBy(data, r => r.source),
+    by_split:             _countBy(data, r => r.split),
+    by_rights_basis:      _countBy(data, r => (r.rights_basis as string) ?? "unknown"),
+    records_without_rights_basis:
+      data.filter(r => ((r.rights_basis as string) ?? "unknown") === "unknown").length,
+    mean_score:           parseFloat(meanScore.toFixed(3)),
+    ready_for_training:   ready,
+    readiness_basis:      basis,
+    training_threshold:   TRAINING_THRESHOLD,
   };
 }
 

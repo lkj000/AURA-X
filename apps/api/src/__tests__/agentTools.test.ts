@@ -121,6 +121,21 @@ import { storeResult, queryResults } from "../agent/resultsStore";
 import { tuneWeightsForSubgenre } from "../agent/weightTuner";
 import { createCTL } from "@aura-x/ctl";
 
+// ─── Auth for the guarded agent routes ───────────────────────────────────────
+//
+// /run, /finetune, /revise, /tune and /ingest now require a session. The router was previously mounted
+// with no authentication at all, and /run took `created_by` from the REQUEST BODY — so an anonymous
+// caller could start real workflow runs and attribute them to any name they typed. These suites test
+// route MECHANICS, so they present a valid token; that the routes refuse without one is asserted in
+// agentAuthorization.test.ts.
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? "test-secret-aura-x-agent";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const AGENT_TEST_TOKEN = (require("jsonwebtoken") as typeof import("jsonwebtoken")).sign(
+  { artist_id: "artist-test-agent", email: "agent@test.local" },
+  process.env.JWT_SECRET,
+  { expiresIn: "1h" },
+);
+
 const app = express();
 app.use(express.json());
 app.use("/api/agent", agentRouter);
@@ -200,7 +215,8 @@ describe("Agent Tools — Results Store + Weight Tuner + Dataset Builder", () =>
   // ─── POST /api/agent/tune ─────────────────────────────────────────────────
 
   it("7. POST /api/agent/tune — missing subgenre → 400", async () => {
-    const res = await request(app).post("/api/agent/tune").send({ min_score: 0.8 });
+    const res = await request(app).post("/api/agent/tune")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`).send({ min_score: 0.8 });
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
   });
@@ -208,6 +224,7 @@ describe("Agent Tools — Results Store + Weight Tuner + Dataset Builder", () =>
   it("8. POST /api/agent/tune — valid subgenre → 200 with recommendation", async () => {
     const res = await request(app)
       .post("/api/agent/tune")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ subgenre: "private_school" });
     expect(res.status).toBe(200);
     expect(res.body.subgenre).toBe("private_school");
@@ -216,6 +233,7 @@ describe("Agent Tools — Results Store + Weight Tuner + Dataset Builder", () =>
   it("9. POST /api/agent/tune — response has confidence field", async () => {
     const res = await request(app)
       .post("/api/agent/tune")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ subgenre: "private_school" });
     expect(res.status).toBe(200);
     expect(typeof res.body.confidence).toBe("number");
@@ -226,6 +244,7 @@ describe("Agent Tools — Results Store + Weight Tuner + Dataset Builder", () =>
   it("10. POST /api/agent/tune — response has lineage_adjustments object", async () => {
     const res = await request(app)
       .post("/api/agent/tune")
+      .set("Authorization", `Bearer ${AGENT_TEST_TOKEN}`)
       .send({ subgenre: "bacardi" });
     expect(res.status).toBe(200);
     expect(res.body.lineage_adjustments).toBeDefined();

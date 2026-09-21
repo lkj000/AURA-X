@@ -1,4 +1,6 @@
 import { Router, Request, Response } from "express";
+import { verifyToken } from "../middleware/auth";
+import { generationLimiter } from "../middleware/rateLimit";
 import { CTLv1Schema } from "@aura-x/ctl";
 import { runRevisionLoop } from "../agent/revisionLoop";
 import { tuneWeightsForSubgenre } from "../agent/weightTuner";
@@ -14,14 +16,29 @@ type WorkflowState =
   | { status: "completed"; result: AgentGenerationResult }
   | { status: "failed"; error: string };
 
+/**
+ * IN-PROCESS WORKFLOW STATE, AND WHAT THAT COSTS.
+ *
+ * A Map lives in one process's memory. It does not survive a restart and is not shared between
+ * instances, so behind more than one replica a caller polls whichever instance the load balancer
+ * picks and is told `not_found` by the ones that did not start the work.
+ *
+ * That is not fixed here — durable execution is a real piece of work, not a comment. What is fixed is
+ * the SILENCE: `not_found` was returned for three different situations — never existed, lost to a
+ * restart, or running on another instance — and the caller could not tell which. The polling response
+ * now says so, so "my job disappeared" is a diagnosable statement rather than a mystery.
+ */
 const workflows = new Map<string, WorkflowState>();
+
+/** Stamped at boot. A workflow id issued before this instance started cannot be in its Map. */
+const PROCESS_STARTED_AT = new Date().toISOString();
 
 const router = Router();
 
 // POST /api/agent/revise
 // Body: { track_id, ctl_id, ctl, max_iterations? }
 // Runs revision loop: evaluate → mutate → regenerate (max 3 iterations)
-router.post("/revise", async (req: Request, res: Response): Promise<void> => {
+router.post("/revise", verifyToken, async (req: Request, res: Response): Promise<void> => {
   const { track_id, ctl_id, max_iterations } = req.body;
 
   if (!track_id || !ctl_id) {
@@ -47,7 +64,7 @@ router.post("/revise", async (req: Request, res: Response): Promise<void> => {
 
 // POST /api/agent/tune
 // Body: { subgenre, min_score? }
-router.post("/tune", async (req: Request, res: Response): Promise<void> => {
+router.post("/tune", verifyToken, async (req: Request, res: Response): Promise<void> => {
   const { subgenre, min_score } = req.body;
   if (!subgenre) {
     res.status(400).json({ error: "subgenre is required" });
@@ -80,11 +97,22 @@ router.get("/dataset/stats", async (_req: Request, res: Response): Promise<void>
 // POST /api/agent/run — FULL AUTONOMOUS AGENT (in-process, no Temporal dependency)
 // Body: { title, subgenre, bpm?, key?, emotional_profile?, generation_mode?, created_by }
 // Returns 202 immediately with workflowId — poll GET /api/agent/workflow/:workflowId for result
-router.post("/run", (req: Request, res: Response): void => {
-  const { title, subgenre, bpm, key, emotional_profile, generation_mode, created_by } = req.body;
+//
+// AUTHENTICATED, RATE-LIMITED, AND THE IDENTITY COMES FROM THE SESSION.
+//
+// This router was mounted with no authentication at all, while `/api/generate` beside it carried the
+// generation limiter. `created_by` was read from the REQUEST BODY — so an anonymous caller started
+// real workflow runs and attributed them to whoever they typed. Same for `triggered_by` on /finetune,
+// which starts model training.
+//
+// `created_by` is still accepted in the body and ignored: silently overriding it is better than a 400,
+// because the existing web client sends it and breaking that would be a second defect.
+router.post("/run", verifyToken, generationLimiter, (req: Request, res: Response): void => {
+  const { title, subgenre, bpm, key, emotional_profile, generation_mode } = req.body;
+  const created_by = req.artist!.artist_id;
 
-  if (!title || !subgenre || !created_by) {
-    res.status(400).json({ error: "title, subgenre, and created_by are required" });
+  if (!title || !subgenre) {
+    res.status(400).json({ error: "title and subgenre are required" });
     return;
   }
 
@@ -157,7 +185,7 @@ router.post("/run", (req: Request, res: Response): void => {
 
 // POST /api/agent/ingest
 // Body: { track_id, generation_id, audio_url, source? }
-router.post("/ingest", async (req: Request, res: Response): Promise<void> => {
+router.post("/ingest", verifyToken, async (req: Request, res: Response): Promise<void> => {
   const { track_id, generation_id, audio_url, source = "human" } = req.body;
 
   if (!track_id || !generation_id || !audio_url) {
@@ -170,10 +198,21 @@ router.post("/ingest", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // Stub: acknowledge ingest request (full DatasetIngestionWorkflow requires Temporal worker)
-  res.status(202).json({
-    workflow_id:   `dataset-ingest-${track_id}-${generation_id}`,
-    status:        "started",
+  // IT SAID "started" AND STARTED NOTHING.
+  //
+  // The full DatasetIngestionWorkflow needs a Temporal worker that is not wired up. This returned 202
+  // with `status: "started"` and a workflow_id that was never registered in `workflows` — so polling
+  // that id answered `not_found`, and the caller was left to conclude their job had vanished rather
+  // than that it had never begun.
+  //
+  // 501 rather than 202: the operation is not implemented, and a 2xx is a promise. The identifier is
+  // still returned because callers store it, but it is named for what it is.
+  res.status(501).json({
+    error:         "Dataset ingestion is not implemented — no workflow was started.",
+    reason:        "INGEST_NOT_IMPLEMENTED",
+    status:        "not_started",
+    detail:        "The DatasetIngestionWorkflow requires a Temporal worker that is not currently running.",
+    would_be_workflow_id: `dataset-ingest-${track_id}-${generation_id}`,
     track_id,
     generation_id,
   });
@@ -186,7 +225,18 @@ router.get("/workflow/:workflowId", (req: Request, res: Response): void => {
   const state = workflows.get(workflowId);
 
   if (!state) {
-    res.json({ workflow_id: workflowId, status: "not_found" });
+    // "not_found" covered three different situations — never existed, lost to a restart, or started
+    // on another instance — and the caller could not tell which. The state is still in memory; what
+    // changes is that its absence no longer reads as "your job is gone".
+    res.json({
+      workflow_id: workflowId,
+      status: "not_found",
+      detail:
+        "This instance has no record of that workflow. State is held in memory: it does not survive " +
+        "a restart and is not shared between instances, so a workflow started elsewhere or before " +
+        "this process began will not be found here.",
+      process_started_at: PROCESS_STARTED_AT,
+    });
     return;
   }
 
@@ -205,8 +255,11 @@ router.get("/workflow/:workflowId", (req: Request, res: Response): void => {
 
 // POST /api/agent/finetune
 // Body: { subgenre?, min_score?, training_steps?, learning_rate?, triggered_by }
-router.post("/finetune", async (req: Request, res: Response): Promise<void> => {
-  const { subgenre, min_score, training_steps, learning_rate, triggered_by } = req.body;
+// Training spends real compute. Same reasoning as /run: authenticated, limited, and the actor is the
+// session rather than a field the caller fills in.
+router.post("/finetune", verifyToken, generationLimiter, async (req: Request, res: Response): Promise<void> => {
+  const { subgenre, min_score, training_steps, learning_rate } = req.body;
+  const triggered_by = req.artist!.artist_id;
 
   if (!triggered_by) {
     res.status(400).json({ error: "triggered_by is required" });

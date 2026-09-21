@@ -87,12 +87,32 @@ export async function pollWorkflowStatus(
 // ── Dataset stats ────────────────────────────────────────────────────────────
 
 export interface DatasetStats {
+  /** Rows in dataset_records. Counts UPLOADS: the same recording appears many times over. */
   total: number;
+  /**
+   * Distinct recordings, by content hash. `null` where content identity has not been established for
+   * every record — which means UNKNOWN, and must not be substituted with `total`.
+   *
+   * The gap is large and not incidental: the live dataset holds 389 rows over 152 recordings.
+   */
+  distinct_audio: number | null;
+  distinct_train_audio: number | null;
+  /** `total - distinct_audio`, or null when distinctness is unknown. */
+  duplicate_records: number | null;
   by_subgenre: Record<string, number>;
   by_source: Record<string, number>;
   by_split: Record<string, number>;
+  /**
+   * How the audio was obtained. PROVENANCE, NOT CLEARANCE — a purchase evidences lawful acquisition,
+   * not rights to train on or derive from a recording.
+   */
+  by_rights_basis: Record<string, number>;
+  records_without_rights_basis: number;
   mean_score: number;
+  /** Counted in DISTINCT TRAIN recordings. False whenever distinctness cannot be established. */
   ready_for_training: boolean;
+  /** Says in words what the flag was computed from, including why it was withheld. */
+  readiness_basis: string;
   training_threshold: number;
 }
 

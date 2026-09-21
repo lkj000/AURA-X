@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { setSession } from "@/lib/session";
 import { useRouter } from "next/navigation";
 import { registerArtist, loginArtist } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -117,8 +118,10 @@ export default function OnboardingPage() {
     }
     // Always persist the JWT so other pages can read it
     try {
-      localStorage.setItem("aura_token", token);
-      localStorage.setItem("aura_artist_id", artistId);
+      // Via the helper, so the key names live in one place. Marketplace and Earnings now READ this —
+      // previously it was written here and read nowhere, and both pages asked the user to paste a
+      // token they already had.
+      setSession(token, artistId);
     } catch {}
     setStep("done");
   }
@@ -156,8 +159,8 @@ export default function OnboardingPage() {
 
           {mode === "register" && (
             <div className="space-y-1">
-              <label className="text-xs text-zinc-500">Name</label>
-              <input
+              <label className="text-xs text-zinc-500" htmlFor="fld-name">Name</label>
+              <input id="fld-name"
                 type="text"
                 placeholder="DJ Okovanggo"
                 value={profile.name}
@@ -168,8 +171,8 @@ export default function OnboardingPage() {
           )}
 
           <div className="space-y-1">
-            <label className="text-xs text-zinc-500">Email</label>
-            <input
+            <label className="text-xs text-zinc-500" htmlFor="fld-email">Email</label>
+            <input id="fld-email"
               type="email"
               placeholder="you@example.com"
               value={email}
@@ -179,8 +182,8 @@ export default function OnboardingPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs text-zinc-500">Password</label>
-            <input
+            <label className="text-xs text-zinc-500" htmlFor="fld-password">Password</label>
+            <input id="fld-password"
               type="password"
               placeholder="••••••••"
               value={password}
@@ -191,8 +194,8 @@ export default function OnboardingPage() {
 
           {mode === "register" && (
             <div className="space-y-1">
-              <label className="text-xs text-zinc-500">Country</label>
-              <select
+              <label className="text-xs text-zinc-500" htmlFor="fld-country">Country</label>
+              <select id="fld-country"
                 value={profile.country}
                 onChange={(e) => setProfile((p) => ({ ...p, country: e.target.value }))}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
@@ -220,8 +223,8 @@ export default function OnboardingPage() {
           </p>
 
           <div className="space-y-1">
-            <label className="text-xs text-zinc-500">Display name</label>
-            <input
+            <label className="text-xs text-zinc-500" htmlFor="fld-display-name">Display name</label>
+            <input id="fld-display-name"
               type="text"
               value={profile.name}
               onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))}
@@ -230,8 +233,8 @@ export default function OnboardingPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs text-zinc-500">Country</label>
-            <select
+            <label className="text-xs text-zinc-500" htmlFor="fld-country-2">Country</label>
+            <select id="fld-country-2"
               value={profile.country}
               onChange={(e) => setProfile((p) => ({ ...p, country: e.target.value }))}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
@@ -264,8 +267,8 @@ export default function OnboardingPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs text-zinc-500">NEXUS Artist ID</label>
-            <input
+            <label className="text-xs text-zinc-500" htmlFor="fld-nexus-artist-id">NEXUS Artist ID</label>
+            <input id="fld-nexus-artist-id"
               type="text"
               placeholder="nexus-artist-..."
               value={nexus.nexusId}
@@ -275,8 +278,8 @@ export default function OnboardingPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs text-zinc-500">NEXUS API key</label>
-            <input
+            <label className="text-xs text-zinc-500" htmlFor="fld-nexus-api-key">NEXUS API key</label>
+            <input id="fld-nexus-api-key"
               type="password"
               placeholder="gig-key-..."
               value={nexus.nexusKey}

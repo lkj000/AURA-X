@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { supabase } from "../lib/supabase";
-import { verifyToken } from "../middleware/auth";
+import { verifyToken, optionalToken } from "../middleware/auth";
+import { approvalAuthority } from "../lib/trackApproval";
 import {
   evaluateBuffer,
   generateProductionReport,
@@ -264,14 +265,44 @@ router.post("/:id/report", async (req: Request, res: Response): Promise<void> =>
   }
 });
 
-// POST /api/tracks/:id/suno-result  (requires JWT)
+// POST /api/tracks/:id/suno-result
+//
+// APPROVAL IS A GATE, AND A GATE THE APPLICANT OPERATES IS NOT A GATE.
+//
+// This required only `verifyToken` — a validly signed token and nothing more. The payload carries
+// `artist_id` and `email` and no role, so ANY artist could set `suno_approved` on ANY track: approve
+// their own unlisted work onto the marketplace, or un-approve a competitor's off it.
+//
+// Authority now comes from `approvalAuthority`: a shared secret for the integration that produces
+// these classifications, or an explicit moderator allowlist for a human. Neither is configured by
+// default and the endpoint then refuses everyone, which is the correct posture for an approval gate
+// with no approver. `verifyToken` stays so a moderator is still identified; the integration path does
+// not present an artist token at all, so the guard tolerates its absence and `approvalAuthority`
+// decides.
 // Body: { approved: boolean, style_tag?: string }
-router.post("/:id/suno-result", verifyToken, async (req: Request, res: Response): Promise<void> => {
+router.post("/:id/suno-result", optionalToken, async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const { approved, style_tag } = req.body as { approved: unknown; style_tag?: string };
 
   if (typeof approved !== "boolean") {
     res.status(400).json({ error: "approved must be a boolean" });
+    return;
+  }
+
+  // Read before the authority check, because self-approval cannot be judged without knowing whose
+  // track it is — and because a 404 for a track that does not exist is more useful than a 403.
+  const { data: existing, error: lookupError } = await supabase
+    .from("tracks")
+    .select("id, created_by")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (lookupError) { res.status(500).json({ error: lookupError.message }); return; }
+  if (!existing)   { res.status(404).json({ error: "Track not found" }); return; }
+
+  const authority = approvalAuthority(req, (existing.created_by as string) ?? null);
+  if (!authority.ok) {
+    res.status(authority.status).json({ error: authority.error, reason: authority.reason });
     return;
   }
 
@@ -281,6 +312,9 @@ router.post("/:id/suno-result", verifyToken, async (req: Request, res: Response)
       suno_approved:      approved,
       suno_classified_at: new Date().toISOString(),
       suno_style_tag:     style_tag ?? null,
+      // Who moved the flag, recorded on the row. An approval nobody can attribute is one nobody can
+      // review, and this is the field that decides what may be sold.
+      suno_classified_by: authority.actor,
     })
     .eq("id", id)
     .select("id, title, suno_approved, suno_classified_at, suno_style_tag")
@@ -289,7 +323,7 @@ router.post("/:id/suno-result", verifyToken, async (req: Request, res: Response)
   if (error) { res.status(500).json({ error: error.message }); return; }
   if (!data)  { res.status(404).json({ error: "Track not found" }); return; }
 
-  res.json(data);
+  res.json({ ...data, approved_via: authority.via });
 });
 
 // GET /api/tracks/:id/groove-suggest

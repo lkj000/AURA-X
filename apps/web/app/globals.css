@@ -7,7 +7,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  /* WAS `--font-sans: var(--font-sans)` — defined in terms of itself, so it resolved to nothing and
+     every page fell back to the browser default, which rendered as Times. The Geist font was loaded
+     in layout.tsx the whole time under `--font-geist-sans`; the variable simply never pointed at it. */
+  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
