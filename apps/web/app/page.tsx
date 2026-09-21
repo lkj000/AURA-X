@@ -22,9 +22,19 @@ export default async function DashboardPage() {
     [stats, agent] = await Promise.all([getDatasetStats(), getAgentStatus()]);
   } catch {}
 
-  const trainCount = stats?.by_split?.train ?? 0;
-  const threshold = stats?.training_threshold ?? 100;
-  const pct = Math.min(100, Math.round((trainCount / threshold) * 100));
+  // PROGRESS IS MEASURED IN RECORDINGS, NOT ROWS.
+  //
+  // This read `by_split.train` — the row count. On the live dataset that is 315 train rows over 123
+  // distinct recordings, because most files were ingested three times and one six times. The bar
+  // showed a corpus three times the size of the one that exists.
+  //
+  // `distinct_train_audio` is null until every record resolves to a content hash, and null means
+  // UNKNOWN. The progress bar is hidden in that state rather than falling back to the row count,
+  // which is the number that was wrong in the first place.
+  const trainRows      = stats?.by_split?.train ?? 0;
+  const distinctTrain  = stats?.distinct_train_audio ?? null;
+  const threshold      = stats?.training_threshold ?? 100;
+  const pct = distinctTrain === null ? null : Math.min(100, Math.round((distinctTrain / threshold) * 100));
 
   return (
     <div className="space-y-8">
@@ -37,7 +47,11 @@ export default async function DashboardPage() {
         <StatCard
           label="Dataset records"
           value={stats?.total?.toString() ?? "—"}
-          sub={`${trainCount} training`}
+          // Both numbers, because the gap between them is the point: rows count uploads, and the
+          // same recording is stored many times over.
+          sub={stats?.distinct_audio != null
+            ? `${stats.distinct_audio} distinct recordings · ${trainRows} training rows`
+            : `${trainRows} training rows · distinct count unknown`}
         />
         <StatCard
           label="Mean score"
@@ -51,8 +65,12 @@ export default async function DashboardPage() {
         />
         <StatCard
           label="Model status"
-          value={stats?.ready_for_training ? "Ready" : "Ingesting"}
-          sub={stats?.ready_for_training ? "100+ training records" : `${pct}% to threshold`}
+          value={stats?.ready_for_training ? "Ready" : distinctTrain === null ? "Unverified" : "Ingesting"}
+          sub={stats?.ready_for_training
+            ? `${distinctTrain} distinct training recordings`
+            : distinctTrain === null
+              ? "content identity not yet established"
+              : `${pct}% to threshold`}
         />
       </div>
 
@@ -67,16 +85,27 @@ export default async function DashboardPage() {
               : "bg-zinc-800 text-zinc-400"
           )}>
             {stats?.ready_for_training
-              ? "ready_for_training: true"
-              : `${trainCount} / ${threshold}`}
+              ? `${distinctTrain} distinct recordings`
+              : distinctTrain === null
+                ? "distinct count unknown"
+                : `${distinctTrain} / ${threshold} distinct`}
           </span>
         </div>
-        <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-          <div
-            className={cn("h-full rounded-full transition-all", scoreBg(pct / 100))}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
+        {/* No bar when the distinct count is unknown. A bar drawn from the row count would show a
+            corpus three times its real size, which is precisely the reading being corrected. */}
+        {pct === null ? (
+          <p className="text-xs text-amber-400">
+            Progress cannot be shown: audio content identity has not been established for every
+            record, and counting upload rows would overstate the corpus.
+          </p>
+        ) : (
+          <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+            <div
+              className={cn("h-full rounded-full transition-all", scoreBg(pct / 100))}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )}
         <p className="text-xs text-zinc-500">
           Auto-trigger fires when training records ≥ {threshold}.{" "}
           <code className="text-violet-400">modal deploy modal_auto_trigger.py</code> to enable.
