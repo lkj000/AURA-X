@@ -33,6 +33,7 @@ import {
   type AgentState,
   type CostClass,
 } from "./actionRegistry";
+import { NO_PRIOR_EVIDENCE, type PriorEvidence } from "./memory";
 import {
   clausesFor,
   evaluateGoal,
@@ -56,6 +57,33 @@ const COST_PENALTY: Record<CostClass, number> = { free: 0, compute: 1, paid: 4 }
 /** What each prior failure of this action subtracts. Enough to move past a dead path in one try. */
 const FAILURE_PENALTY = 3;
 
+/**
+ * What evidence from previous runs may subtract (A-04).
+ *
+ * Bounded below the goal term on purpose: history informs the choice, it does not overrule what the
+ * run is for. An agent that lets memory outweigh its objective stops pursuing the objective.
+ */
+const EVIDENCE_WEIGHT = 4;
+
+/**
+ * Attempts before an observed rate is trusted in full.
+ *
+ * One attempt is an anecdote. Without this ramp a single unlucky failure in one previous run would
+ * reorder every future run's choices, and the agent would abandon a good action on no real evidence.
+ *
+ * THE VALUE IS CONSTRAINED, NOT CHOSEN. At one attempt the penalty is
+ * EVIDENCE_WEIGHT / EVIDENCE_CONFIDENCE_AT, and that must stay below the smallest prior gap it
+ * could otherwise overturn. The narrowest gap in the registry today is the two synthesis routes,
+ * 5 × (0.9 − 0.5) = 2.0 against a cost difference of 1 — a net 1.0. So 4/n < 1 requires n > 4.
+ *
+ * Five was found by a test rather than reasoned about in advance: at three, a single failed run
+ * flipped the agent onto the worse engine permanently, which is precisely the behaviour the ramp
+ * exists to prevent. If a future action's prior sits closer to a competitor's than 1.0, this needs
+ * raising with it — a comment rather than an assertion because the constraint is over the whole
+ * registry and no single test sees it.
+ */
+const EVIDENCE_CONFIDENCE_AT = 5;
+
 export type Scored = {
   action: AgentAction;
   score: number;
@@ -66,6 +94,10 @@ export type Scored = {
     prior: number;
     costPenalty: number;
     failurePenalty: number;
+    /** From prior episodes. Zero when there is no evidence — which is not the same as a zero rate. */
+    evidencePenalty: number;
+    /** null when nothing comparable has been attempted. Never 0 for "unknown". */
+    observedRate: number | null;
   };
 };
 
@@ -82,7 +114,12 @@ export type Scored = {
  *   prior           — declared quality, which is what stops cost preferring the worse engine.
  *   penalties       — cost, and prior failures.
  */
-export function scoreAction(action: AgentAction, s: AgentState, goal: AgentGoal): Scored {
+export function scoreAction(
+  action: AgentAction,
+  s: AgentState,
+  goal: AgentGoal,
+  evidence: PriorEvidence = NO_PRIOR_EVIDENCE,
+): Scored {
   const verdict = evaluateGoal(goal, s);
   const unsatisfied = new Set([...verdict.fails, ...verdict.unknown]);
   const relevant = new Set(
@@ -96,17 +133,28 @@ export function scoreAction(action: AgentAction, s: AgentState, goal: AgentGoal)
   const costPenalty    = COST_PENALTY[action.cost];
   const failurePenalty = FAILURE_PENALTY * (s.failures[action.id] ?? 0);
 
+  // Prior episodes. An action nobody has tried is untouched; an action that has been tried and
+  // failed is penalised in proportion to how often, ramped by how much evidence there is.
+  const seen = evidence.forAction(action.id);
+  const confidence = Math.min(seen.attempts, EVIDENCE_CONFIDENCE_AT) / EVIDENCE_CONFIDENCE_AT;
+  const evidencePenalty =
+    seen.successRate === null ? 0 : EVIDENCE_WEIGHT * (1 - seen.successRate) * confidence;
+
   const score =
     10 * advancesGoal +
      2 * establishesNew +
      5 * action.prior -
     costPenalty -
-    failurePenalty;
+    failurePenalty -
+    evidencePenalty;
 
   return {
     action,
     score,
-    why: { advancesGoal, establishesNew, prior: action.prior, costPenalty, failurePenalty },
+    why: {
+      advancesGoal, establishesNew, prior: action.prior, costPenalty, failurePenalty,
+      evidencePenalty, observedRate: seen.successRate,
+    },
   };
 }
 
@@ -117,6 +165,9 @@ function explain(s: Scored): string {
   t.push(`prior ${s.why.prior}`);
   if (s.why.costPenalty)     t.push(`cost -${s.why.costPenalty}`);
   if (s.why.failurePenalty)  t.push(`${s.why.failurePenalty / FAILURE_PENALTY} prior failure(s)`);
+  if (s.why.observedRate !== null) {
+    t.push(`observed ${Math.round(s.why.observedRate * 100)}% across prior runs`);
+  }
   return t.join(", ");
 }
 
@@ -127,11 +178,16 @@ function explain(s: Scored): string {
  * different sequence on identical input cannot be debugged from its trace, and the trace is the
  * only window this phase has into its own behaviour.
  */
-export function rank(s: AgentState, goal: AgentGoal, actions: readonly AgentAction[] = ACTIONS): readonly Scored[] {
+export function rank(
+  s: AgentState,
+  goal: AgentGoal,
+  actions: readonly AgentAction[] = ACTIONS,
+  evidence: PriorEvidence = NO_PRIOR_EVIDENCE,
+): readonly Scored[] {
   const order = new Map(actions.map((a, i) => [a.id, i]));
   return eligibleActions(s)
     .filter((a) => order.has(a.id))
-    .map((a) => scoreAction(a, s, goal))
+    .map((a) => scoreAction(a, s, goal, evidence))
     .sort((x, y) => y.score - x.score || order.get(x.action.id)! - order.get(y.action.id)!);
 }
 
@@ -168,6 +224,8 @@ export type PlanResult = {
 
 export type PlanOptions = {
   from?: AgentState;
+  /** Prior episodes (A-04). Omitted means no evidence, which is not the same as bad evidence. */
+  evidence?: PriorEvidence;
   /** Restrict the action set. Used to prove that removing an action changes behaviour with no edit. */
   actions?: readonly AgentAction[];
   now?: () => number;
@@ -193,7 +251,12 @@ export async function plan(
   ports: ActionPorts,
   opts: PlanOptions = {},
 ): Promise<PlanResult> {
-  const { from = initialState(), actions = ACTIONS, now = () => Date.now() } = opts;
+  const {
+    from = initialState(),
+    actions = ACTIONS,
+    now = () => Date.now(),
+    evidence = NO_PRIOR_EVIDENCE,
+  } = opts;
 
   let state = from;
   const decisions: Decision[] = [];
@@ -210,7 +273,7 @@ export async function plan(
     if (verdict.met) return finish({ outcome: "met", verdict });
 
     // Settled AND nothing left that could change it — distinct from "not met yet".
-    const ranked = rank(state, goal, actions);
+    const ranked = rank(state, goal, actions, evidence);
     if (verdict.settled && verdict.fails.length > 0 && ranked.every((r) => r.why.advancesGoal === 0)) {
       return finish({ outcome: "unsatisfiable", verdict });
     }

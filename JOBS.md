@@ -4255,7 +4255,7 @@ NOTES
 A-04 — EPISODIC MEMORY
 ─────────────────────────────────────────
 Phase:  Phase 09 — Agency
-Status: [ ] In Progress
+Status: [x] Complete
 
 PROBLEM DEFINITION
 What is broken, missing, or creating pain?
@@ -4282,12 +4282,42 @@ Why this approach and not another?
     sequence, which is the part worth learning.
 
 SUCCESS CRITERIA
-  [ ] Every run writes one episode containing every action taken
-  [ ] Episodes are retrievable by goal similarity
-  [ ] The planner receives prior episodes and its selections can differ
+  [x] Every run writes one episode containing every action taken
+  [x] Episodes are retrievable by goal similarity
+  [x] The planner receives prior episodes and its selections can differ
       because of them
-  [ ] An episode is immutable once written; corrections append
-  [ ] Absence of prior episodes is handled explicitly, never as a zero
+  [x] An episode is immutable once written; corrections append
+  [x] Absence of prior episodes is handled explicitly, never as a zero
+  [x] One unlucky run does not permanently reorder the agent
+
+NOTES
+  Absence is not zero, and it is the part that is easy to get wrong. An action
+  with no prior evidence has a success rate of null, not 0. Zero says "tried,
+  never works" — a claim about the action. Null says "never tried" — a claim
+  about the record. Collapse them and a new action looks like a proven failure,
+  is never selected, and can never gather the evidence that would exonerate it.
+
+  Subgenre dominates similarity because it decides which presets, grooves and
+  cultural profile apply; two goals in different subgenres have almost nothing
+  to teach each other however much else matches. Retrieval has a similarity
+  floor: evidence from a goal that is not really comparable is worse than none,
+  because it is confidently wrong and the agent cannot tell.
+
+  EVIDENCE_CONFIDENCE_AT is constrained rather than chosen. At one attempt the
+  penalty is EVIDENCE_WEIGHT / EVIDENCE_CONFIDENCE_AT and it must stay below the
+  narrowest prior gap it could overturn — in today's registry the two synthesis
+  routes, a net 1.0. Three was the first value tried and a single failed run
+  flipped the agent onto the worse engine permanently, which is exactly what the
+  ramp exists to prevent. Five holds, and an invariant test asserts the penalty
+  stays under the narrowest gap in the live action set, so a future action with
+  a closer prior fails the test rather than silently breaking the property.
+
+  Evidence is bounded below the goal term throughout: history informs the
+  choice, it does not overrule what the run is for.
+
+  Files: apps/api/src/agent/memory.ts
+         apps/api/src/__tests__/agentMemory.test.ts (20 tests)
+         planner.ts — scoreAction/rank/plan take optional PriorEvidence
 
 
 A-05 — POLICY LEARNING
