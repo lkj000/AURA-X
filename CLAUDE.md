@@ -30,6 +30,7 @@ Built by Okovanggo AI. Agentic build methodology — one job, one gate, one comm
 - Phase 07 — Agent Loop (Jobs 59-69) ✓
 - Phase 08 — ML Layer (Jobs 38-43) ✓ scaffold complete
 - Phase I  — Platform Integration (I-01 to I-12) ✓ all complete
+- Phase 09 — Agency (A-01 to A-09) — OPEN, see JOBS.md
 
 ## Build Status
 
@@ -114,11 +115,26 @@ Mode 3: Reserved. Architecture ready. Activates by config.
   GET  /api/audio/amapianorize/grooves          — groove templates
   GET  /api/audio/amapianorize/status           — pipeline status
 
-### Phase 07 — Agent Loop ✓ COMPLETE — AURA X IS DONE
+### Phase 07 — Agent Loop ✓ COMPLETE (the loop, not the agent)
 - Job 32 ✓ Evaluation API (CTL validation → Supabase write)
 - Job 33 ✓ Revision loop (evaluate → mutate → regenerate, max 3 iter)
 - Job 34-36 ✓ Results store + weight tuner + dataset builder
 - Job 37 ✓ Full autonomous agent (POST /api/agent/run) — FINAL JOB
+
+### What `runAgent` is, precisely — read before extending it
+
+`runAgent` is a fixed six-step procedure: create track, synthesise CTL, write
+CTL, revise up to three times, store, return. It selects no actions, reads no
+previous run, pursues no objective beyond "a track of this subgenre", and does
+nothing until a request arrives.
+
+That is a pipeline with a retry loop, which is what the filename says and not
+what the heading below said for several months. The capability underneath it is
+real and large — sixty-odd engine modules, a full audio chain, an evaluator.
+What is absent is the layer that chooses among that capability, remembers
+whether the choice worked, and runs unprompted. **Phase 09 — Agency** (JOBS.md,
+A-01 to A-09) is that layer. Until it lands, "autonomous" describes the inside
+of one request and nothing about how the system operates over time.
 
 ### POST /api/agent/run — THE AGENT
 Input:
@@ -147,7 +163,7 @@ The agent autonomously:
   POST /api/evaluate        — evaluate a generation
   GET  /api/evaluate/:id    — evaluation history
 
-### AURA X — BUILD COMPLETE
+### AURA X — PHASES 01–08 COMPLETE
   Phase 01 ✓  Foundation (7 jobs)
   Phase 02 ✓  AC-AMI Core (7 jobs)
   Phase 03 ✓  Generation Pipeline (5 jobs)

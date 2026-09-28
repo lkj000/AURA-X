@@ -4026,3 +4026,362 @@ SUCCESS CRITERIA
   [x] Synthesis errors visible in UI instead of failing silently
   [x] Audio preview works on all tested tracks
   [x] commits 797614b, 7803048, 105f5e5, 8a57d6b
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 09 — AGENCY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Phases 01–08 and E-01–E-63 built a very large library of capability and one
+entry point that uses it: `runAgent`. That function is a fixed six-step
+procedure — create track, synthesise CTL, write CTL, revise up to three times,
+store, return. It selects no actions, holds no memory of any previous run,
+pursues no objective beyond "produce a track of this subgenre", and does
+nothing at all until a human sends it a request.
+
+That is a pipeline with a retry loop. The file names it `agentRunner`; the
+documentation calls it THE AGENT. Phase 09 closes the distance between those
+two names.
+
+Nothing in Phases 01–08 is wrong or wasted — the capability is real and it is
+the reason this phase is tractable. What is missing is the layer that decides
+which capability to use, remembers whether it worked, and runs without being
+asked.
+
+
+A-01 — ACTION REGISTRY
+─────────────────────────────────────────
+Phase:  Phase 09 — Agency
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → The platform can do roughly sixty distinct things — synthesise a CTL,
+    plan harmony, transplant a groove, separate stems, master, evaluate,
+    mutate, export MIDI. None of them is declared anywhere as a thing an
+    agent may choose. They are reachable only by being hard-coded into a
+    sequence, so the set of available actions is whatever the last engineer
+    wrote into `runAgent`.
+Who experiences this problem?
+  → Anyone extending the agent: adding a capability means editing the
+    procedure, and the procedure is the only record of what the agent can do.
+What happens today without this solution?
+  → The agent cannot select. Selection requires a set to select from, and
+    there is no set — so every future planner, policy or learning component
+    has nothing to operate over.
+
+SOLUTION
+What are we building?
+  → A declarative registry of agent actions. Each entry names the action,
+    its input and output types, its preconditions as a predicate over agent
+    state, its expected effects, and its cost class (free / compute / paid
+    external). Actions wrap capability that already exists; the registry adds
+    no new music logic.
+How does it solve the problem?
+  → It turns "what the agent can do" from an implicit property of one
+    function into data that planners, policies, budgets and traces can all
+    read. Adding a capability becomes registering it, not editing a sequence.
+Why this approach and not another?
+  → A registry keyed on preconditions is the minimum structure a planner can
+    search over. Encoding the same information as a state machine would fix
+    the order in advance, which is the thing being removed.
+
+SUCCESS CRITERIA
+  [ ] Every action the current `runAgent` performs exists as a registry entry
+  [ ] Each entry declares preconditions, effects and cost class
+  [ ] The registry is the single source of the action set — no caller holds
+      a hard-coded list
+  [ ] An action whose preconditions are unmet cannot be executed, and says so
+  [ ] Registering a new action requires no change to any planner or runner
+
+
+A-02 — GOAL MODEL
+─────────────────────────────────────────
+Phase:  Phase 09 — Agency
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → `AgentGoal` is a track specification — title, subgenre, bpm, key. It
+    states what to make, never what would count as having succeeded. The
+    revision loop stops after three iterations whatever the score, because
+    there is no target to stop at.
+Who experiences this problem?
+  → The operator, who cannot ask for an outcome; and the agent, which cannot
+    tell a good result from a finished one.
+What happens today without this solution?
+  → "Done" means "the procedure ran", not "the objective holds". A run that
+    scores 41 and a run that scores 92 both return status complete.
+
+SOLUTION
+What are we building?
+  → A goal as an objective plus a success predicate over observable state —
+    a target composite score, required validation passes, constraints such as
+    key or tempo, and a bound on effort. Track specification becomes one kind
+    of constraint inside it rather than the whole of it.
+How does it solve the problem?
+  → The agent can then evaluate whether it is finished, and a planner has
+    something to plan toward. Success becomes falsifiable per run.
+Why this approach and not another?
+  → A predicate over state composes with the registry's preconditions — the
+    same evaluator serves both — where a bare target score would not.
+
+SUCCESS CRITERIA
+  [ ] A goal states a success predicate, not only a specification
+  [ ] The predicate is evaluated against observed state, and the result is
+      recorded with the run
+  [ ] A run that meets its predicate early stops early
+  [ ] A run that cannot meet it reports which clause failed, never a bare
+      "complete"
+  [ ] Effort bound is expressed in the goal and honoured
+
+
+A-03 — PLANNER
+─────────────────────────────────────────
+Phase:  Phase 09 — Agency
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Action order is a literal sequence in `runAgent`. The same six steps run
+    for every goal, in the same order, whatever the state or the objective.
+Who experiences this problem?
+  → Every use case that is not the one the sequence was written for —
+    improving an existing track, recovering from a failed stem separation,
+    reaching a score target by a different route.
+What happens today without this solution?
+  → The agent cannot respond to what it observes. A failure at step two is
+    handled by a fallback written in advance or not at all.
+
+SOLUTION
+What are we building?
+  → A planner that, given state and goal, selects the next action from the
+    registry among those whose preconditions hold, scored by expected
+    contribution to the goal predicate. Loop: observe → select → execute →
+    observe, until the predicate holds or the effort bound is reached.
+How does it solve the problem?
+  → Order becomes a consequence of state rather than a constant. A new action
+    participates the moment it is registered.
+Why this approach and not another?
+  → Greedy selection over declared preconditions is the smallest thing that
+    is genuinely selection. Search or learned policy can replace the scoring
+    function later without changing the loop.
+
+SUCCESS CRITERIA
+  [ ] Action order is not hard-coded anywhere in the loop
+  [ ] Two different goals produce two different action sequences
+  [ ] An action failing does not abort the run where an alternative exists
+  [ ] Every selection records what was chosen, what else was eligible, and why
+  [ ] Removing an action from the registry changes behaviour with no code edit
+
+
+A-04 — EPISODIC MEMORY
+─────────────────────────────────────────
+Phase:  Phase 09 — Agency
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Each run begins from nothing. `runAgent` reads no previous run. The
+    results store records outcomes and nothing consults it.
+Who experiences this problem?
+  → The operator, who watches the system repeat a choice that scored badly
+    last week.
+What happens today without this solution?
+  → The platform accumulates data it never uses. Learning is impossible
+    because there is no retrievable record of state, action and outcome.
+
+SOLUTION
+What are we building?
+  → An episode record per run: the goal, each observation, each action with
+    its inputs and outcome, and the final predicate result. Retrieval by
+    similarity of goal, exposed to the planner as prior evidence.
+How does it solve the problem?
+  → The agent can consult what happened last time under comparable
+    conditions, and a policy has a corpus to learn from.
+Why this approach and not another?
+  → Episodes keyed on goal similarity are the natural unit here, because the
+    goal is what recurs. Storing only aggregate scores would lose the action
+    sequence, which is the part worth learning.
+
+SUCCESS CRITERIA
+  [ ] Every run writes one episode containing every action taken
+  [ ] Episodes are retrievable by goal similarity
+  [ ] The planner receives prior episodes and its selections can differ
+      because of them
+  [ ] An episode is immutable once written; corrections append
+  [ ] Absence of prior episodes is handled explicitly, never as a zero
+
+
+A-05 — POLICY LEARNING
+─────────────────────────────────────────
+Phase:  Phase 09 — Agency
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → An adaptive EMA policy exists in the engine and a weight tuner exists in
+    the API. Neither is connected to action selection, so outcomes change
+    nothing about what the agent does next.
+Who experiences this problem?
+  → Everyone waiting for the system to get better at its job by running it.
+What happens today without this solution?
+  → The thousandth run is exactly as good as the first.
+
+SOLUTION
+What are we building?
+  → Wiring from episode outcomes to the planner's scoring function: action
+    value updated from observed contribution to the goal predicate, held per
+    context, with exploration bounded and declared.
+How does it solve the problem?
+  → Selection improves with evidence instead of staying fixed.
+Why this approach and not another?
+  → The EMA policy already exists and is tested; the missing piece is the
+    connection, not the algorithm. Replacing it with a learned model before
+    connecting anything would be building a second thing that is also
+    unwired.
+
+SUCCESS CRITERIA
+  [ ] Action values update from episode outcomes
+  [ ] A demonstrably bad action is selected less often after evidence
+  [ ] Exploration rate is explicit and bounded, never implicit
+  [ ] The policy can be inspected and reset
+  [ ] Learning is off by default and armed deliberately
+
+
+A-06 — AUTONOMY LOOP
+─────────────────────────────────────────
+Phase:  Phase 09 — Agency
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Nothing happens unless a human sends POST /api/agent/run. There is no
+    schedule, no trigger, no standing objective.
+Who experiences this problem?
+  → The operator, who is the scheduler.
+What happens today without this solution?
+  → "Automated" describes the inside of one request and nothing about the
+    system's operation over time.
+
+SOLUTION
+What are we building?
+  → A supervisor that holds standing objectives, decides when to act on them,
+    and runs the planner under a budget — with the whole loop disarmed by
+    default and armed as an explicit act.
+How does it solve the problem?
+  → The system operates rather than responds.
+Why this approach and not another?
+  → Standing objectives with a supervisor generalise a cron trigger, which
+    could not express "keep working until the target holds".
+
+SUCCESS CRITERIA
+  [ ] A standing objective produces runs with no human request
+  [ ] The loop is off by default; arming is explicit and reversible
+  [ ] Stopping is immediate and leaves no run half-written
+  [ ] Every autonomous run is attributable to the objective that caused it
+  [ ] The loop refuses to start without a budget
+
+
+A-07 — BUDGET AND SAFETY ENVELOPE
+─────────────────────────────────────────
+Phase:  Phase 09 — Agency
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → Actions call Replicate, Modal and audio compute, all of which cost real
+    money. Nothing counts spend, and no ceiling exists. An autonomous loop
+    over that is an unbounded bill.
+Who experiences this problem?
+  → Whoever owns the account.
+What happens today without this solution?
+  → A retry storm is indistinguishable from normal operation until the
+    invoice arrives.
+
+SOLUTION
+What are we building?
+  → A budget per objective and per period, checked before any paid action,
+    with spend recorded per action. Exceeding it refuses the action and says
+    which ceiling was hit — never a silent downgrade to a cheaper path.
+How does it solve the problem?
+  → Autonomy becomes bounded, which is the condition for allowing it at all.
+Why this approach and not another?
+  → Checking before the call is the only point where refusal is free. After
+    the call the money is spent whatever the check says.
+
+SUCCESS CRITERIA
+  [ ] Every paid action declares a cost class and is checked before invocation
+  [ ] Exceeding a ceiling refuses and names the ceiling
+  [ ] Spend is recorded per action and per episode
+  [ ] A budget cannot be raised by the loop itself
+  [ ] With no budget configured, paid actions refuse rather than proceed
+
+
+A-08 — DECISION TRACE
+─────────────────────────────────────────
+Phase:  Phase 09 — Agency
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → `agent_log` is an array of human-readable strings. It cannot be queried,
+    compared across runs, or reduced to the evidence behind a decision.
+Who experiences this problem?
+  → Anyone asking why the agent did what it did, including its author.
+What happens today without this solution?
+  → Debugging an agent decision means reading prose and inferring.
+
+SOLUTION
+What are we building?
+  → A structured trace: one record per decision, carrying the state observed,
+    the eligible actions, the selection and its reason, the outcome and the
+    cost. The prose log is rendered from it rather than replacing it.
+How does it solve the problem?
+  → Behaviour becomes inspectable as data, which is what makes the rest of
+    this phase debuggable at all.
+Why this approach and not another?
+  → Structured-first with prose derived keeps the two from diverging, which
+    they do the moment both are written by hand.
+
+SUCCESS CRITERIA
+  [ ] Every decision writes a structured record
+  [ ] The human-readable log is derived from it, not written separately
+  [ ] A run's trace answers what was chosen, over what, and why
+  [ ] Traces are comparable across runs
+  [ ] Cost and duration are on the record
+
+
+A-09 — EXPLANATION
+─────────────────────────────────────────
+Phase:  Phase 09 — Agency
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+What is broken, missing, or creating pain?
+  → The system returns a track and a score. It cannot say which decisions
+    produced them or what would have to change for a better one.
+Who experiences this problem?
+  → The producer, for whom an unexplained score is not actionable.
+What happens today without this solution?
+  → Output is accepted or rejected whole, and the platform teaches nobody
+    anything.
+
+SOLUTION
+What are we building?
+  → A reduction from any output back through its trace and episode to the
+    goal, rendered for a producer: what was decided, on what evidence, and
+    which single change would most move the score.
+How does it solve the problem?
+  → It makes the system's reasoning usable by the person it is for.
+Why this approach and not another?
+  → Generating an explanation from the trace keeps it true by construction.
+    A separately written narrative is a second artefact that can disagree
+    with what happened.
+
+SUCCESS CRITERIA
+  [ ] Any output reduces to the decisions that produced it
+  [ ] The explanation is generated from the trace, never authored alongside
+  [ ] It names the highest-leverage available change
+  [ ] It states what it does not know rather than filling the gap
+  [ ] It contains no claim the trace does not support
