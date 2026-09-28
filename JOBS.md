@@ -4609,7 +4609,7 @@ NOTES
 A-09 — EXPLANATION
 ─────────────────────────────────────────
 Phase:  Phase 09 — Agency
-Status: [ ] In Progress
+Status: [x] Complete
 
 PROBLEM DEFINITION
 What is broken, missing, or creating pain?
@@ -4634,11 +4634,61 @@ Why this approach and not another?
     with what happened.
 
 SUCCESS CRITERIA
-  [ ] Any output reduces to the decisions that produced it
-  [ ] The explanation is generated from the trace, never authored alongside
-  [ ] It names the highest-leverage available change
-  [ ] It states what it does not know rather than filling the gap
-  [ ] It contains no claim the trace does not support
+  [x] Any output reduces to the decisions that produced it
+  [x] The explanation is generated from the trace, never authored alongside
+  [x] It names the highest-leverage available change
+  [x] It states what it does not know rather than filling the gap
+  [x] It contains no claim the trace does not support
+
+NOTES
+  The "why" section is the goal verdict's own report, verbatim rather than
+  paraphrased — a paraphrase is a second description of the same thing and it
+  drifts.
+
+  Unknowns are derived from the run, not read off a fixed list. A run with no
+  alternative route cannot honestly say a route was not taken; generic caution
+  would say it anyway and be wrong, and a test asserts it does not. Two limits
+  recur because they are structural rather than accidental: credit cannot be
+  attributed to a single action (A-05 assigns it evenly, because separating it
+  needs a comparison the platform cannot run twice identically), and no route
+  other than the one taken was ever evaluated.
+
+  One leverage point, never a list. Five improvements is a way of not choosing,
+  and hands the ranking back to the person who asked. Each is tied to the
+  recorded fact that implies it, so it can be checked rather than believed.
+
+  "No claim the trace does not support" is tested structurally rather than by
+  sampling prose: every action an explanation names must appear among the
+  actions that run considered.
+
+  Files: apps/api/src/agent/explain.ts
+         apps/api/src/__tests__/agentExplain.test.ts (19 tests)
+
+
+PHASE 09 — CLOSED
+─────────────────────────────────────────
+All nine jobs complete. 171 tests added; full API suite 815 passing against the
+same 14 pre-existing failures as the pre-phase baseline (Temporal mocks,
+Supabase env, audio service) — verified against a stashed working tree.
+
+Build order was forced by dependency and two jobs moved because of it: A-08
+before A-04, because an episode IS a trace and building memory over an informal
+record would mean rewriting it; and A-07 before A-06, because an unattended
+repeating loop that can call paid services must not be reachable before the
+thing that bounds it exists.
+
+Four defects were found by tests rather than by reading, and each is recorded
+with the job that found it:
+  · revise was eligible for ever, so no planner could terminate  (A-01)
+  · the evidence ramp let one unlucky run permanently reorder the agent  (A-04)
+  · the policy initialised at 0 — "fails every time" in its own scale — so a
+    perfect action scored negative while it learned  (A-05)
+  · rank() evaluated preconditions over the global registry, so a supplied
+    action set could only narrow it, never extend it  (found in A-07, fixed in
+    A-03; it would also have blocked D-10)
+
+Everything that can spend money or act unattended is off by default and both
+halves of every gate fail closed. Nothing in this phase is armed anywhere.
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

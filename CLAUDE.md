@@ -30,7 +30,7 @@ Built by Okovanggo AI. Agentic build methodology — one job, one gate, one comm
 - Phase 07 — Agent Loop (Jobs 59-69) ✓
 - Phase 08 — ML Layer (Jobs 38-43) ✓ scaffold complete
 - Phase I  — Platform Integration (I-01 to I-12) ✓ all complete
-- Phase 09 — Agency (A-01 to A-09) — A-01/A-02/A-03 complete, A-04+ open
+- Phase 09 — Agency (A-01 to A-09) ✓ COMPLETE — the agent selects, remembers, learns, runs unattended under a budget, and explains itself
 - Phase 10 — DAW (D-01 to D-14) — browser DAW, desktop bridge, plugin tracks
 
 ### Phase 10 — DAW: the four constraints that decide scope
