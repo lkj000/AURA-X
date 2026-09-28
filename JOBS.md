@@ -4323,7 +4323,7 @@ NOTES
 A-05 — POLICY LEARNING
 ─────────────────────────────────────────
 Phase:  Phase 09 — Agency
-Status: [ ] In Progress
+Status: [x] Complete
 
 PROBLEM DEFINITION
 What is broken, missing, or creating pain?
@@ -4349,11 +4349,52 @@ Why this approach and not another?
     unwired.
 
 SUCCESS CRITERIA
-  [ ] Action values update from episode outcomes
-  [ ] A demonstrably bad action is selected less often after evidence
-  [ ] Exploration rate is explicit and bounded, never implicit
-  [ ] The policy can be inspected and reset
-  [ ] Learning is off by default and armed deliberately
+  [x] Action values update from episode outcomes
+  [x] A demonstrably bad action is selected less often after evidence
+  [x] Exploration rate is explicit and bounded, never implicit
+  [x] The policy can be inspected and reset
+  [x] Learning is off by default and armed deliberately
+  [x] A disarmed policy scores identically to never having had one
+  [x] A new action starts neutral, not condemned
+
+NOTES
+  The engine's EMA policy is typed over RefinementAction x Lane. Agent action
+  ids are neither, and widening that enum to admit create_track would corrupt a
+  type sixty engine modules depend on — so the update rule is reproduced and the
+  key space is the agent's own. Twenty lines of arithmetic is the cheaper
+  mistake.
+
+  That decision paid for itself immediately. The engine initialises utility at 0
+  and is right to: its utility is a DELTA, where 0 means "made no difference".
+  Utility here is a LEVEL in [0,1], where 0 means "fails every time" — so a
+  perfect action scored negative for its first three observations, the variance
+  from climbing out making it worse. Caught by a test, not by reading. Importing
+  the engine's policy would have carried that initialisation in silently.
+  NEUTRAL_UTILITY = 0.5, and a regression test holds it.
+
+  Credit assignment is NOT solved, and saying so is better than the alternative.
+  Every action in a met run gets the same credit, which cannot separate the
+  decisive action from one that merely happened alongside it. Doing better needs
+  counterfactuals the platform cannot produce, because generation is not
+  repeatable at that granularity. The support gate is what stops the coarse rule
+  drawing confident conclusions from thin evidence: below minSupport the policy
+  contributes exactly 0, because one observation is not a weak signal — it is no
+  signal, and a weak one still decides between closely matched options.
+
+  Exploration is declared, bounded and recorded on the decision. An agent that
+  deviates from its best choice at an undeclared rate cannot be told apart from
+  a broken one. The draw source is injected, so an exploring run reproduces.
+
+  Both halves of the gate fail closed: an unset flag is off, and an unparseable
+  or out-of-range rate is the minimum, never the maximum — a typo must not turn
+  the agent into a random walk.
+
+  Files: apps/api/src/agent/policy.ts
+         apps/api/src/__tests__/agentPolicy.test.ts (21 tests)
+         planner.ts — policy + gate + injected exploration draw
+
+  Arming: AGENT_POLICY_LEARNING=true and AGENT_POLICY_EXPLORATION_RATE
+  (clamped to 0.25). Neither is set anywhere; arming is an ops decision.
 
 
 A-06 — AUTONOMY LOOP

@@ -64,7 +64,8 @@ describe("A-08 · cost and duration are on the record", () => {
   it("counts repeated failure of one action as one failing action", () => {
     // Four retries of one broken thing is one problem, not four.
     const d = (chosen: string, ok: boolean) => ({
-      step: 1, chosen, reason: "", considered: [], ok, note: "", cost: "compute" as const, durationMs: 1,
+      step: 1, chosen, reason: "", considered: [], ok, note: "", cost: "compute" as const,
+      durationMs: 1, exploratory: false,
       ...(ok ? {} : { error: "ACTION_THREW" }),
     });
     const t = totalsFor([d("a", false), d("a", false), d("b", true)]);

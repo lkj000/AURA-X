@@ -34,6 +34,7 @@ import {
   type CostClass,
 } from "./actionRegistry";
 import { NO_PRIOR_EVIDENCE, type PriorEvidence } from "./memory";
+import { POLICY_OFF, emptyPolicy, policyAdjustment, type AgentPolicy, type PolicyGate } from "./policy";
 import {
   clausesFor,
   evaluateGoal,
@@ -98,6 +99,8 @@ export type Scored = {
     evidencePenalty: number;
     /** null when nothing comparable has been attempted. Never 0 for "unknown". */
     observedRate: number | null;
+    /** From the learned policy (A-05). Zero whenever learning is disarmed or unsupported. */
+    policyAdjustment: number;
   };
 };
 
@@ -119,6 +122,7 @@ export function scoreAction(
   s: AgentState,
   goal: AgentGoal,
   evidence: PriorEvidence = NO_PRIOR_EVIDENCE,
+  policy: AgentPolicy | null = null,
 ): Scored {
   const verdict = evaluateGoal(goal, s);
   const unsatisfied = new Set([...verdict.fails, ...verdict.unknown]);
@@ -140,20 +144,28 @@ export function scoreAction(
   const evidencePenalty =
     seen.successRate === null ? 0 : EVIDENCE_WEIGHT * (1 - seen.successRate) * confidence;
 
+  // Learned value (A-05). Exactly zero when learning is disarmed or support is thin, so a disarmed
+  // agent scores identically to one that never had a policy — the property that makes arming safe
+  // to reverse.
+  const learned = policy
+    ? policyAdjustment(policy, goal.constraints.subgenre, action.id)
+    : 0;
+
   const score =
     10 * advancesGoal +
      2 * establishesNew +
      5 * action.prior -
     costPenalty -
     failurePenalty -
-    evidencePenalty;
+    evidencePenalty +
+    learned;
 
   return {
     action,
     score,
     why: {
       advancesGoal, establishesNew, prior: action.prior, costPenalty, failurePenalty,
-      evidencePenalty, observedRate: seen.successRate,
+      evidencePenalty, observedRate: seen.successRate, policyAdjustment: learned,
     },
   };
 }
@@ -167,6 +179,9 @@ function explain(s: Scored): string {
   if (s.why.failurePenalty)  t.push(`${s.why.failurePenalty / FAILURE_PENALTY} prior failure(s)`);
   if (s.why.observedRate !== null) {
     t.push(`observed ${Math.round(s.why.observedRate * 100)}% across prior runs`);
+  }
+  if (s.why.policyAdjustment !== 0) {
+    t.push(`policy ${s.why.policyAdjustment > 0 ? "+" : ""}${s.why.policyAdjustment.toFixed(2)}`);
   }
   return t.join(", ");
 }
@@ -183,11 +198,12 @@ export function rank(
   goal: AgentGoal,
   actions: readonly AgentAction[] = ACTIONS,
   evidence: PriorEvidence = NO_PRIOR_EVIDENCE,
+  policy: AgentPolicy | null = null,
 ): readonly Scored[] {
   const order = new Map(actions.map((a, i) => [a.id, i]));
   return eligibleActions(s)
     .filter((a) => order.has(a.id))
-    .map((a) => scoreAction(a, s, goal, evidence))
+    .map((a) => scoreAction(a, s, goal, evidence, policy))
     .sort((x, y) => y.score - x.score || order.get(x.action.id)! - order.get(y.action.id)!);
 }
 
@@ -210,6 +226,13 @@ export type Decision = {
   ok: boolean;
   note: string;
   error?: string;
+  /**
+   * True when this action was taken to gather evidence rather than because it scored best (A-05).
+   *
+   * On the record because an unexplained departure from the best choice is indistinguishable from
+   * a bug, and somebody reading a trace deserves to know which it was.
+   */
+  exploratory: boolean;
   cost: CostClass | null;
   durationMs: number;
 };
@@ -226,6 +249,12 @@ export type PlanOptions = {
   from?: AgentState;
   /** Prior episodes (A-04). Omitted means no evidence, which is not the same as bad evidence. */
   evidence?: PriorEvidence;
+  /** Learned values (A-05). Applied only when the gate is armed. */
+  policy?: AgentPolicy;
+  /** Learning and exploration gate. Off unless deliberately armed. */
+  gate?: PolicyGate;
+  /** Source of exploration draws, injected so a run can be reproduced exactly. */
+  explore?: () => number;
   /** Restrict the action set. Used to prove that removing an action changes behaviour with no edit. */
   actions?: readonly AgentAction[];
   now?: () => number;
@@ -256,7 +285,14 @@ export async function plan(
     actions = ACTIONS,
     now = () => Date.now(),
     evidence = NO_PRIOR_EVIDENCE,
+    policy,
+    gate = POLICY_OFF,
+    explore = Math.random,
   } = opts;
+
+  // The gate is read here, once, and decides whether the policy exists at all for this run. Passing
+  // a policy without arming the gate must change nothing — otherwise "off by default" is a label.
+  const activePolicy = gate.enabled ? policy ?? emptyPolicy() : null;
 
   let state = from;
   const decisions: Decision[] = [];
@@ -273,7 +309,7 @@ export async function plan(
     if (verdict.met) return finish({ outcome: "met", verdict });
 
     // Settled AND nothing left that could change it — distinct from "not met yet".
-    const ranked = rank(state, goal, actions, evidence);
+    const ranked = rank(state, goal, actions, evidence, activePolicy);
     if (verdict.settled && verdict.fails.length > 0 && ranked.every((r) => r.why.advancesGoal === 0)) {
       return finish({ outcome: "unsatisfiable", verdict });
     }
@@ -285,7 +321,13 @@ export async function plan(
 
     if (ranked.length === 0) return finish({ outcome: "no_action_available", verdict });
 
-    const best = ranked[0];
+    // Exploration: occasionally take the runner-up to gather evidence the best choice would never
+    // produce. Bounded, declared, and recorded on the decision — an agent that deviates at an
+    // undeclared rate cannot be told apart from a broken one.
+    const exploring =
+      gate.enabled && gate.explorationRate > 0 && ranked.length > 1 && explore() < gate.explorationRate;
+    const best = exploring ? ranked[1] : ranked[0];
+
     const started = now();
     const { outcome, state: next } = await executeAction(best.action.id, state, ports);
     state = next;
@@ -293,11 +335,12 @@ export async function plan(
     decisions.push({
       step,
       chosen: best.action.id,
-      reason: explain(best),
+      reason: exploring ? `${explain(best)} — exploratory` : explain(best),
       considered: ranked.map((r) => ({ id: r.action.id, score: r.score, why: explain(r) })),
       ok: outcome.ok,
       note: outcome.note,
       error: outcome.ok ? undefined : outcome.error,
+      exploratory: exploring,
       cost: best.action.cost,
       durationMs: now() - started,
     });
