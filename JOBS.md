@@ -4398,7 +4398,8 @@ SUCCESS CRITERIA
 A-08 — DECISION TRACE
 ─────────────────────────────────────────
 Phase:  Phase 09 — Agency
-Status: [ ] In Progress
+Status: [x] Complete  (built before A-04: an episode IS a trace, and building
+        memory over an informal record would mean rewriting it)
 
 PROBLEM DEFINITION
 What is broken, missing, or creating pain?
@@ -4422,11 +4423,34 @@ Why this approach and not another?
     they do the moment both are written by hand.
 
 SUCCESS CRITERIA
-  [ ] Every decision writes a structured record
-  [ ] The human-readable log is derived from it, not written separately
-  [ ] A run's trace answers what was chosen, over what, and why
-  [ ] Traces are comparable across runs
-  [ ] Cost and duration are on the record
+  [x] Every decision writes a structured record
+  [x] The human-readable log is derived from it, not written separately
+  [x] A run's trace answers what was chosen, over what, and why
+  [x] Traces are comparable across runs — including the divergence point
+  [x] Cost and duration are on the record
+
+NOTES
+  The goal is stored with the trace rather than referenced. A trace read a year
+  later has to be interpretable on its own, and a goal edited since would
+  silently re-describe what the run was trying to do — which makes an old trace
+  worse than no trace.
+
+  Comparison reports the divergence point, not just a difference. Two runs that
+  differ at the last step share a cause; two that differ at step one do not. A
+  run that agreed as far as it went and then stopped early is a divergence at
+  the shorter one's end, not agreement — reporting it as agreement would hide
+  the run that stopped.
+
+  Repeated failure of one action counts as one failing action. Four retries of
+  one broken thing is one problem.
+
+  The store is a port with a real in-memory implementation, available in
+  production as well as tests: a trace kept only in memory is worth more than no
+  trace, and nothing in the agent path should fail because a database is
+  unreachable.
+
+  Files: apps/api/src/agent/trace.ts
+         apps/api/src/__tests__/agentTrace.test.ts (16 tests)
 
 
 A-09 — EXPLANATION
