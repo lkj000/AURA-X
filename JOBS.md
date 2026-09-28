@@ -4188,7 +4188,7 @@ NOTES
 A-03 — PLANNER
 ─────────────────────────────────────────
 Phase:  Phase 09 — Agency
-Status: [ ] In Progress
+Status: [x] Complete
 
 PROBLEM DEFINITION
 What is broken, missing, or creating pain?
@@ -4217,11 +4217,39 @@ Why this approach and not another?
     function later without changing the loop.
 
 SUCCESS CRITERIA
-  [ ] Action order is not hard-coded anywhere in the loop
-  [ ] Two different goals produce two different action sequences
-  [ ] An action failing does not abort the run where an alternative exists
-  [ ] Every selection records what was chosen, what else was eligible, and why
-  [ ] Removing an action from the registry changes behaviour with no code edit
+  [x] Action order is not hard-coded anywhere in the loop
+  [x] Two different goals produce two different action sequences — a goal that
+      does not ask for storage never stores; a score target it keeps missing
+      revises more often than one it meets
+  [x] An action failing does not abort the run where an alternative exists
+  [x] Every selection records what was chosen, what else was eligible, and why
+  [x] Removing an action from the registry changes behaviour with no code edit
+  [x] A goal already satisfied by the state it was handed takes no action
+  [x] Identical input produces an identical sequence
+
+NOTES
+  Order falls out of preconditions, declared effects and unmet clauses. The
+  registry's array order survives only as the tie-break between options a score
+  cannot separate — a deterministic default, not a schedule.
+
+  Two upstream additions were needed and both are real information rather than
+  planner scaffolding. SuccessClause.dependsOn declares which state a clause
+  reads, so the planner can tell which actions could possibly move it instead of
+  guessing from names. AgentAction.prior declares how good an action is at
+  establishing its effects, because cost alone points the wrong way: the
+  TypeScript engine is free and worse, and scored on cost it wins every time —
+  the agent would route around the better engine to save a resource nobody is
+  billed for.
+
+  The establishesNew term carries necessary work no clause mentions. Nothing in
+  a goal asks for a track row; without it create_track scores zero on goal
+  advancement and is never chosen, and every run stalls before it starts.
+
+  The scoring function is deliberately replaceable. A-05 swaps observed value in
+  for the declared prior and nothing else in the loop moves.
+
+  Files: apps/api/src/agent/planner.ts
+         apps/api/src/__tests__/agentPlanner.test.ts (14 tests)
 
 
 A-04 — EPISODIC MEMORY

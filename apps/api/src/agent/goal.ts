@@ -21,7 +21,7 @@
  * three answers and the aggregate propagates the distinction.
  */
 
-import type { AgentState } from "./actionRegistry";
+import type { AgentState, StateKey } from "./actionRegistry";
 
 // ─── CONSTRAINTS ─────────────────────────────────────────────────────────────
 
@@ -51,6 +51,14 @@ export type SuccessClause = {
   readonly id: string;
   /** Stated so a failure can be reported in words the operator asked in. */
   readonly describe: string;
+  /**
+   * Which state this clause reads.
+   *
+   * Declared rather than inferred so a planner can tell which actions could possibly move it. An
+   * action whose effects miss every unmet clause's `dependsOn` cannot advance the goal, however
+   * useful it looks — and without this the planner would have to guess from names.
+   */
+  readonly dependsOn: readonly StateKey[];
   readonly evaluate: (s: AgentState) => ClauseVerdict;
 };
 
@@ -92,6 +100,7 @@ export function clausesFor(target: GoalTarget): readonly SuccessClause[] {
     const min = target.minCompositeScore;
     clauses.push({
       id: "composite_score",
+      dependsOn: ["compositeScore"],
       describe: `composite score at or above ${min}`,
       evaluate: (s) =>
         s.compositeScore === undefined ? "unknown" : s.compositeScore >= min ? "holds" : "fails",
@@ -101,6 +110,7 @@ export function clausesFor(target: GoalTarget): readonly SuccessClause[] {
   if (target.requireValidation) {
     clauses.push({
       id: "validation",
+      dependsOn: ["validationPassed"],
       describe: "CTL validation passes",
       evaluate: (s) =>
         s.validationPassed === undefined ? "unknown" : s.validationPassed ? "holds" : "fails",
@@ -110,6 +120,7 @@ export function clausesFor(target: GoalTarget): readonly SuccessClause[] {
   if (target.requireStored) {
     clauses.push({
       id: "stored",
+      dependsOn: ["stored"],
       describe: "the result is durably recorded",
       // `stored` is a boolean that starts false, so absence of evidence is not expressible here and
       // the clause is honestly two-valued. Not every fact has an unknown state; pretending this one

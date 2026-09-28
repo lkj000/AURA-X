@@ -110,6 +110,19 @@ export type AgentAction = {
   readonly precondition: (s: AgentState) => boolean;
   /** What it establishes when it succeeds. Declared, not inferred from the patch it returns. */
   readonly effects: readonly StateKey[];
+  /**
+   * How good this action is at establishing its effects, 0..1, as a declared prior.
+   *
+   * Needed because cost alone points the wrong way. Two actions establish `ctl`: the Python
+   * intelligence engine, which costs compute, and the TypeScript engine, which is free. Scored on
+   * cost the free one wins every time, and the agent would route around the better engine to save
+   * a resource nobody is billed for. The prior says which is actually preferred; the cost penalty
+   * then breaks ties between comparable options rather than deciding quality.
+   *
+   * A prior, not a measurement. A-05 replaces it with observed value from episodes — at which point
+   * this becomes the value held before any evidence exists, which is what a prior is.
+   */
+  readonly prior: number;
   readonly run: (s: AgentState, p: ActionPorts) => Promise<ActionOutcome>;
 };
 
@@ -119,6 +132,7 @@ const CREATE_TRACK: AgentAction = {
   id: "create_track",
   title: "Create the track record",
   cost: "free",
+  prior: 1.0, // Nothing else creates a track; there is no competing route to prefer.
   effects: ["trackId"],
   precondition: (s) => !s.trackId,
   run: async (_s, p) => {
@@ -131,6 +145,7 @@ const SYNTHESIZE_REMOTE: AgentAction = {
   id: "synthesize_ctl_remote",
   title: "Synthesise a CTL using the Python intelligence engine",
   cost: "compute",
+  prior: 0.9, // The primary intelligence path.
   effects: ["ctl", "ctlSource"],
   precondition: (s) => !!s.trackId && !s.ctl,
   run: async (_s, p) => {
@@ -143,6 +158,7 @@ const SYNTHESIZE_LOCAL: AgentAction = {
   id: "synthesize_ctl_local",
   title: "Synthesise a CTL using the TypeScript engine",
   cost: "free",
+  prior: 0.5, // A real fallback, and a worse one — which is why it must be declared rather than reached by a thrown exception.
   effects: ["ctl", "ctlSource"],
   precondition: (s) => !!s.trackId && !s.ctl,
   run: async (_s, p) => {
@@ -155,6 +171,7 @@ const PERSIST_CTL: AgentAction = {
   id: "persist_ctl",
   title: "Persist the CTL so it can be referenced",
   cost: "free",
+  prior: 1.0, // Sole route.
   effects: ["ctlId"],
   precondition: (s) => !!s.trackId && !!s.ctl && !s.ctlId,
   run: async (s, p) => {
@@ -181,6 +198,7 @@ const REVISE: AgentAction = {
   id: "revise",
   title: "Evaluate and mutate until the gate passes or the bound is reached",
   cost: "compute",
+  prior: 0.8, // Reliable, and not certain to move the score.
   effects: ["ctl", "compositeScore", "validationPassed", "iterationsRun", "mutationsApplied"],
   precondition: (s) => !!s.ctlId && !!s.ctl && s.iterationsRun < REVISION_CEILING,
   run: async (s, p) => {
@@ -205,6 +223,7 @@ const STORE_RESULT: AgentAction = {
   id: "store_result",
   title: "Record the outcome durably",
   cost: "free",
+  prior: 1.0, // Sole route.
   effects: ["stored"],
   precondition: (s) => s.compositeScore !== undefined && !s.stored,
   run: async (s, p) => {
