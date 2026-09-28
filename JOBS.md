@@ -4120,7 +4120,7 @@ NOTES
 A-02 — GOAL MODEL
 ─────────────────────────────────────────
 Phase:  Phase 09 — Agency
-Status: [ ] In Progress
+Status: [x] Complete
 
 PROBLEM DEFINITION
 What is broken, missing, or creating pain?
@@ -4149,13 +4149,40 @@ Why this approach and not another?
     same evaluator serves both — where a bare target score would not.
 
 SUCCESS CRITERIA
-  [ ] A goal states a success predicate, not only a specification
-  [ ] The predicate is evaluated against observed state, and the result is
+  [x] A goal states a success predicate, not only a specification —
+      constraints / target / effort are three separate things
+  [x] The predicate is evaluated against observed state, and the result is
       recorded with the run
-  [ ] A run that meets its predicate early stops early
-  [ ] A run that cannot meet it reports which clause failed, never a bare
-      "complete"
-  [ ] Effort bound is expressed in the goal and honoured
+  [x] A run that meets its predicate early stops early
+  [x] A run that cannot meet it reports which clause failed, never a bare
+      "complete" — four conclusions: met, unsatisfiable, effort_exhausted,
+      no_action_available
+  [x] Effort bound is expressed in the goal and honoured
+
+NOTES
+  Unknown is not failure, and that is the load-bearing decision in the file. A
+  clause about the composite score, evaluated before anything has been
+  evaluated, is not false — it is unknown. Collapsing the two would make an
+  unevaluated run indistinguishable from a bad one, and the agent would stop on
+  the first clause it had not yet gathered evidence for. Every clause returns
+  one of three answers and the aggregate propagates the distinction: `met`
+  requires no failures AND no unknowns; `settled` says whether more evidence
+  could still arrive.
+
+  Not every fact has an unknown state. `stored` starts false and absence is not
+  expressible, so that clause is honestly two-valued — inventing an unknown for
+  it would be as wrong as denying one to the score.
+
+  An omitted target field produces no clause rather than a permissive one. A
+  goal that never asked about validation must not report "validation: met" —
+  the agent was never asked and has no business claiming it checked.
+
+  defaultGoal encodes exactly what the old procedure did: three iterations, no
+  score target. It is deliberately not a good goal. Naming it as a default puts
+  the weakness at the call site instead of leaving it implicit in a loop bound.
+
+  Files: apps/api/src/agent/goal.ts
+         apps/api/src/__tests__/agentGoal.test.ts (17 tests)
 
 
 A-03 — PLANNER
