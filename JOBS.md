@@ -4052,7 +4052,7 @@ asked.
 A-01 — ACTION REGISTRY
 ─────────────────────────────────────────
 Phase:  Phase 09 — Agency
-Status: [ ] In Progress
+Status: [x] Complete
 
 PROBLEM DEFINITION
 What is broken, missing, or creating pain?
@@ -4087,12 +4087,34 @@ Why this approach and not another?
     the order in advance, which is the thing being removed.
 
 SUCCESS CRITERIA
-  [ ] Every action the current `runAgent` performs exists as a registry entry
-  [ ] Each entry declares preconditions, effects and cost class
-  [ ] The registry is the single source of the action set — no caller holds
-      a hard-coded list
-  [ ] An action whose preconditions are unmet cannot be executed, and says so
-  [ ] Registering a new action requires no change to any planner or runner
+  [x] Every action the current `runAgent` performs exists as a registry entry
+  [x] Each entry declares preconditions, effects and cost class
+  [x] The registry is the single source of the action set — no caller holds
+      a hard-coded list — ACTIONS is frozen and resolution goes through getAction
+  [x] An action whose preconditions are unmet cannot be executed, and says so —
+      three distinct refusals: UNKNOWN_ACTION, PRECONDITION_UNMET, ACTION_THREW
+  [x] Registering a new action requires no change to any planner or runner
+  [x] No action is eligible for ever — REVISION_CEILING
+
+NOTES
+  Capability enters through ActionPorts, so the registry is pure and the whole
+  action set tests with no database, no audio service and no vendor account.
+
+  The remote and local CTL synthesis routes are registered as two actions
+  sharing one effect. Today that choice is a try/catch inside runAgent and the
+  fallback is reachable only by the remote path throwing; as two entries it
+  becomes a decision a planner makes and a trace records.
+
+  REVISION_CEILING was not designed — it was found. The first test run showed
+  `revise` satisfying its own precondition after running, so a driver taking the
+  first eligible action revised for ever and never stored a result. An action
+  set containing an action that is eligible for ever cannot be planned over,
+  whatever the planner does. A-02's effort bound supersedes the constant; the
+  constant stays, because a registry that terminates only when someone remembers
+  to bound it has the same defect one layer up.
+
+  Files: apps/api/src/agent/actionRegistry.ts
+         apps/api/src/__tests__/actionRegistry.test.ts (22 tests)
 
 
 A-02 — GOAL MODEL
