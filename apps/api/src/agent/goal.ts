@@ -228,7 +228,12 @@ export type RunConclusion =
    * because the remedy is different: this one wants a bigger budget or a cheaper route, not more
    * iterations, and conflating them sends somebody to change the wrong number.
    */
-  | { outcome: "budget_exhausted";    verdict: GoalVerdict; reason: string };
+  | { outcome: "budget_exhausted";    verdict: GoalVerdict; reason: string }
+  /**
+   * Stopped because something asked it to, between actions (A-06). Neither a success nor a failure
+   * of the work — an operator pressing stop must not be recorded as the agent failing.
+   */
+  | { outcome: "stopped";             verdict: GoalVerdict };
 
 /** One sentence naming what happened and, where it did not succeed, what stopped it. */
 export function describeConclusion(c: RunConclusion): string {
@@ -243,6 +248,8 @@ export function describeConclusion(c: RunConclusion): string {
       return `No action could run. Unmet: ${[...c.verdict.fails, ...c.verdict.unknown].join(", ") || "none"}.`;
     case "budget_exhausted":
       return `Stopped by budget: ${c.reason}. Unmet: ${[...c.verdict.fails, ...c.verdict.unknown].join(", ") || "none"}.`;
+    case "stopped":
+      return `Stopped on request. Unmet: ${[...c.verdict.fails, ...c.verdict.unknown].join(", ") || "none"}.`;
   }
 }
 

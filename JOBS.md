@@ -4400,7 +4400,7 @@ NOTES
 A-06 — AUTONOMY LOOP
 ─────────────────────────────────────────
 Phase:  Phase 09 — Agency
-Status: [ ] In Progress
+Status: [x] Complete  (built after A-07, which gates it)
 
 PROBLEM DEFINITION
 What is broken, missing, or creating pain?
@@ -4424,11 +4424,46 @@ Why this approach and not another?
     could not express "keep working until the target holds".
 
 SUCCESS CRITERIA
-  [ ] A standing objective produces runs with no human request
-  [ ] The loop is off by default; arming is explicit and reversible
-  [ ] Stopping is immediate and leaves no run half-written
-  [ ] Every autonomous run is attributable to the objective that caused it
-  [ ] The loop refuses to start without a budget
+  [x] A standing objective produces runs with no human request
+  [x] The loop is off by default; arming is explicit and reversible
+  [x] Stopping is immediate and leaves no run half-written
+  [x] Every autonomous run is attributable to the objective that caused it
+  [x] The loop refuses to start without a budget
+  [x] A broken objective backs off instead of spending at its cadence for ever
+
+NOTES
+  No timers in the supervisor. It exposes tick() and takes its clock as a
+  parameter; a deployment wraps it in whatever scheduler it already has. A
+  component that starts its own interval cannot be tested without waiting,
+  cannot be stepped, and keeps running after the test that created it.
+
+  The refusal to start without a budget is a refusal, not a warning and not a
+  default of zero. The combination this job creates — unattended, repeating, and
+  able to call paid services — is exactly the one that must not be reachable by
+  forgetting to configure something. A refusal that still ticked would be a
+  warning in a refusal's clothes, so a test asserts it does nothing.
+
+  Stopping happens at an action boundary. An action already invoked cannot be
+  recalled, and abandoning it half-way is how a run ends with a vendor charged,
+  a row created and no record of either. The test requests a stop from inside an
+  action and asserts that action completed and is on the record, and that
+  nothing after it was attempted. `stopped` is a sixth run conclusion because an
+  operator pressing stop must not be recorded as the agent failing.
+
+  Backoff exists because an objective that cannot be met does not stop being
+  due. Without it a broken objective re-runs at its cadence for ever, spending
+  every time. The interval doubles per consecutive unmet run and caps at 8x, so
+  it quiets down without a human noticing first.
+
+  in-flight is cleared in a finally, or a thrown port leaves the supervisor
+  believing a run is still going and never reporting itself idle again.
+
+  Files: apps/api/src/agent/supervisor.ts
+         apps/api/src/__tests__/agentSupervisor.test.ts (20 tests)
+         planner.ts — shouldContinue, checked at the boundary
+         goal.ts — stopped conclusion
+
+  Arming: AGENT_AUTONOMY=true, plus a budget from A-07. Neither is set.
 
 
 A-07 — BUDGET AND SAFETY ENVELOPE

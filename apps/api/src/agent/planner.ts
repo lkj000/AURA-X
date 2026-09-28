@@ -272,6 +272,14 @@ export type PlanOptions = {
   budget?: Budget | null;
   /** Spend from earlier runs, for trailing-window ceilings. */
   priorSpend?: SpendLedger;
+  /**
+   * Asked between actions. Returning false ends the run at the next boundary (A-06).
+   *
+   * Between actions rather than during one: an action already invoked cannot be recalled, and
+   * abandoning it mid-flight is how a run ends up half-written — a vendor charged, a row created,
+   * and no record of either.
+   */
+  shouldContinue?: () => boolean;
   /** Restrict the action set. Used to prove that removing an action changes behaviour with no edit. */
   actions?: readonly AgentAction[];
   now?: () => number;
@@ -307,6 +315,7 @@ export async function plan(
     explore = Math.random,
     budget = null,
     priorSpend = emptyLedger(),
+    shouldContinue = () => true,
   } = opts;
 
   // The gate is read here, once, and decides whether the policy exists at all for this run. Passing
@@ -338,6 +347,10 @@ export async function plan(
   for (let step = 1; ; step++) {
     const verdict = evaluateGoal(goal, state);
     if (verdict.met) return finish({ outcome: "met", verdict });
+
+    // Checked at the boundary, before anything is chosen or invoked, so a stop leaves the run
+    // consistent rather than partly applied.
+    if (!shouldContinue()) return finish({ outcome: "stopped", verdict });
 
     // Settled AND nothing left that could change it — distinct from "not met yet".
     const ranked = rank(state, goal, actions, evidence, activePolicy);
