@@ -30,7 +30,35 @@ Built by Okovanggo AI. Agentic build methodology — one job, one gate, one comm
 - Phase 07 — Agent Loop (Jobs 59-69) ✓
 - Phase 08 — ML Layer (Jobs 38-43) ✓ scaffold complete
 - Phase I  — Platform Integration (I-01 to I-12) ✓ all complete
-- Phase 09 — Agency (A-01 to A-09) — OPEN, see JOBS.md
+- Phase 09 — Agency (A-01 to A-09) — A-01/A-02/A-03 complete, A-04+ open
+- Phase 10 — DAW (D-01 to D-14) — browser DAW, desktop bridge, plugin tracks
+
+### Phase 10 — DAW: the four constraints that decide scope
+
+Full list in JOBS.md. These are the ones that get designed around rather than
+read, and each is physics rather than preference:
+
+  - **Native plugins cannot load in a browser.** VST3 and AU are native binaries
+    with host APIs the browser has no way to satisfy. This is why the desktop
+    bridge (D-12), plugin hosting (D-13) and AURA X as a plugin (D-14) are
+    separate tracks from the browser DAW, not stages of it.
+  - **SharedArrayBuffer requires cross-origin isolation** — COOP and COEP on the
+    whole origin, which breaks third-party embeds that are not themselves
+    isolated. Decided at D-01; retrofitting means auditing every embed.
+  - **Round-trip latency is worse than native and is not fixable in software.**
+    Overdubbing to a click works; live monitoring through browser effects does
+    not reliably. D-05 states its measured number rather than describing a
+    feature.
+  - **The agent's action space and the DAW's control surface are the same
+    thing.** A parameter with a declared range, a precondition and an effect IS
+    a registered action (A-01). Declaring devices twice — once for the UI, once
+    for the agent — produces two surfaces that drift, and the drift shows up as
+    an agent setting a value the UI forbids. D-10 keeps it one declaration.
+
+  Also unverified and load-bearing: FL Studio is believed to expose MIDI,
+  controller scripting and file interchange, and no general remote-control API.
+  Confirm against Image-Line's current documentation before scoping D-12
+  further — the shape of that job depends on it.
 
 ## Build Status
 

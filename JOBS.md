@@ -4462,3 +4462,490 @@ SUCCESS CRITERIA
   [ ] It names the highest-leverage available change
   [ ] It states what it does not know rather than filling the gap
   [ ] It contains no claim the trace does not support
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 10 — DAW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+A browser-based DAW inside AURA X: multitrack audio and MIDI editing,
+sequencing, arrangement, recording, mixing and export; built-in instruments and
+effects that agents can operate through validated controls; AI-assisted
+composition, sound generation, production and mix preparation; and a local
+desktop bridge for FL Studio and other supported DAWs.
+
+Hosting third-party VST3/AU plugins, and releasing AURA X itself as a plugin,
+are separate engineering tracks — D-13 and D-14 below, deliberately last.
+
+
+PLATFORM CONSTRAINTS — read before scoping any job in this phase
+─────────────────────────────────────────
+
+These decide what the jobs can be. Several are physics rather than preference,
+and a job written as though they were negotiable will fail at the end instead of
+at the start.
+
+  1. NATIVE PLUGINS CANNOT LOAD IN A BROWSER. VST3 and AU are native binaries
+     with host APIs the browser has no way to satisfy. This is not a gap to
+     close; it is why D-12 (bridge) and D-13 (hosting) exist as separate work
+     from D-01 to D-11. Anything advertising plugin support in the browser tab
+     itself would be untrue.
+
+  2. DSP BELONGS ON THE AUDIO THREAD. Web Audio's AudioWorklet is the only place
+     sample-accurate processing can run without the main thread's scheduling
+     jitter. Worklets cannot allocate freely or block, which constrains how
+     instruments and effects are written — a design decision at D-06/D-07, not
+     an optimisation afterwards.
+
+  3. SHARED MEMORY NEEDS CROSS-ORIGIN ISOLATION. SharedArrayBuffer — the normal
+     way to pass audio between a worklet and the rest of the app without
+     copying — requires COOP and COEP response headers. That is a deployment
+     constraint on the whole origin and it breaks third-party embeds that are
+     not themselves isolated. Decide it at D-01; retrofitting it later means
+     auditing every embedded resource.
+
+  4. ROUND-TRIP LATENCY IS WORSE THAN NATIVE, AND IT IS NOT FIXABLE IN
+     SOFTWARE. Overdubbing to a click is workable. Live monitoring of an input
+     through browser effects is not reliably so, and the honest answer is direct
+     hardware monitoring with the browser recording dry. D-05 must state the
+     number it achieves rather than describe the feature.
+
+  5. MULTI-GIGABYTE AUDIO NEEDS A REAL FILE SYSTEM. The Origin Private File
+     System is the appropriate store; IndexedDB is not, at this size. D-02.
+
+  6. THERE IS NO MP3 OR AAC ENCODER IN THE BROWSER. WAV is trivial to write;
+     anything encoded needs a WASM encoder shipped with the app, with the
+     licensing position on the codec settled before it is chosen. D-11.
+
+  7. WEB MIDI IS NOT UNIVERSALLY AVAILABLE. Support has historically varied by
+     browser, and by whether the page is served over HTTPS. D-04 states which
+     browsers it supports and degrades explicitly rather than appearing broken.
+
+  8. FL STUDIO EXPOSES NO GENERAL REMOTE-CONTROL API — TO BE VERIFIED BEFORE
+     D-12 IS SCOPED FURTHER. What is believed available: MIDI in and out
+     including transport, a controller-scripting interface, and file
+     interchange by exporting and importing audio, MIDI and stems. The project
+     format is not publicly documented. This is recorded as belief, not fact,
+     because the whole shape of D-12 depends on it and the cost of being wrong
+     is a job built against an API that does not exist. Confirm against
+     Image-Line's current documentation first.
+
+  9. THE AGENT'S ACTION SPACE AND THE DAW'S CONTROL SURFACE ARE THE SAME THING.
+     "Instruments and effects that agents can operate through validated
+     controls" is A-01 applied to devices: a parameter with a declared range, a
+     precondition and an effect IS a registered action. Declaring them twice —
+     once for the UI and once for the agent — produces two surfaces that drift,
+     and the drift shows up as an agent setting a value the UI forbids. D-10
+     exists to keep it one declaration.
+
+
+D-01 — AUDIO GRAPH AND TRANSPORT
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+  → AURA X renders audio offline, in Python and in the engine. There is no
+    real-time audio graph, no transport, and no clock — so there is nothing for
+    a timeline, an instrument or a recorder to attach to.
+  → Every later job in this phase.
+  → Without it there is no DAW; there is a renderer with a user interface.
+
+SOLUTION
+  → An AudioWorklet-based graph with a sample-accurate transport: play, stop,
+    locate, loop, tempo and time signature, driven by a sample clock rather than
+    wall time. Cross-origin isolation decided and applied here.
+  → It gives every later job one place where time is authoritative.
+  → Wall-clock scheduling drifts against the audio device, and a DAW whose
+    timeline disagrees with its output by a few milliseconds per minute is not
+    repairable further up.
+
+SUCCESS CRITERIA
+  [ ] Transport position is derived from the sample clock, never from wall time
+  [ ] Position after a long loop matches expected samples exactly
+  [ ] Tempo and time-signature changes take effect at a stated boundary
+  [ ] Cross-origin isolation is enabled and its effect on embeds is documented
+  [ ] Measured round-trip latency is reported, not described
+
+
+D-02 — PROJECT MODEL AND PERSISTENCE
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+  → There is no representation of a session: tracks, clips, arrangement,
+    mixer state, automation. CTL describes intent for a generator, not a
+    timeline somebody has edited.
+  → Anyone whose work must survive a page reload.
+  → Without it every edit is lost on refresh and nothing can be reopened.
+
+SOLUTION
+  → A project document — tracks, clips, regions, mixer, automation, tempo map —
+    persisted with audio in the Origin Private File System, with an explicit
+    schema version and a migration path.
+  → Work becomes durable and portable.
+  → OPFS handles multi-gigabyte audio where IndexedDB does not, and a versioned
+    schema is what makes the format survive the DAW changing.
+
+SUCCESS CRITERIA
+  [ ] A session reopens byte-identical after reload
+  [ ] Audio lives in OPFS; the document references it rather than embedding it
+  [ ] The schema carries a version and an unreadable version refuses to open
+      rather than opening wrongly
+  [ ] Project size is bounded and reported to the user
+  [ ] An interrupted save leaves the previous session intact
+
+
+D-03 — MULTITRACK AUDIO EDITING
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+  → Audio can be generated and rendered but not arranged. There is no way to
+    place, trim, fade, move or comp a recording against others.
+  → Any producer using the output for anything beyond a single render.
+  → Arrangement happens in someone else's DAW, which is where the work then
+    stays.
+
+SOLUTION
+  → Non-destructive clip editing on a timeline: place, trim, split, fade,
+    crossfade, move, duplicate, time-stretch, with the source audio never
+    rewritten.
+  → It makes the browser a place where a track is finished, not started.
+  → Non-destructive editing is the only model where an undo is exact and an
+    edit decision can be revised months later.
+
+SUCCESS CRITERIA
+  [ ] Every edit is reversible and leaves source audio untouched
+  [ ] A crossfade is sample-accurate at the stated boundary
+  [ ] Time-stretch states its algorithm and its artefacts
+  [ ] Edits survive reload
+  [ ] A clip's edit history is inspectable
+
+
+D-04 — MIDI SEQUENCING AND PIANO ROLL
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+  → The engine exports MIDI and cannot edit it. There is no piano roll, no step
+    entry, no quantisation a person can steer.
+  → Producers refining what the engine generated.
+  → Generated MIDI is accepted whole or discarded whole.
+
+SOLUTION
+  → A MIDI editor over the project model: note entry, velocity, length,
+    quantise with strength and swing, scale constraint, CC lanes — and Web MIDI
+    input where the browser supports it.
+  → Generated material becomes a starting point rather than a verdict.
+  → The engine already produces the material and the tick arithmetic; this adds
+    the surface, and must reuse buildTickMap rather than computing time twice.
+
+SUCCESS CRITERIA
+  [ ] Notes round-trip through the project model without drift
+  [ ] Quantise strength and swing are continuous, not on/off
+  [ ] All tick arithmetic goes through buildTickMap
+  [ ] Web MIDI absence degrades with a stated message, never a broken surface
+  [ ] Engine-generated MIDI opens and edits identically to drawn MIDI
+
+
+D-05 — RECORDING
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+  → Nothing can be recorded in. Vocals, an instrument or a MIDI performance
+    must be captured elsewhere and uploaded.
+  → Every artist whose contribution is a performance.
+  → The platform generates music and cannot capture any.
+
+SOLUTION
+  → Audio and MIDI capture against the transport, with punch in and out, count
+    in, and takes preserved rather than overwritten. Monitoring is direct
+    hardware by default, with the measured latency stated.
+  → It closes the one path that made the browser a viewer.
+  → Honest monitoring guidance beats a monitoring feature that sounds late;
+    constraint 4 is not fixable in software.
+
+SUCCESS CRITERIA
+  [ ] A recorded take aligns to the timeline within a stated sample tolerance
+  [ ] Punch in and out are sample-accurate
+  [ ] Every take is kept and selectable; none is overwritten
+  [ ] Measured input latency is displayed, and compensation is stated
+  [ ] Losing the tab mid-take does not lose audio already captured
+
+
+D-06 — BUILT-IN INSTRUMENTS
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+  → There are no instruments in the browser. MIDI has nothing to play.
+  → Anyone editing MIDI, and every agent asked to produce rather than describe.
+  → MIDI is silent until exported to software that has instruments.
+
+SOLUTION
+  → A small set of worklet instruments the platform actually needs, led by the
+    ones Amapiano is built from — log drum, bass, keys, pads — plus a sampler.
+    Every parameter declared with a range, a unit and a default.
+  → It makes a session audible in the place it is edited.
+  → Declared parameters are what D-10 turns into agent-operable controls; an
+    instrument whose parameters exist only as UI state cannot be operated by
+    anything but a hand.
+
+SUCCESS CRITERIA
+  [ ] Every parameter declares range, unit and default
+  [ ] Instruments run in an AudioWorklet and allocate nothing per block
+  [ ] Voice stealing is defined and bounded
+  [ ] Rendering offline gives bit-identical output to real-time at the same
+      settings
+  [ ] The log drum is judged against the engine's own extractor
+
+
+D-07 — BUILT-IN EFFECTS
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+  → Mixing exists as an offline Python chain. Nothing processes audio in the
+    session, so mix decisions cannot be heard while they are made.
+  → Anyone mixing, and every agent producing a mix specification it cannot hear.
+  → The mix is a specification handed to another program.
+
+SOLUTION
+  → Worklet effects covering the chain the engine already specifies — EQ,
+    compression, saturation, reverb, delay, sidechain — with the same declared
+    parameter contract as instruments.
+  → The engine's existing mix specification becomes something the session can
+    apply and a person can hear.
+  → Reusing the engine's specification vocabulary avoids a second, divergent
+    description of the same mix.
+
+SUCCESS CRITERIA
+  [ ] Each effect maps onto the engine's existing mix specification vocabulary
+  [ ] Every parameter declares range, unit and default
+  [ ] Sidechain keying is sample-accurate against the source
+  [ ] Bypass is click-free and latency-compensated
+  [ ] Offline render matches real-time output at the same settings
+
+
+D-08 — MIXER AND ROUTING
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+  → There is no mixer: no channel strips, buses, sends or master chain inside
+    the session.
+  → Anyone balancing more than two tracks.
+  → Level and routing decisions have nowhere to live.
+
+SOLUTION
+  → Channel strips, groups, sends, returns and a master chain over the D-01
+    graph, with latency compensation across paths of differing delay.
+  → Mix decisions become part of the project rather than of a render.
+  → Compensation is required the moment any path has latency; adding it later
+    means every existing session's timing changes.
+
+SUCCESS CRITERIA
+  [ ] Signal flow is inspectable as a graph, not inferred from the UI
+  [ ] Latency compensation is exact across paths of different delay
+  [ ] Gain staging is stated in a declared unit throughout
+  [ ] Soloing is non-destructive and reversible
+  [ ] Mixer state persists and restores exactly
+
+
+D-09 — AUTOMATION
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+  → No parameter can change over time. Arrangement moves the engine already
+    plans — filter sweeps, gain arcs, width changes — cannot be expressed.
+  → Anyone arranging, and the engine's own arrangement planner, whose output has
+    nowhere to land.
+  → The arrangement arc is advice nobody can apply.
+
+SOLUTION
+  → Automation lanes over any declared parameter, with curve shapes, recorded
+    from a control or written by the engine's arrangement planner.
+  → The planner's output becomes a lane instead of a recommendation.
+  → Automating declared parameters rather than arbitrary values is what keeps
+    D-10's validation true for automated changes as well as set ones.
+
+SUCCESS CRITERIA
+  [ ] Any declared parameter can be automated
+  [ ] Automation is sample-accurate and identical offline and in real time
+  [ ] A written lane cannot exceed the parameter's declared range
+  [ ] The arrangement planner writes lanes directly
+  [ ] Lanes are editable after being written
+
+
+D-10 — DEVICE CONTROL CONTRACT
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+  → "Agents can operate instruments and effects through validated controls"
+    needs one declaration of what a control is. Declared twice — once for the
+    interface and once for the agent — the two drift, and the drift surfaces as
+    an agent setting a value the interface forbids.
+  → Every agent touching the session, and every user who then finds it in a
+    state the UI could not have produced.
+  → Agent control of devices either does not exist or bypasses validation.
+
+SOLUTION
+  → One parameter declaration per control — range, unit, default, curve,
+    automatable — from which the interface, the automation lanes and the agent
+    action registry are all generated. Setting a control is an A-01 action with
+    a precondition and a declared effect.
+  → It makes constraint 9 structural rather than a rule people remember.
+  → Generating the agent surface from the same declaration is the only
+    arrangement in which the two cannot diverge.
+
+SUCCESS CRITERIA
+  [ ] One declaration produces UI, automation and agent action
+  [ ] An out-of-range value is refused identically from every route
+  [ ] The action registry gains device controls with no hand-written entries
+  [ ] Every agent parameter change appears in the decision trace
+  [ ] A control removed from a device disappears from all three surfaces
+
+
+D-11 — RENDER AND EXPORT
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+  → A session cannot leave the browser: no mixdown, no stems, no MIDI export,
+    no encoded delivery format.
+  → Everyone, at the end of every piece of work.
+  → Work is trapped where it was made.
+
+SOLUTION
+  → Offline rendering faster than real time to WAV, stems per track or bus, and
+    MIDI export, plus an encoded format shipped as a WASM encoder with its
+    licensing position settled before the codec is chosen.
+  → It gives the work an exit.
+  → Offline rendering is also what proves D-06 and D-07 deterministic, which is
+    why those jobs assert it.
+
+SUCCESS CRITERIA
+  [ ] Offline render is bit-identical to real-time at the same settings
+  [ ] Stems sum to the master within a stated tolerance
+  [ ] Exported MIDI reopens in a third-party DAW with correct timing
+  [ ] The encoder's licence is recorded before the codec is chosen
+  [ ] A long render reports progress and can be cancelled without corruption
+
+
+D-12 — DESKTOP BRIDGE
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] In Progress
+
+PROBLEM DEFINITION
+  → Work made in AURA X has to be rebuilt by hand in the DAW a producer already
+    uses, and native plugins cannot run in a browser at all.
+  → Producers working in FL Studio and comparable hosts — which is most of them.
+  → AURA X is a separate world that exports files.
+
+SOLUTION
+  → A small local application the browser talks to over a loopback connection,
+    exposing what the host genuinely supports: MIDI in and out including
+    transport, and file interchange for audio, MIDI and stems. Capability is
+    discovered and declared per host rather than assumed.
+  → It puts AURA X inside the workflow instead of beside it.
+  → Per-host declared capability is the only honest shape when the hosts differ
+    and at least one exposes no general remote-control API. See constraint 8 —
+    confirm what FL Studio actually offers before scoping further.
+
+SUCCESS CRITERIA
+  [ ] The bridge is local-only and refuses non-loopback connections
+  [ ] It is discoverable, and its absence degrades with a stated message
+  [ ] Each host declares its own capability; nothing is assumed
+  [ ] Round-trip of MIDI and stems preserves timing within a stated tolerance
+  [ ] It is verified against a real FL Studio installation, not a mock
+
+
+D-13 — THIRD-PARTY PLUGIN HOSTING
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] Not started — separate track, do not begin before D-12 lands
+
+PROBLEM DEFINITION
+  → VST3 and AU instruments and effects cannot run in the browser, and a
+    producer's sound lives in their plugins.
+  → Producers whose identity is their plugin chain.
+  → Their tools and AURA X stay separate.
+
+SOLUTION
+  → Plugin hosting inside the D-12 bridge, with parameters surfaced through the
+    D-10 control contract so an agent can operate a third-party device under the
+    same validation as a built-in one.
+  → It brings a producer's own tools under the same agent surface.
+  → The bridge already exists as a native process; a second one would be a
+    second thing to install and secure.
+
+SUCCESS CRITERIA
+  [ ] A VST3 and an AU instrument load and render in the bridge
+  [ ] Plugin parameters appear through the D-10 contract
+  [ ] A crashing plugin cannot take down the bridge
+  [ ] Plugin state saves and restores with the project
+  [ ] Licensing and redistribution obligations are recorded before shipping
+
+
+D-14 — AURA X AS A PLUGIN
+─────────────────────────────────────────
+Phase:  Phase 10 — DAW
+Status: [ ] Not started — separate track, do not begin before D-13 lands
+
+PROBLEM DEFINITION
+  → Reaching AURA X means leaving the DAW. A producer mid-session will not.
+  → Producers who would use the intelligence if it were where they already are.
+  → It is used before or after a session, rarely during one.
+
+SOLUTION
+  → AURA X as a VST3 and AU plugin: the engine, the agent and the generation
+    surface hosted inside the producer's DAW, sharing the same action registry
+    and control contract as everything else.
+  → It removes the context switch entirely.
+  → This is the inverse of D-13 and depends on the same native work; attempting
+    it first would build that work twice.
+
+SUCCESS CRITERIA
+  [ ] Loads as VST3 and AU in at least two major hosts
+  [ ] Renders in the host's offline bounce
+  [ ] State saves and restores with the host project
+  [ ] The agent operates through the same registry as the browser build
+  [ ] Host validation suites pass
+
+
+PHASE 10 — ORDER
+─────────────────────────────────────────
+Forced by dependency, not preference:
+
+  D-01 graph and transport      nothing has a time base without it
+  D-02 project model            nothing survives a reload without it
+  D-03 audio  ·  D-04 MIDI      the two editing surfaces, independent of each other
+  D-05 recording                needs transport and project
+  D-06 instruments · D-07 effects   need the graph; both declare parameters
+  D-08 mixer                    needs effects and the graph
+  D-09 automation               needs declared parameters and the mixer
+  D-10 control contract         formalises what D-06 to D-09 declared, and is
+                                what makes any of it agent-operable
+  D-11 render and export        needs the whole graph to be deterministic
+  D-12 bridge                   independent of D-01 to D-11; gated on constraint 8
+  D-13 plugin hosting           needs D-12
+  D-14 AURA X as a plugin       needs D-13
+
+D-10 could be written earlier and should not be. A control contract invented
+before there are controls describes an imagined device; written after D-06 to
+D-09 it describes real ones, and the difference is whether it survives contact.
