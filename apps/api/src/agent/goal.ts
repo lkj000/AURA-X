@@ -222,7 +222,13 @@ export type RunConclusion =
   | { outcome: "met";                 verdict: GoalVerdict }
   | { outcome: "unsatisfiable";       verdict: GoalVerdict }
   | { outcome: "effort_exhausted";    verdict: GoalVerdict; bound: string; limit: number }
-  | { outcome: "no_action_available"; verdict: GoalVerdict };
+  | { outcome: "no_action_available"; verdict: GoalVerdict }
+  /**
+   * Stopped by cost rather than by capability or effort (A-07). Distinct from effort_exhausted
+   * because the remedy is different: this one wants a bigger budget or a cheaper route, not more
+   * iterations, and conflating them sends somebody to change the wrong number.
+   */
+  | { outcome: "budget_exhausted";    verdict: GoalVerdict; reason: string };
 
 /** One sentence naming what happened and, where it did not succeed, what stopped it. */
 export function describeConclusion(c: RunConclusion): string {
@@ -235,6 +241,8 @@ export function describeConclusion(c: RunConclusion): string {
       return `Stopped at the ${c.bound} bound of ${c.limit}. Unmet: ${[...c.verdict.fails, ...c.verdict.unknown].join(", ") || "none"}.`;
     case "no_action_available":
       return `No action could run. Unmet: ${[...c.verdict.fails, ...c.verdict.unknown].join(", ") || "none"}.`;
+    case "budget_exhausted":
+      return `Stopped by budget: ${c.reason}. Unmet: ${[...c.verdict.fails, ...c.verdict.unknown].join(", ") || "none"}.`;
   }
 }
 

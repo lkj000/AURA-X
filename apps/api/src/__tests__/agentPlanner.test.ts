@@ -176,3 +176,41 @@ describe("A-03 · necessary work no clause mentions still happens", () => {
     expect(rank(initialState(), g)[0].action.id).toBe("create_track");
   });
 });
+
+describe("A-03 · a supplied action set may extend the registry, not only narrow it", () => {
+  it("selects an action the global registry has never seen", async () => {
+    // Regression. rank() used to evaluate preconditions over the global ACTIONS and then filter by
+    // the supplied set, so a runtime-registered action was invisible however correctly it was
+    // declared. Every test here removed actions, so none caught it — A-07's first paid action did.
+    // It would also have blocked D-10, where DAW device controls become actions that do not exist
+    // at build time.
+    // A third synthesis route, free and highly rated, so it wins on score rather than by being the
+    // only option — the test must prove the action was CONSIDERED, not merely unavoidable.
+    const extra = {
+      id: "synthesize_ctl_cached",
+      title: "Reuse a cached CTL",
+      cost: "free" as const,
+      prior: 1.0,
+      effects: ["ctl", "ctlSource"] as const,
+      precondition: (s: AgentState) => !!s.trackId && !s.ctl,
+      run: async () => ({ ok: true as const, patch: { ctl: CTL, ctlSource: "local" as const }, note: "cached" }),
+    };
+    const r = await plan(goal(), ports(), { actions: [...ACTIONS, extra] });
+    expect(seq(r)).toContain("synthesize_ctl_cached");
+    expect(seq(r)).not.toContain("synthesize_ctl_remote");
+  });
+
+  it("still honours preconditions for actions outside the registry", async () => {
+    const never = {
+      id: "impossible",
+      title: "Never runnable",
+      cost: "free" as const,
+      prior: 1.0,
+      effects: ["stored"] as const,
+      precondition: () => false,
+      run: async () => ({ ok: true as const, patch: {}, note: "" }),
+    };
+    const r = await plan(goal(), ports(), { actions: [...ACTIONS, never] });
+    expect(seq(r)).not.toContain("impossible");
+  });
+});

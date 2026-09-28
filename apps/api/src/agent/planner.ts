@@ -36,6 +36,10 @@ import {
 import { NO_PRIOR_EVIDENCE, type PriorEvidence } from "./memory";
 import { POLICY_OFF, emptyPolicy, policyAdjustment, type AgentPolicy, type PolicyGate } from "./policy";
 import {
+  checkBudget, emptyLedger, record, describeRefusal,
+  type Budget, type BudgetVerdict, type SpendLedger,
+} from "./budget";
+import {
   clausesFor,
   evaluateGoal,
   effortRemaining,
@@ -200,9 +204,16 @@ export function rank(
   evidence: PriorEvidence = NO_PRIOR_EVIDENCE,
   policy: AgentPolicy | null = null,
 ): readonly Scored[] {
+  // Preconditions are evaluated over the GIVEN set, not the global registry.
+  //
+  // This read `eligibleActions(s).filter(...)`, which iterates ACTIONS — so a supplied set could
+  // only ever narrow the registry, never extend it, and an action registered at runtime was
+  // invisible however correctly it was declared. A-03's tests only ever removed actions, so it
+  // passed; A-07's first paid action found it. It would also have blocked D-10 outright, where
+  // device controls become actions the registry has never seen at build time.
   const order = new Map(actions.map((a, i) => [a.id, i]));
-  return eligibleActions(s)
-    .filter((a) => order.has(a.id))
+  return actions
+    .filter((a) => a.precondition(s))
     .map((a) => scoreAction(a, s, goal, evidence, policy))
     .sort((x, y) => y.score - x.score || order.get(x.action.id)! - order.get(y.action.id)!);
 }
@@ -241,6 +252,8 @@ export type PlanResult = {
   state: AgentState;
   conclusion: RunConclusion;
   decisions: readonly Decision[];
+  /** What this run spent, per action. Empty when nothing chargeable ran. */
+  spend: SpendLedger;
   /** Derived from `decisions`. Never written independently. */
   log: readonly string[];
 };
@@ -255,6 +268,10 @@ export type PlanOptions = {
   gate?: PolicyGate;
   /** Source of exploration draws, injected so a run can be reproduced exactly. */
   explore?: () => number;
+  /** Cost ceilings (A-07). null — the default — blocks paid actions entirely. */
+  budget?: Budget | null;
+  /** Spend from earlier runs, for trailing-window ceilings. */
+  priorSpend?: SpendLedger;
   /** Restrict the action set. Used to prove that removing an action changes behaviour with no edit. */
   actions?: readonly AgentAction[];
   now?: () => number;
@@ -288,6 +305,8 @@ export async function plan(
     policy,
     gate = POLICY_OFF,
     explore = Math.random,
+    budget = null,
+    priorSpend = emptyLedger(),
   } = opts;
 
   // The gate is read here, once, and decides whether the policy exists at all for this run. Passing
@@ -295,13 +314,25 @@ export async function plan(
   const activePolicy = gate.enabled ? policy ?? emptyPolicy() : null;
 
   let state = from;
+  let spend = emptyLedger();
   const decisions: Decision[] = [];
 
   const finish = (conclusion: RunConclusion): PlanResult => ({
     state,
     conclusion,
     decisions,
+    spend,
     log: renderLog(decisions),
+  });
+
+  /** Combined view for trailing-window ceilings: earlier runs plus what this one has spent. */
+  const totalSpend = (): SpendLedger => ({
+    entries: [...priorSpend.entries, ...spend.entries],
+    counts: {
+      free:    priorSpend.counts.free    + spend.counts.free,
+      compute: priorSpend.counts.compute + spend.counts.compute,
+      paid:    priorSpend.counts.paid    + spend.counts.paid,
+    },
   });
 
   for (let step = 1; ; step++) {
@@ -321,12 +352,34 @@ export async function plan(
 
     if (ranked.length === 0) return finish({ outcome: "no_action_available", verdict });
 
+    // Affordability is checked BEFORE selection, not inside the action: once an action has been
+    // chosen the planner has committed, and after the call the money is spent whatever a check says.
+    // An unaffordable best choice is stepped over rather than ending the run — routing around cost
+    // is the whole point of having alternatives.
+    type Refusal = Extract<BudgetVerdict, { allowed: false }>;
+    const refusals: Refusal[] = [];
+    const affordable = ranked.filter((r) => {
+      const v = checkBudget(budget, r.action.cost, spend, totalSpend(), now());
+      if (v.allowed) return true;
+      refusals.push(v);
+      return false;
+    });
+    const refusal: Refusal | undefined = refusals[0];
+
+    if (affordable.length === 0) {
+      return finish({
+        outcome: "budget_exhausted",
+        verdict,
+        reason: refusal?.reason ?? "no affordable action",
+      });
+    }
+
     // Exploration: occasionally take the runner-up to gather evidence the best choice would never
     // produce. Bounded, declared, and recorded on the decision — an agent that deviates at an
     // undeclared rate cannot be told apart from a broken one.
     const exploring =
-      gate.enabled && gate.explorationRate > 0 && ranked.length > 1 && explore() < gate.explorationRate;
-    const best = exploring ? ranked[1] : ranked[0];
+      gate.enabled && gate.explorationRate > 0 && affordable.length > 1 && explore() < gate.explorationRate;
+    const best = exploring ? affordable[1] : affordable[0];
 
     const started = now();
     const { outcome, state: next } = await executeAction(best.action.id, state, ports);
@@ -336,13 +389,25 @@ export async function plan(
       step,
       chosen: best.action.id,
       reason: exploring ? `${explain(best)} — exploratory` : explain(best),
-      considered: ranked.map((r) => ({ id: r.action.id, score: r.score, why: explain(r) })),
+      considered: ranked.map((r) => ({
+        id: r.action.id,
+        score: r.score,
+        why: affordable.includes(r) || !refusal
+          ? explain(r)
+          : `${explain(r)} — ${describeRefusal(refusal)}`,
+      })),
       ok: outcome.ok,
       note: outcome.note,
       error: outcome.ok ? undefined : outcome.error,
       exploratory: exploring,
       cost: best.action.cost,
       durationMs: now() - started,
+    });
+
+    // Recorded whether or not the action succeeded: a vendor call that failed was still a vendor
+    // call, and a ledger that only counts successes under-reports exactly when things go wrong.
+    spend = record(spend, {
+      at: started, actionId: best.action.id, cost: best.action.cost, unitCost: null,
     });
   }
 }

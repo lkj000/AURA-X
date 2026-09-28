@@ -4434,7 +4434,8 @@ SUCCESS CRITERIA
 A-07 — BUDGET AND SAFETY ENVELOPE
 ─────────────────────────────────────────
 Phase:  Phase 09 — Agency
-Status: [ ] In Progress
+Status: [x] Complete  (built before A-06: autonomy without a budget is an
+        unbounded bill, so this gates it)
 
 PROBLEM DEFINITION
 What is broken, missing, or creating pain?
@@ -4459,11 +4460,57 @@ Why this approach and not another?
     the call the money is spent whatever the check says.
 
 SUCCESS CRITERIA
-  [ ] Every paid action declares a cost class and is checked before invocation
-  [ ] Exceeding a ceiling refuses and names the ceiling
-  [ ] Spend is recorded per action and per episode
-  [ ] A budget cannot be raised by the loop itself
-  [ ] With no budget configured, paid actions refuse rather than proceed
+  [x] Every paid action declares a cost class and is checked before invocation
+  [x] Exceeding a ceiling refuses and names the ceiling
+  [x] Spend is recorded per action and per episode
+  [x] A budget cannot be raised by the loop itself
+  [x] With no budget configured, paid actions refuse rather than proceed
+  [x] An unaffordable action is stepped over where an alternative exists
+
+NOTES
+  Metered in invocations, not currency, and the reason is not laziness. A
+  currency ceiling needs a price per action and no action can declare one —
+  Replicate bills by model-second, Modal by GPU-second, and neither is known
+  before the call returns. A budget in currency would be enforced against a
+  number the platform invented, which is worse than a coarse limit honestly
+  described. `unitCost` is reserved on the ledger for when prices are
+  declarable; nothing reads it yet.
+
+  Checked before invocation, never inside the action: after the call the money
+  is spent whatever the check says, and an action that meters itself has already
+  been chosen. Spend is recorded whether or not the action succeeded — a vendor
+  call that failed was still a vendor call, and a ledger counting only successes
+  under-reports exactly when things are going wrong.
+
+  No budget means no paid actions. Absence is not permission; it is the state a
+  system is in before anyone has thought about cost, which is precisely when it
+  should not be spending. Compute stays allowed unbudgeted because it bills
+  nobody.
+
+  "Cannot be raised by the loop" is enforced by there being no operation that
+  raises one, and a test asserts the module exports none. A setter the loop
+  merely promises not to call is not a control.
+
+  budget_exhausted is a fifth run conclusion rather than a variant of
+  effort_exhausted, because the remedies differ: this one wants a bigger budget
+  or a cheaper route, not more iterations, and conflating them sends somebody to
+  change the wrong number.
+
+  FOUND HERE, FIXED IN A-03: rank() evaluated preconditions over the global
+  ACTIONS and then filtered by the supplied set, so a supplied set could only
+  narrow the registry and never extend it — an action registered at runtime was
+  invisible however correctly it was declared. Every A-03 test removed actions,
+  so none caught it; the first paid action did. It would also have blocked D-10
+  outright, where DAW device controls become actions that do not exist at build
+  time. Regression tests added to the planner suite.
+
+  Files: apps/api/src/agent/budget.ts
+         apps/api/src/__tests__/agentBudget.test.ts (20 tests)
+         planner.ts — affordability filter, spend ledger
+         goal.ts — budget_exhausted conclusion
+
+  Arming: AGENT_BUDGET_PAID_PER_RUN / _COMPUTE_PER_RUN / _PAID_PER_WINDOW /
+  _WINDOW_MS. Unset everywhere, and unset means paid actions do not run.
 
 
 A-08 — DECISION TRACE
