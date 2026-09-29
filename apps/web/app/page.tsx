@@ -1,4 +1,4 @@
-import { getDatasetStats, getAgentStatus } from "@/lib/api";
+import { getDatasetStats, getAgentStatus, API_BASE } from "@/lib/api";
 import { fmt, scoreBg, SUBGENRE_LABELS } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -120,7 +120,9 @@ export default async function DashboardPage() {
           <p className="text-xs text-amber-400">
             Progress cannot be shown: the dataset service could not be reached, so no count — of rows
             or of recordings — has been read. This is not a statement about the corpus.
-            <span className="block text-zinc-500 mt-1">{loadError}</span>
+            <span className="block text-zinc-500 mt-1">
+              {API_BASE} — {loadError}
+            </span>
           </p>
         ) : pct === null ? (
           <p className="text-xs text-amber-400">

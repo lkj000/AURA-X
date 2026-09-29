@@ -1,5 +1,17 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3003";
 
+/**
+ * The endpoint this module talks to, exported so a failure can NAME it.
+ *
+ * "fetch failed" is undici's message and it tells a reader that something did not answer, not what.
+ * A page that carefully explains every other unknown should not report its one hard failure as two
+ * uninformative words.
+ *
+ * Safe to render: NEXT_PUBLIC_* is compile-time inlined into the client bundle by definition, so this
+ * value is already public wherever the app runs.
+ */
+export const API_BASE = BASE;
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
