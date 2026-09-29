@@ -18,9 +18,22 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
 export default async function DashboardPage() {
   let stats = null;
   let agent = null;
+  // WHY THE ERROR IS KEPT RATHER THAN SWALLOWED.
+  //
+  // This was `catch {}`. With the API unreachable, `stats` stayed null and the row count below read
+  // `?? 0` — so a failed fetch rendered as "0 training rows", indistinguishable from a dataset that
+  // is genuinely empty. Every other card on this page guards on null and shows an em-dash; that one
+  // field invented a number.
+  //
+  // Which is the same reasoning the comment on `distinctTrain` already rejects two lines down: do not
+  // substitute a number you can stand behind for one you cannot. That rule was applied to the harder
+  // field and missed on the easier one.
+  let loadError: string | null = null;
   try {
     [stats, agent] = await Promise.all([getDatasetStats(), getAgentStatus()]);
-  } catch {}
+  } catch (err) {
+    loadError = err instanceof Error ? err.message : "unknown error";
+  }
 
   // PROGRESS IS MEASURED IN RECORDINGS, NOT ROWS.
   //
@@ -31,7 +44,7 @@ export default async function DashboardPage() {
   // `distinct_train_audio` is null until every record resolves to a content hash, and null means
   // UNKNOWN. The progress bar is hidden in that state rather than falling back to the row count,
   // which is the number that was wrong in the first place.
-  const trainRows      = stats?.by_split?.train ?? 0;
+  const trainRows      = stats?.by_split?.train ?? null;   // null = unknown, never 0
   const distinctTrain  = stats?.distinct_train_audio ?? null;
   const threshold      = stats?.training_threshold ?? 100;
   const pct = distinctTrain === null ? null : Math.min(100, Math.round((distinctTrain / threshold) * 100));
@@ -49,9 +62,13 @@ export default async function DashboardPage() {
           value={stats?.total?.toString() ?? "—"}
           // Both numbers, because the gap between them is the point: rows count uploads, and the
           // same recording is stored many times over.
-          sub={stats?.distinct_audio != null
-            ? `${stats.distinct_audio} distinct recordings · ${trainRows} training rows`
-            : `${trainRows} training rows · distinct count unknown`}
+          sub={loadError
+            ? "could not be loaded"
+            : stats?.distinct_audio != null
+              ? `${stats.distinct_audio} distinct recordings · ${trainRows} training rows`
+              : trainRows === null
+                ? "row count unknown · distinct count unknown"
+                : `${trainRows} training rows · distinct count unknown`}
         />
         <StatCard
           label="Mean score"
@@ -65,12 +82,14 @@ export default async function DashboardPage() {
         />
         <StatCard
           label="Model status"
-          value={stats?.ready_for_training ? "Ready" : distinctTrain === null ? "Unverified" : "Ingesting"}
-          sub={stats?.ready_for_training
-            ? `${distinctTrain} distinct training recordings`
-            : distinctTrain === null
-              ? "content identity not yet established"
-              : `${pct}% to threshold`}
+          value={loadError ? "Unavailable" : stats?.ready_for_training ? "Ready" : distinctTrain === null ? "Unverified" : "Ingesting"}
+          sub={loadError
+            ? "dataset service could not be reached"
+            : stats?.ready_for_training
+              ? `${distinctTrain} distinct training recordings`
+              : distinctTrain === null
+                ? "content identity not yet established"
+                : `${pct}% to threshold`}
         />
       </div>
 
@@ -84,16 +103,26 @@ export default async function DashboardPage() {
               ? "bg-emerald-500/20 text-emerald-400"
               : "bg-zinc-800 text-zinc-400"
           )}>
-            {stats?.ready_for_training
-              ? `${distinctTrain} distinct recordings`
-              : distinctTrain === null
-                ? "distinct count unknown"
-                : `${distinctTrain} / ${threshold} distinct`}
+            {loadError
+              ? "unavailable"
+              : stats?.ready_for_training
+                ? `${distinctTrain} distinct recordings`
+                : distinctTrain === null
+                  ? "distinct count unknown"
+                  : `${distinctTrain} / ${threshold} distinct`}
           </span>
         </div>
         {/* No bar when the distinct count is unknown. A bar drawn from the row count would show a
             corpus three times its real size, which is precisely the reading being corrected. */}
-        {pct === null ? (
+        {loadError ? (
+          /* Two different unknowns. This one is "we could not ask", and saying the other thing here
+             would report a dataset condition that has not been observed. */
+          <p className="text-xs text-amber-400">
+            Progress cannot be shown: the dataset service could not be reached, so no count — of rows
+            or of recordings — has been read. This is not a statement about the corpus.
+            <span className="block text-zinc-500 mt-1">{loadError}</span>
+          </p>
+        ) : pct === null ? (
           <p className="text-xs text-amber-400">
             Progress cannot be shown: audio content identity has not been established for every
             record, and counting upload rows would overstate the corpus.
