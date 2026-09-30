@@ -3828,6 +3828,37 @@ SUCCESS CRITERIA
   [ ] POST https://aura-x-production.up.railway.app/api/agent/run
       succeeds from the web UI at app.okovanggo.ai (no CORS error)
 
+VERIFIED 30 SEPTEMBER 2026 — checked against DNS and HTTPS, not against the boxes above.
+
+  app.okovanggo.ai            CNAME tqowipqp.up.railway.app · HTTPS 200
+                              serves <title>AURA X — Producer Studio</title>
+                              THE PRODUCTION DOMAIN IS REAL. The two [x] boxes above hold.
+
+  aura-x-production.up…       HTTPS 200 · /health →
+                              {"status":"ok","service":"aura-x-api","version":"4.0.0",
+                               "mode":"production","phase":"P4-COMPLETE"}
+
+  api.okovanggo.ai            NO DNS RECORD AT ALL.
+                              The CNAME planned earlier in this job was never created.
+                              Not a breakage — NEXT_PUBLIC_API_URL points at the Railway
+                              hostname and that is consistent. It is a PORTABILITY risk: the
+                              public API surface is a Railway-generated name, so recreating
+                              the service or leaving Railway changes it and breaks every
+                              client. NEXUS moved to api.okovanggoai.com for this reason.
+
+  okovanggo.ai (apex)         *** LIVE DEFECT: SSL CERTIFICATE HAS EXPIRED. ***
+                              92.112.198.213 / 147.79.120.187 (Hostinger range).
+                              http:// 301-redirects to https://, which then fails the
+                              handshake — so anyone typing the bare brand domain gets a
+                              browser security warning. Nothing in this repo serves it;
+                              it is the company apex, and it is the first thing a new
+                              visitor sees. Fix at the host, not here.
+
+THE LAST BOX IS LEFT UNCHECKED DELIBERATELY. Verifying it means POSTing to /api/agent/run,
+which does real work against real providers and costs money. It is a walk from the UI by a
+person, not something to tick from a shell — and ticking it from a shell is how the iOS
+build rows in the NEXUS repo came to be wrong for three months in both directions.
+
 
 ### JOB I-08 — Python Intelligence Engine + TypeScript Integration
 ---
