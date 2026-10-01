@@ -74,9 +74,21 @@ model-and-render pipeline is a real gain, not a theoretical one.
 **Removing is four dependencies, one directory and one test file**, and it makes the repository tell
 the truth about itself.
 
-**Either is better than today.** What must not happen is adopting *more* Temporal — the AI-agent
-integrations, the MCP server, the developer skill — on top of an integration that has never executed a
-workflow. That compounds the exact confusion this note exists to end.
+**Either is better than today.** What must not happen is adopting more Temporal **runtime** — the
+AI-agent integrations (OpenAI Agents SDK, LangGraph, Google ADK) — on top of an integration that has
+never executed a workflow. That compounds the exact confusion this note exists to end.
+
+**Corrected 1 October 2026:** this paragraph first lumped the AI integrations, the MCP server and the
+**developer skill** together as one thing to avoid. They are not one thing.
+`temporalio/skill-temporal-developer` is official Temporal, MIT, **purely instructional** — a `SKILL.md`
+and a `references/` tree, no credentials, no network at runtime, no execution, nothing deployed. It adds
+**zero production surface**, which is the precise property that made the other two worth warning about.
+It is reading material for whoever takes the arm-or-remove decision, and that decision is better taken
+with Temporal's own guidance than without it. The caution belongs on the runtime integrations alone.
+
+The one hazard worth naming: a skill that makes writing Temporal code easier is a mild risk in a
+repository that already holds workflows nobody runs. It improves the decision; it does not substitute
+for it.
 
 ## Order, if arming
 
